@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>VPN-клиент — экраны, состояния, переходы</title>
+<style>
+  :root{
+    --void:#0a0c10; --carbon:#12151b; --obsidian:#1a1e26;
+    --hairline:#262b34; --smoke:#333a45; --edge:#5a6472;
+    --ash:#7f8a99; --text2:#8b95a3; --mist:#aab4c2; --bone:#e8ecf2;
+    --ice:#6fb3ff;
+    --up:#3ddc97; --wait:#ffb454; --down:#ff5f6d;
+    --r-card:14px; --r-btn:12px; --r-sm:8px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:#05060a;color:var(--bone);
+    font-family:Inter,"Segoe UI",-apple-system,system-ui,sans-serif;
+    font-size:15px;-webkit-font-smoothing:antialiased;
+    padding:56px 40px 90px;
+  }
+  .page{max-width:1660px;margin:0 auto}
+  h1{font-size:30px;font-weight:600;letter-spacing:-.022em;margin-bottom:9px}
+  .sub{color:var(--ash);font-size:14px;margin-bottom:6px;max-width:800px;line-height:1.65}
+  h2{font-size:17px;font-weight:590;letter-spacing:-.015em;margin:0 0 6px}
+  .hint{color:var(--ash);font-size:13px;margin-bottom:24px;line-height:1.6;max-width:980px}
+  .hint b{color:var(--bone);font-weight:590}
+  .rule{height:1px;background:var(--hairline);margin:44px 0}
+  .mono{font-family:"JetBrains Mono",Consolas,ui-monospace,monospace;letter-spacing:-.013em}
+  .rail{display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start}
+
+  /* ---------- device ---------- */
+  .dev{width:344px;height:744px;flex:0 0 auto;background:var(--void);
+    border:1px solid var(--hairline);border-radius:36px;padding:12px;
+    box-shadow:0 26px 70px rgba(0,0,0,.62);position:relative}
+  .scr{width:100%;height:100%;border-radius:25px;overflow:hidden;display:flex;flex-direction:column;position:relative}
+  .notch{position:absolute;top:19px;left:50%;transform:translateX(-50%);width:98px;height:24px;background:#000;border-radius:13px;z-index:9}
+  .sb{height:50px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;font-size:12.5px;font-weight:590;flex:0 0 auto}
+  .scroll{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:0 18px}
+  .cap{margin-top:13px;text-align:center;color:var(--mist);font-size:12.5px;font-weight:500}
+  .cap b{display:block;color:var(--bone);font-size:13.5px;font-weight:590;margin-bottom:3px}
+  .cap span{color:var(--ash);font-weight:400;line-height:1.5;display:block}
+  .cap em{color:var(--ice);font-style:normal}
+
+  /* ---------- chrome ---------- */
+  .nav{display:flex;align-items:center;justify-content:space-between;padding:2px 0 14px;flex:0 0 auto}
+  .nav .t{font-size:16.5px;font-weight:590;letter-spacing:-.015em}
+  .nav .back{color:var(--ice);font-size:14.5px}
+  .nav .lnk{color:var(--text2);font-size:13.5px}
+  .card{background:var(--carbon);border:.5px solid var(--hairline);border-radius:var(--r-card);padding:15px}
+
+  /* ---------- buttons ---------- */
+  .btn{height:50px;border-radius:var(--r-btn);display:flex;align-items:center;
+    justify-content:center;gap:8px;font-size:16.5px;font-weight:590;letter-spacing:-.01em;position:relative}
+  .btn-p{background:var(--bone);color:#0a0c10}
+  .btn-g{background:transparent;border:.5px solid var(--edge);color:var(--bone)}
+  .btn-sm{height:46px;font-size:15px}
+  .btn[data-busy]::after{content:"";width:13px;height:13px;border:1.5px solid currentColor;
+    border-top-color:transparent;border-radius:50%}
+  .bar{flex:0 0 auto;padding:12px 18px 20px;border-top:.5px solid var(--hairline);
+    background:linear-gradient(180deg,rgba(10,12,16,.6),var(--void) 45%);
+    padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+  .bar .btn{width:100%}
+  .bar .note{text-align:center;color:var(--ash);font-size:11.5px;margin-top:9px;line-height:1.45}
+
+  /* ---------- login ---------- */
+  .mid{flex:1;display:flex;flex-direction:column;justify-content:center;padding-bottom:26px}
+  .mark{width:54px;height:54px;border-radius:15px;margin-bottom:24px;
+    background:linear-gradient(160deg,#1d2331,#141a24);border:.5px solid var(--hairline);
+    display:flex;align-items:center;justify-content:center}
+  .mark svg{width:25px;height:25px}
+  .mid h3{font-size:26px;font-weight:600;letter-spacing:-.022em;line-height:1.18;margin-bottom:11px}
+  .mid .lead{color:var(--text2);font-size:14px;line-height:1.6;margin-bottom:20px}
+  .steps{display:flex;flex-direction:column;gap:8px;margin-bottom:18px}
+  .steps .st-row{display:flex;align-items:baseline;gap:10px}
+  .steps .st-n{width:17px;height:17px;border-radius:50%;flex:0 0 auto;
+    border:.5px solid var(--edge);color:var(--text2);font-size:10.5px;font-weight:590;
+    display:flex;align-items:center;justify-content:center;position:relative;top:1px}
+  .steps .st-t{font-size:13px;color:var(--mist);line-height:1.45}
+  .disc{border-left:2px solid var(--edge);padding:2px 0 2px 12px;margin-bottom:18px}
+  .disc p{font-size:12.5px;line-height:1.6;color:var(--text2);margin:0}
+  .disc b{color:var(--mist);font-weight:590}
+  .legal{margin-top:14px;text-align:center;color:var(--ash);font-size:11.5px;line-height:1.5}
+
+  /* ---------- indicator ---------- */
+  .ind{display:flex;flex-direction:column;align-items:center;padding:2px 0 2px;flex:0 0 auto}
+  .rings{width:118px;height:118px;position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:13px}
+  .rg{position:absolute;border-radius:50%;border:1px solid var(--hairline)}
+  .r1{width:118px;height:118px}.r2{width:92px;height:92px}.r3{width:68px;height:68px}
+  .rings.on .rg{border-color:rgba(61,220,151,.30)}
+  .rings.wv .rg{border-color:var(--edge)}
+  .rings.wait .rg{border-color:rgba(255,180,84,.24)}
+  .rings.dn .rg{border-color:var(--hairline)}
+  .core{width:50px;height:50px;border-radius:50%;background:var(--obsidian);
+    border:1px solid var(--edge);display:flex;align-items:center;justify-content:center;position:relative;z-index:2}
+  .core svg{width:22px;height:22px}
+  .rings.on .core{background:rgba(61,220,151,.10);border-color:rgba(61,220,151,.45)}
+  .rings.on .core svg path{stroke:var(--up)}
+  .rings.wv .core{background:var(--obsidian);border-color:var(--edge)}
+  .rings.wv .core svg path{stroke:var(--mist)}
+  .rings.wait .core{border-color:rgba(255,180,84,.4)}
+  .rings.wait .core svg path{stroke:var(--wait)}
+  .st{font-size:25px;font-weight:600;letter-spacing:-.022em;margin-bottom:6px;text-align:center;padding:0 6px}
+  .st.on{color:var(--up)}.st.wv{color:var(--mist)}.st.wait{color:var(--wait)}
+  .st.off{color:var(--text2)}.st.err{color:var(--down)}
+  .sb2{color:var(--ash);font-size:13px;text-align:center;line-height:1.5;padding:0 10px}
+  .sb2 .mono{color:var(--text2)}
+
+  /* ---------- protection block ---------- */
+  .prot{background:var(--carbon);border:.5px solid var(--hairline);border-radius:var(--r-card);
+    padding:12px 14px;margin:14px 0 4px;flex:0 0 auto}
+  .prot .hd{display:flex;align-items:center;justify-content:space-between}
+  .prot .hd .k{font-size:12px;font-weight:590;letter-spacing:.06em;text-transform:uppercase;color:var(--ash)}
+  .prot .hd .a{font-size:12.5px;color:var(--ice)}
+  .prow{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:.5px solid var(--hairline)}
+  .prow:last-child{border-bottom:none}
+  .prow .k{font-size:13.5px;color:var(--text2)}
+  .prow .v{font-size:12.5px;color:var(--mist)}
+  .prow .v.mono{font-size:12px}
+
+  /* ---------- warning ---------- */
+  .warn{background:rgba(255,180,84,.08);border:.5px solid rgba(255,180,84,.3);border-radius:var(--r-sm);
+    padding:11px 13px;margin:10px 0;display:flex;gap:10px;align-items:flex-start;flex:0 0 auto}
+  .warn p{font-size:12.5px;line-height:1.5;color:var(--mist);margin:0}
+  .warn b{color:var(--wait);font-weight:590}
+  .warn.crit{background:rgba(255,95,109,.09);border-color:rgba(255,95,109,.34)}
+  .warn.crit p b{color:var(--down)}
+  .warn.neutral{background:var(--obsidian);border-color:var(--smoke)}
+  .warn.neutral p b{color:var(--ice)}
+
+  /* ---------- config rows ---------- */
+  .sect{display:flex;align-items:baseline;justify-content:space-between;padding:16px 0 9px;flex:0 0 auto}
+  .sect .l{font-size:11.5px;font-weight:590;letter-spacing:.07em;text-transform:uppercase;color:var(--ash)}
+  .sect .r{font-size:12.5px;color:var(--ice)}
+  .cfg{display:flex;align-items:center;gap:11px;background:var(--carbon);
+    border:.5px solid var(--hairline);border-radius:var(--r-card);padding:11px 12px;margin-bottom:7px;position:relative}
+  .cfg.sel{border-color:rgba(111,179,255,.5);background:var(--obsidian)}
+  .cfg.dead{border-color:var(--hairline);background:#0e1116}
+  .cfg .fl{width:32px;height:32px;border-radius:9px;flex:0 0 auto;background:var(--obsidian);
+    border:.5px solid var(--smoke);display:flex;align-items:center;justify-content:center;
+    font-size:14px;font-weight:590;color:var(--text2)}
+  .cfg.sel .fl{background:rgba(111,179,255,.12);border-color:rgba(111,179,255,.3);color:var(--ice)}
+  .cfg.dead .fl{color:var(--ash)}
+  .cfg .m{flex:1;min-width:0}
+  .cfg .n{font-size:15px;font-weight:590;letter-spacing:-.011em;margin-bottom:2px}
+  .cfg.dead .n{color:var(--text2)}
+  .cfg .d{font-size:12px;color:var(--ash);line-height:1.45}
+  .cfg .d .mono{color:var(--text2);font-size:11.5px}
+  .badge{font-size:10.5px;font-weight:590;letter-spacing:.03em;border-radius:5px;padding:3px 7px;flex:0 0 auto}
+  .badge.sel{background:rgba(111,179,255,.14);color:var(--ice)}
+  .badge.on{background:rgba(61,220,151,.14);color:var(--up)}
+  .badge.dead{background:var(--obsidian);color:var(--ash)}
+
+  /* ---------- account ---------- */
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:.5px solid var(--hairline)}
+  .row:last-child{border-bottom:none}
+  .row .k{font-size:14px;color:var(--text2)}
+  .row .v{font-size:13.5px}
+  .row .sub{font-size:11.5px;color:var(--ash);margin-top:3px;line-height:1.4}
+  .mask{display:flex;align-items:center;gap:10px}
+  .mask .mn{font-size:13.5px;color:var(--bone)}
+  .mask .act{font-size:12px;color:var(--ice)}
+  .sw{width:46px;height:28px;border-radius:15px;background:var(--smoke);position:relative;flex:0 0 auto;border:.5px solid var(--edge)}
+  .sw i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--text2);display:block;transition:left .18s}
+  .sw.on{background:var(--ice);border-color:var(--ice)}
+  .sw.on i{left:22px;background:#0a0c10}
+  .danger{margin-top:18px;padding-top:14px;border-top:.5px solid var(--hairline)}
+  .danger .lbl{font-size:11.5px;font-weight:590;letter-spacing:.07em;text-transform:uppercase;color:var(--ash);margin-bottom:9px}
+  .btn-destr{background:transparent;border:.5px solid rgba(255,95,109,.5);color:var(--down)}
+  .lnk{min-height:44px;display:inline-flex;align-items:center}
+
+  /* ---------- sheet ---------- */
+  .veil{position:absolute;inset:0;background:rgba(5,6,10,.72);z-index:8;display:flex;align-items:flex-end}
+  .sheet{background:var(--obsidian);border-top:.5px solid var(--edge);
+    border-radius:22px 22px 0 0;width:100%;
+    padding:22px 20px calc(26px + env(safe-area-inset-bottom,0px))}
+  .sheet h4{font-size:19px;font-weight:600;letter-spacing:-.018em;margin-bottom:9px}
+  .sheet p{font-size:13.5px;line-height:1.6;color:var(--text2);margin-bottom:18px}
+  .sheet p b{color:var(--bone);font-weight:590}
+  .sheet .stack{display:flex;flex-direction:column;gap:9px}
+  .chk{display:flex;align-items:center;gap:12px;margin-top:10px;min-height:44px;cursor:pointer}
+  .chk .bx{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--edge);flex:0 0 auto}
+  .chk span{font-size:13.5px;color:var(--text2)}
+
+  /* ---------- tables ---------- */
+  table{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
+  th{text-align:left;font-size:11.5px;font-weight:590;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--ash);padding:0 12px 9px 0;border-bottom:.5px solid var(--hairline)}
+  td{padding:10px 12px 10px 0;border-bottom:.5px solid var(--hairline);color:var(--text2);vertical-align:top;line-height:1.5}
+  td:first-child{color:var(--bone);font-weight:500}
+  td .mono{font-size:12px;color:var(--ice)}
+  td .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:5px;font-weight:590}
+  .p-p{background:var(--bone);color:#0a0c10}
+  .p-g{background:var(--obsidian);border:.5px solid var(--smoke);color:var(--bone)}
+
+  /* ---------- flow ---------- */
+  .flow{display:flex;flex-direction:column;gap:0;margin-top:10px}
+  .fnode{display:flex;align-items:flex-start;gap:14px;padding:11px 0}
+  .fnode .id{width:56px;flex:0 0 auto;font-size:11.5px;color:var(--ash);font-weight:590;padding-top:2px}
+  .fnode .bx{flex:1;background:var(--carbon);border:.5px solid var(--hairline);border-radius:10px;padding:11px 14px}
+  .fnode .bx.acc{border-color:rgba(111,179,255,.45)}
+  .fnode .bx.tun{border-color:rgba(61,220,151,.4)}
+  .fnode .bx.ext{border-style:dashed;border-color:rgba(255,180,84,.45);background:#0f1319}
+  .fnode .bx .ttl{font-size:14px;font-weight:590;margin-bottom:3px}
+  .fnode .bx .ds{font-size:12.5px;color:var(--ash);line-height:1.5}
+  .fnode .ar{width:26px;flex:0 0 auto;color:var(--ash);font-size:15px;padding-top:12px;text-align:center}
+  .legend{display:flex;gap:24px;flex-wrap:wrap;margin-top:18px;color:var(--ash);font-size:12.5px}
+  .legend span{display:flex;align-items:center;gap:7px}
+  .sw2{width:22px;height:0;border-top:1.5px solid var(--ice)}
+  .sw2.d{border-top-style:dashed;border-color:var(--ash)}
+  .sw2.y{border-color:var(--wait)}
+
+  ul.clean{list-style:none;display:flex;flex-direction:column;gap:11px;margin-top:6px}
+  ul.clean li{display:flex;gap:11px;font-size:13.5px;line-height:1.6;color:var(--text2)}
+  ul.clean li b{color:var(--bone);font-weight:590}
+  ul.clean li .num{color:var(--ice);font-weight:590;flex:0 0 auto;min-width:20px}
+  ul.clean li.no .num{color:var(--ash)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>VPN-клиент — экраны, состояния, переходы</h1>
+  <p class="sub">Переработано после прогона 50 сценариев пятью линзами (новичок, опытный пользователь, отказы, злоупотребление, доступность) и 352 независимых оценок решений.</p>
+  <p class="sub">Главный принцип: <b style="color:var(--bone)">сначала честное состояние и понятный текст. Тяжёлые проверки — отдельными итерациями.</b></p>
+
+  <div class="rule"></div>
+
+  <h2>Экраны</h2>
+  <p class="hint">12 состояний. Главное действие вынесено в фиксированный нижний бар и меняется вместе с состоянием. Кольца неинтерактивны.</p>
+
+  <div class="rail">
+
+    <!-- 1. LOGIN -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll"><div class="mid">
+          <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
+          <h3>VPN для ваших<br>приложений</h3>
+          <p class="lead">Сайты и приложения, которые перестали открываться, снова заработают.</p>
+          <div class="steps">
+            <div class="st-row"><span class="st-n">1</span><span class="st-t">Подписка в боте</span></div>
+            <div class="st-row"><span class="st-n">2</span><span class="st-t">Вход тем же Telegram — <span style="color:var(--text2)">если уже оплатили, начните отсюда</span></span></div>
+            <div class="st-row"><span class="st-n">3</span><span class="st-t">Подключение в один тап</span></div>
+          </div>
+          <div class="disc">
+            <p>Трафик шифруется и идёт через ваш сервер. Нам видны <b>Telegram ID</b> и список ваших подключений.</p>
+          </div>
+          <div class="btn btn-p">Войти тем же Telegram</div>
+          <p class="legal">Откроется Telegram — бот пришлёт кнопку <b>«Подтвердить вход»</b>.<br><span class="mono" style="color:var(--ice)">Политика конфиденциальности</span> · <span style="color:var(--ice)">Условия</span></p>
+        </div></div>
+      </div></div>
+      <p class="cap"><b>1. Вход</b><span>Нумерованные шаги, шаг 1 — <em>статус без глагола покупки</em>. Точное раскрытие: оператор видит трафик, это не скрывается. Ссылки на политику до кнопки</span></p>
+    </div>
+
+    <!-- 2. LOGIN WAITING -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll"><div class="mid">
+          <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#ffb454" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
+          <h3>Проверяем вход</h3>
+          <p class="lead">Откройте Telegram — бот пришлёт кнопку <b style="color:var(--bone)">«Подтвердить вход»</b>. Нажмите её, и мы продолжим сами.</p>
+          <div class="disc"><div class="bar2" style="background:var(--wait)"></div>
+            <p>Подтверждение действует 5 минут. Осталось <b class="mono">4:37</b></p>
+          </div>
+          <div class="btn btn-g btn-sm">Открыть Telegram ещё раз</div>
+        </div></div>
+      </div></div>
+      <p class="cap"><b>1б. Проверяем вход</b><span>Живой отсчёт от метки, сохранённой до ухода в фон. Подтверждение — <em>inline-кнопкой бота</em>, а не «нажмите Start»: у платящего Start уже заменён полем ввода</span></p>
+    </div>
+
+    <!-- 3. OFF -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind">
+            <div class="rings dn">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#8b95a3" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st off">Не подключено</div>
+            <div class="sb2">Выберите подключение и нажмите «Подключить»</div>
+          </div>
+          <div class="sect"><span class="l">Подключения</span><span class="r">Обновить список</span></div>
+          <div class="cfg sel">
+            <div class="fl">NL</div>
+            <div class="m"><div class="n">Нидерланды · Амстердам</div><div class="d">до <span class="mono">12.11.2026</span> · осталось 42 дня</div></div>
+            <span class="badge sel">Выбрано</span>
+          </div>
+          <div class="cfg">
+            <div class="fl">NL</div>
+            <div class="m"><div class="n">Нидерланды · Роттердам</div><div class="d">до <span class="mono">12.11.2026</span> · осталось 42 дня</div></div>
+          </div>
+          <div class="cfg">
+            <div class="fl">TR</div>
+            <div class="m"><div class="n">Турция · Стамбул</div><div class="d">до <span class="mono">28.10.2026</span> · осталось 27 дней</div></div>
+          </div>
+        </div>
+        <div class="bar"><div class="btn btn-p">Подключить</div></div>
+      </div></div>
+      <p class="cap"><b>2. Не подключено</b><span>Этого состояния не было вообще. Красный не используется — «выключено» это не ошибка</span></p>
+    </div>
+
+    <!-- 4. CONNECTING -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind">
+            <div class="rings wait">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st wait">Подключение</div>
+            <div class="sb2"><span class="mono">Нидерланды · 3 сек</span></div>
+          </div>
+          <div class="sect"><span class="l">Подключения</span><span class="r">Обновить список</span></div>
+          <div class="cfg sel">
+            <div class="fl">NL</div>
+            <div class="m"><div class="n">Нидерланды</div><div class="d">до <span class="mono">12.11.2026</span></div></div>
+            <span class="badge sel">Выбрано</span>
+          </div>
+        </div>
+        <div class="bar"><div class="btn btn-g">Отменить</div></div>
+      </div></div>
+      <p class="cap"><b>3. Подключение</b><span>Живой счётчик вместо немого индикатора. Кнопка меняется на «Отменить» — раньше предлагалось «Отключить» то, что ещё не подключено</span></p>
+    </div>
+
+    <!-- 3b. CONNECT ERROR -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind">
+            <div class="rings dn">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core" style="border-color:rgba(255,95,109,.42)"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#ff5f6d" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st err">Не удалось подключиться</div>
+            <div class="sb2">Подключение <span class="mono">Нидерланды · Амстердам</span> не отвечает. Попробуйте ещё раз или выберите другое.</div>
+          </div>
+          <div class="warn neutral" style="margin-top:16px">
+            <p>Не помогло ни с одним подключением? <b>Напишите в поддержку</b> — ответим в Telegram и разберёмся.</p>
+          </div>
+          <div class="btn btn-g btn-sm" style="margin-top:4px">Написать в поддержку</div>
+        </div>
+        <div class="bar">
+          <div class="btn btn-p">Повторить</div>
+          <div class="btn btn-g btn-sm" style="margin-top:8px">Выбрать другое</div>
+        </div>
+      </div></div>
+      <p class="cap"><b>3б. Ошибка подключения</b><span>Этого состояния не было. <em>Поддержка здесь контекстная</em> — из неё сразу видно, что у человека не встало соединение</span></p>
+    </div>
+
+    <!-- 5. VERIFYING -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind">
+            <div class="rings wv">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st wv">Туннель поднят</div>
+            <div class="sb2">Проверяем, что трафик идёт через него…</div>
+          </div>
+          <div class="prot">
+            <div class="hd"><span class="k">Соединение</span><span class="a">не проверено</span></div>
+            <div class="prow"><span class="k">Сервер</span><span class="v mono">185.…​.42:1194 · NL</span></div>
+            <div class="prow"><span class="k">IPv6</span><span class="v">—</span></div>
+            <div class="prow"><span class="k">DNS</span><span class="v">—</span></div>
+            <div class="prow"><span class="k">Kill switch</span><span class="v">—</span></div>
+          </div>
+        </div>
+        <div class="bar"><div class="btn btn-g">Отключить</div></div>
+      </div></div>
+      <p class="cap"><b>4. Проверка защиты</b><span><em>Ключевая правка.</em> Зелёное нельзя показывать по системному статусу — только после подтверждения, что трафик реально идёт через туннель</span></p>
+    </div>
+
+    <!-- 6. ON -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind">
+            <div class="rings on">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st on">Подключено и защищено</div>
+            <div class="sb2"><span class="mono">Нидерланды · сессия 04:12:38</span></div>
+          </div>
+          <div class="prot">
+            <div class="hd"><span class="k">Соединение</span><span class="a">проверено 14:03</span></div>
+            <div class="prow"><span class="k">Сервер</span><span class="v mono">185.…​.42:1194 · NL</span></div>
+            <div class="prow"><span class="k">IPv6</span><span class="v">закрыт</span></div>
+            <div class="prow"><span class="k">DNS</span><span class="v">через туннель</span></div>
+            <div class="prow"><span class="k">Kill switch</span><span class="v">включён</span></div>
+          </div>
+          <div class="sect"><span class="l">Подключения</span><span class="r">Обновить список</span></div>
+          <div class="cfg sel">
+            <div class="fl">NL</div>
+            <div class="m"><div class="n">Нидерланды</div><div class="d">до <span class="mono">12.11.2026</span></div></div>
+            <span class="badge on">Подключено</span>
+          </div>
+        </div>
+        <div class="bar"><div class="btn btn-g">Отключить</div></div>
+      </div></div>
+      <p class="cap"><b>5. Подключено</b><span>Зелёный — только после проверки. Блок «Защита» отвечает на вопрос «а оно правда работает?». Таймер подписан</span></p>
+    </div>
+
+    <!-- 7. SWITCHING -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="warn crit"><span style="color:var(--down);font-size:14px;flex:0 0 auto">!</span>
+            <p><b>Трафик временно не защищён.</b> Идёт переключение между подключениями.</p>
+          </div>
+          <div class="ind" style="padding-top:12px">
+            <div class="rings wait">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st wait">Переключение</div>
+            <div class="sb2"><span class="mono">Турция · 2 сек</span></div>
+          </div>
+          <div class="sect"><span class="l">Подключения</span><span class="r">Обновить список</span></div>
+          <div class="cfg sel" style="opacity:.6">
+            <div class="fl">NL</div>
+            <div class="m"><div class="n">Нидерланды</div><div class="d">отключаем</div></div>
+          </div>
+          <div class="cfg sel">
+            <div class="fl">TR</div>
+            <div class="m"><div class="n">Турция</div><div class="d">подключаем</div></div>
+            <span class="badge sel">Выбрано</span>
+          </div>
+        </div>
+        <div class="bar"><div class="btn btn-g">Отменить</div></div>
+      </div></div>
+      <p class="cap"><b>6. Смена страны</b><span>Окно без защиты было немым. Теперь это <em>единственное место, где красный оправдан</em> — риск реален</span></p>
+    </div>
+
+    <!-- 8. PRIMING SHEET -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind">
+            <div class="rings dn">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#8b95a3" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st off">Не подключено</div>
+          </div>
+        </div>
+        <div class="veil"><div class="sheet">
+          <h4>Сейчас появится системный запрос</h4>
+          <p>iOS спросит разрешение добавить VPN-конфигурацию. Это <b>стандартный вопрос</b> — так система защищает вас. Нажмите <b>«Разрешить»</b>, без этого подключение невозможно.</p>
+          <div class="stack">
+            <div class="btn btn-p btn-sm">Понятно, продолжить</div>
+            <div class="btn btn-g btn-sm">Отмена</div>
+          </div>
+        </div></div>
+      </div></div>
+      <p class="cap"><b>7. Подготовка к системному диалогу</b><span>Самая частая точка безвозвратной потери. Диалог обойти нельзя, но можно объяснить заранее</span></p>
+    </div>
+
+    <!-- 9. PERMISSION DENIED -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind">
+            <div class="rings dn">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core" style="border-color:rgba(255,95,109,.4)"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#ff5f6d" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st err">Нет разрешения на VPN</div>
+            <div class="sb2">Разрешите приложению VPN в настройках телефона — иначе подключиться нельзя.</div>
+          </div>
+          <div class="warn neutral" style="margin-top:16px">
+            <p><b>Настройки → VPN и управление устройством → VPN</b><br>Включите переключатель для этого приложения.</p>
+          </div>
+        </div>
+        <div class="bar"><div class="btn btn-p">Открыть Настройки</div>
+          <div class="note">Этот запрос показывается только один раз. Если отказали — путь выше</div>
+        </div>
+      </div></div>
+      <p class="cap"><b>8. Отказ в разрешении</b><span>После «Не разрешать» диалог больше не появится. Раньше это был тупик без объяснения</span></p>
+    </div>
+
+    <!-- 10. ONE EXPIRED -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind" style="padding-top:14px">
+            <div class="rings wait">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st wait">Подключаем Турцию</div>
+            <div class="sb2">Амстердам истёк — выбрали рабочее подключение</div>
+          </div>
+          <div class="warn neutral"><span style="color:var(--ice);font-size:14px;flex:0 0 auto">·</span>
+            <p>Нидерланды закончились <span class="mono">30.09.2026</span>. Турция работает. Продление — в боте.</p>
+          </div>
+          <div class="sect"><span class="l">Подключения</span><span class="r">Обновить список</span></div>
+          <div class="cfg dead">
+            <div class="fl">NL</div>
+            <div class="m"><div class="n">Нидерланды</div><div class="d">Истёк <span class="mono">30.09.2026</span></div></div>
+            <span class="badge dead">Истёк</span>
+          </div>
+          <div class="cfg sel">
+            <div class="fl">TR</div>
+            <div class="m"><div class="n">Турция</div><div class="d">до <span class="mono">28.10.2026</span> · осталось 28 дней</div></div>
+            <span class="badge on">Подключено</span>
+          </div>
+        </div>
+        <div class="bar"><div class="btn btn-g">Отключить</div></div>
+      </div></div>
+      <p class="cap"><b>9. Один истёк, переключились</b><span>Истёкший не может быть активным — раньше экран одновременно писал «подключение» и «истёк»</span></p>
+    </div>
+
+    <!-- 11. ALL EXPIRED -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="mid" style="padding-bottom:0">
+            <div class="mark" style="background:#141a24"><svg viewBox="0 0 24 24" fill="none"><path d="M8 12h8M12 8v8" stroke="#737d8c" stroke-width="1.6" stroke-linecap="round" transform="rotate(45 12 12)"/><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#62666d" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            <h3 style="font-size:22px">Подписка закончилась</h3>
+            <p class="lead">Доступ закрыт <span class="mono" style="color:var(--text2)">30.09.2026</span>. Продление оформляется в боте — подключения вернутся сами.</p>
+            <div class="warn neutral">
+              <p>Уже оплатили? Нажмите <b>«Обновить доступ»</b> — данные подтянутся.</p>
+            </div>
+          </div>
+        </div>
+        <div class="bar"><div class="btn btn-p">Обновить доступ</div>
+          <div class="note">Продление оформляется в Telegram-боте сервиса</div>
+        </div>
+      </div></div>
+      <p class="cap"><b>10. Всё истекло</b><span><em>Главная кнопка больше не ведёт к покупке</em> — это была анти-стиринг 3.1.1. Теперь она обновляет, а о продлении сообщает нейтральный текст</span></p>
+    </div>
+
+    <!-- 12. ACCOUNT -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="back">‹ Назад</span><span class="t">Аккаунт</span><span style="width:48px"></span></div>
+          <div class="card" style="margin-bottom:8px">
+            <div class="row">
+              <div><div class="k">Аккаунт</div><div class="sub">Привязан к Telegram</div></div>
+              <span class="v" style="color:var(--text2)">Telegram</span>
+            </div>
+            <div class="row"><div><div class="k">Подключений активно</div><div class="sub">2 истекли</div></div><span class="v">3 из 5</span></div>
+            <div class="row"><div><div class="k">Версия приложения</div><div class="sub">Сборка TestFlight</div></div><span class="v mono" style="font-size:12.5px">1.0.0 (61)</span></div>
+            <div class="row"><div><div class="k">Перестанет работать</div><div class="sub">Обновите по ссылке из бота</div></div><span class="v mono" style="font-size:12.5px">29.12.2026</span></div>
+            <div class="row"><div><div class="k">Подписка</div></div><span class="v mono" style="font-size:12.5px">до 28.10.2026</span></div>
+          </div>
+          <div class="sect" style="padding-top:12px"><span class="l">Подключение</span></div>
+          <div class="card" style="margin-bottom:8px">
+            <div class="row"><div><div class="k">Автоподключение</div><div class="sub">Когда появляется сеть, а VPN выключен</div></div><span class="sw"><i></i></span></div>
+            <div class="row"><div><div class="k">Запрашивать Face ID</div><div class="sub">При возврате в приложение</div></div><span class="sw"><i></i></span></div>
+            <div class="row"><div><div class="k">Подтверждать смену страны</div><div class="sub">Показывать предупреждение перед переключением</div></div><span class="sw on"><i></i></span></div>
+          </div>
+          <div class="card" style="margin-bottom:8px">
+            <div class="row">
+              <div><div class="k">Техподдержка</div><div class="sub">Чат в Telegram или письмо</div></div>
+              <span class="v" style="color:var(--ice)">Написать ›</span>
+            </div>
+            <div class="row">
+              <div><div class="k">Нет доступа к Telegram?</div><div class="sub">Напишите на почту поддержки</div></div>
+              <span class="v" style="color:var(--ice)">Почта ›</span>
+            </div>
+          </div>
+          <div class="btn btn-g btn-sm" style="margin-top:4px">Скопировать код ошибки</div>
+          <p class="sub" style="margin-top:7px">Код не содержит личных данных — вставьте его в чат поддержки.</p>
+          <div class="btn btn-g btn-sm" style="margin-top:12px">О сервисе</div>
+          <div class="danger">
+            <div class="lbl">Опасное действие</div>
+            <div class="btn btn-destr btn-sm">Удалить аккаунт</div>
+            <div class="btn btn-g btn-sm" style="margin-top:8px">Выйти из аккаунта</div>
+          </div>
+        </div>
+      </div></div>
+      <p class="cap"><b>11. Аккаунт</b><span>ID замаскирован, дата смерти сборки на виду, выход убран под разделитель и перекрашен в нейтральный</span></p>
+    </div>
+
+    <!-- 13. SWITCH CONFIRM -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind">
+            <div class="rings on">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st on">Подключено и защищено</div>
+            <div class="sb2 mono">Нидерланды · сессия 04:12:38</div>
+          </div>
+        </div>
+        <div class="veil"><div class="sheet">
+          <h4>Переключиться на Турцию?</h4>
+          <p>Текущее подключение <b>прервётся на несколько секунд</b>. Загрузки, звонки и видео могут оборваться.</p>
+          <div class="stack">
+            <div class="btn btn-p btn-sm">Переключить</div>
+            <div class="btn btn-g btn-sm">Отмена</div>
+          </div>
+          <div class="chk"><span class="bx"></span><span>Больше не спрашивать</span></div>
+        </div></div>
+      </div></div>
+      <p class="cap"><b>12. Подтверждение смены страны</b><span>Чекбокс отвязан от необратимого флага: он выключает тумблер «Подтверждать смену страны» в аккаунте и его можно вернуть</span></p>
+    </div>
+
+    <!-- 14. NO SUBSCRIPTION -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="mid" style="padding-bottom:0">
+            <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#8b95a3" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            <h3 style="font-size:22px">Этот Telegram<br>не привязан к подписке</h3>
+            <p class="lead">Если вы только что оплатили — подождите пару минут и обновите. Если ещё нет — подписка оформляется в Telegram-боте сервиса.</p>
+            <div class="warn neutral" style="margin-bottom:16px">
+              <p><b>Проверьте аккаунт.</b> Оплата могла быть с другого Telegram — войти нужно тем же, с которого покупали.</p>
+            </div>
+          </div>
+        </div>
+        <div class="bar"><div class="btn btn-p">Обновить</div>
+          <div class="btn btn-g btn-sm" style="margin-top:8px">Войти другим Telegram</div>
+        </div>
+      </div></div>
+      <p class="cap"><b>13. Подписки нет</b><span>Серое, не красное — это не ошибка. Главная кнопка <em>обновляет, а не продаёт</em>. Есть выход, если вошли не тем аккаунтом</span></p>
+    </div>
+
+    <!-- 15. ACCESS REVOKED -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind">
+            <div class="rings dn">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#8b95a3" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st off">Доступ к стране закрыт</div>
+            <div class="sb2">Эта страна больше недоступна. <b style="color:var(--text2)">Это не сбой сети.</b></div>
+          </div>
+          <div class="btn btn-g btn-sm" style="margin-top:16px">Написать в поддержку</div>
+        </div>
+        <div class="bar"><div class="btn btn-p">Обновить доступ</div>
+          <div class="btn btn-g btn-sm" style="margin-top:8px">Войти другим Telegram</div>
+        </div>
+      </div></div>
+      <p class="cap"><b>14. Доступ отозван</b><span><em>Единственный реальный выключатель продукта.</em> Раньше выглядел как «сервер не отвечает» и предлагал бесконечно повторять</span></p>
+    </div>
+
+    <!-- 14b. VERIFICATION FAILED -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind">
+            <div class="rings dn">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core" style="border-color:rgba(255,180,84,.4)"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#ffb454" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st wait">Трафик не идёт через туннель</div>
+            <div class="sb2">Соединение установлено, но проверка не прошла. Возможна утечка — не открывайте важные сайты.</div>
+          </div>
+          <div class="prot">
+            <div class="hd"><span class="k">Соединение</span><span class="a">не пройдено</span></div>
+            <div class="prow"><span class="k">Сервер</span><span class="v mono">185.…​.42:1194 · NL</span></div>
+            <div class="prow"><span class="k">Проверка</span><span class="v" style="color:var(--wait)">не удалась</span></div>
+          </div>
+          <div class="btn btn-g btn-sm" style="margin-top:12px">Написать в поддержку</div>
+        </div>
+        <div class="bar">
+          <div class="btn btn-p">Проверить снова</div>
+          <div class="btn btn-g btn-sm" style="margin-top:8px">Отключить</div>
+        </div>
+      </div></div>
+      <p class="cap"><b>14б. Проверка не пройдена</b><span>Третий исход гейта, которого не было. Без него остаются только два плохих поведения: вечное «проверяем» или ложный зелёный</span></p>
+    </div>
+
+    <!-- 16. ESCALATION -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="ind">
+            <div class="rings wait">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st wait">Долго не отвечает</div>
+            <div class="sb2">Нидерланды · <span class="mono">24 сек</span>. Сервер отвечает медленно — возможно, перегружен.</div>
+          </div>
+          <div class="warn neutral" style="margin-top:16px">
+            <p>Турция и Финляндия доступны — они могут подключиться быстрее.</p>
+          </div>
+        </div>
+        <div class="bar">
+          <div class="btn btn-p">Повторить</div>
+          <div class="btn btn-g btn-sm" style="margin-top:8px">Выбрать другое</div>
+        </div>
+      </div></div>
+      <p class="cap"><b>15. Эскалация ожидания</b><span>Пороги 10 / 20 / 30 секунд. Дольше 30 — не «идёт подключение», а честная ошибка с выходом</span></p>
+    </div>
+
+    <!-- 17. HOW TO ENABLE VPN -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="back">‹ Назад</span><span class="t">Как включить VPN</span><span style="width:48px"></span></div>
+          <p class="lead" style="margin-bottom:16px">Этот запрос система показывает только один раз. Если вы отказали — включите вручную, по шагам.</p>
+          <div class="card" style="margin-bottom:8px">
+            <div class="row"><div><div class="k">1. Откройте Настройки</div><div class="sub">Приложение «Настройки» на телефоне</div></div></div>
+            <div class="row"><div><div class="k">2. Раздел</div><div class="sub">«VPN и управление устройством»</div></div></div>
+            <div class="row"><div><div class="k">3. Строка VPN</div><div class="sub">Нажмите «VPN» внутри раздела</div></div></div>
+            <div class="row"><div><div class="k">4. Включите переключатель</div><div class="sub">Для этого приложения</div></div></div>
+          </div>
+          <div class="warn neutral"><p>Название может немного отличаться в вашей версии iOS. Ищите слово <b>VPN</b>.</p></div>
+        </div>
+        <div class="bar"><div class="btn btn-g">Проверить снова</div></div>
+      </div></div>
+      <p class="cap"><b>16. Инструкция по разрешению</b><span>Свой экран вместо скрытой схемы настроек <span class="mono">App-Prefs</span> — та рискованна на ревью. «Проверить снова» перечитывает состояние</span></p>
+    </div>
+
+    <!-- 18. TESTFLIGHT BANNER -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="warn neutral" style="border-color:rgba(111,179,255,.35);background:rgba(111,179,255,.07)">
+            <span style="color:var(--ice);font-size:14px;flex:0 0 auto">↑</span>
+            <p><b style="color:var(--ice)">Сборка приложения перестанет работать 29.12.2026.</b> Обновите приложение по ссылке из бота — иначе оно не запустится. <span style="color:var(--ice)">Как обновить ›</span></p>
+          </div>
+          <div class="ind" style="padding-top:10px">
+            <div class="rings on">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st on">Подключено и защищено</div>
+            <div class="sb2 mono">Нидерланды · сессия 04:12:38</div>
+          </div>
+          <div class="prot">
+            <div class="hd"><span class="k">Соединение</span><span class="a">проверено 14:03</span></div>
+            <div class="prow"><span class="k">Сервер</span><span class="v mono">185.…​.42:1194 · NL</span></div>
+            <div class="prow"><span class="k">IPv6</span><span class="v">закрыт</span></div>
+          </div>
+        </div>
+        <div class="bar"><div class="btn btn-g">Отключить</div></div>
+      </div></div>
+      <p class="cap"><b>17. Предупреждение о сборке</b><span>TestFlight гасит сборку каждые 90 дней — у всех 1000 клиентов одновременно. За 21 день, <em>ледовым</em>, без тревоги</span></p>
+    </div>
+
+    <!-- 19. DEMO MODE -->
+    <div>
+      <div class="dev"><div class="notch"></div><div class="scr">
+        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">DEMO</span></div>
+        <div class="scroll">
+          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
+          <div class="warn neutral" style="border-color:rgba(255,180,84,.4);background:rgba(255,180,84,.07)">
+            <span style="color:var(--wait);font-size:14px;flex:0 0 auto">◆</span>
+            <p><b style="color:var(--wait)">Демо-режим.</b> Данные вымышленные. Туннель не поднимается — интерфейс показан для проверки.</p>
+          </div>
+          <div class="ind" style="padding-top:10px">
+            <div class="rings dn">
+              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
+              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#8b95a3" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="st off">Не подключено</div>
+            <div class="sb2">Демонстрация интерфейса</div>
+          </div>
+          <div class="sect"><span class="l">Подключения</span></div>
+          <div class="cfg sel">
+            <div class="fl">NL</div>
+            <div class="m"><div class="n">Нидерланды</div><div class="d">до <span class="mono">12.11.2026</span> · демо-данные</div></div>
+            <span class="badge sel">Выбрано</span>
+          </div>
+          <div class="cfg">
+            <div class="fl">TR</div>
+            <div class="m"><div class="n">Турция</div><div class="d">до <span class="mono">28.10.2026</span> · демо-данные</div></div>
+          </div>
+        </div>
+        <div class="bar"><div class="btn btn-p" style="opacity:.5">Подключить</div>
+          <div class="note">В демо-режиме туннель не поднимается</div>
+        </div>
+      </div></div>
+      <p class="cap"><b>18. Демо-режим</b><span><em>Критично для канала.</em> У ревьюера Apple нет подписки — без демо он не пройдёт дальше первого экрана и отклонит вслепую. Никогда не показывает «защищено» как факт</span></p>
+    </div>
+
+  </div>
+
+  <div class="rule"></div>
+
+  <h2>Третий раунд: тестирование по методикам</h2>
+  <p class="hint">Прогон пятью признанными методиками (эвристики Нильсена, когнитивный обход, WCAG 2.2 AA и Apple HIG, симуляция лабораторного теста, тестирование отказоустойчивости) → спор защитника и обвинителя → голосование четырёх независимых судей. <b>80 находок, из них 41 к починке, свёрнутые в 18 уникальных дефектов.</b></p>
+
+  <h3 style="font-size:15px;font-weight:590;margin:20px 0 8px;color:var(--bone)">Исправлено измеримо</h3>
+  <table>
+    <tr><th style="width:34%">Что было</th><th style="width:22%">Число</th><th>Стало</th></tr>
+    <tr><td>Приглушённый текст на карточках</td><td class="mono" style="color:var(--down)">4.39:1 — ниже AA</td><td>Токен <span class="mono">--ash</span> осветлён до <span class="mono">#7f8a99</span> → <span class="mono" style="color:var(--up)">5.22:1</span></td></tr>
+    <tr><td>Приглушённый текст на плотном фоне</td><td class="mono" style="color:var(--down)">4.01:1 — ниже AA</td><td>Тот же токен лечит оба фона</td></tr>
+    <tr><td>Границы ghost-кнопок</td><td class="mono" style="color:var(--down)">1.59:1 — ниже 3:1</td><td>Новый токен <span class="mono">--edge #5a6472</span> → <span class="mono" style="color:var(--up)">3.05:1</span></td></tr>
+    <tr><td>Включённый тумблер</td><td class="mono" style="color:var(--down)">2.99:1, только цветом</td><td>Сплошная заливка + рамка — состояние различимо без цвета</td></tr>
+    <tr><td>«Отменить» в окне без защиты</td><td class="mono" style="color:var(--down)">4.00:1 от приглушения</td><td>Прозрачность убрана — это единственный выход из опасного окна</td></tr>
+    <tr><td>Системная зона внизу</td><td class="mono" style="color:var(--down)">не учтена</td><td><span class="mono">env(safe-area-inset-bottom)</span> в баре и шитах</td></tr>
+    <tr><td>Зоны касания тумблера и чекбокса</td><td class="mono" style="color:var(--down)">29pt и 23pt</td><td>Обёрнуты в зону ≥44pt, чекбокс стал меткой целиком</td></tr>
+  </table>
+
+  <h3 style="font-size:15px;font-weight:590;margin:20px 0 8px;color:var(--bone)">Исправлено по смыслу</h3>
+  <ul class="clean">
+    <li><span class="num">1</span><div><b>Ложный зелёный на экране проверки.</b> Четыре независимые методики сошлись на одном дефекте: заголовок «Туннель поднят» был зелёным <span class="mono">#3ddc97</span> при том, что рядом стояло «не проверено». Теперь нейтральный, зелёное заблокировано до успешного замера.</div></li>
+    <li><span class="num">2</span><div><b>Гейт зелёного без ветки отказа.</b> Арбитр назвал это дырой: если проверка не прошла, остаются только два плохих поведения — вечное «проверяем» или ложный зелёный. Добавлен третий исход: «Трафик не идёт через туннель» с предупреждением о возможной утечке.</div></li>
+    <li><span class="num">3</span><div><b>Матрица кнопки противоречила экрану.</b> В матрице осталось «Продлить в Telegram», хотя на экране уже «Обновить доступ». Матрица приведена в соответствие, добавлены строки для новых состояний.</div></li>
+    <li><span class="num">4</span><div><b>Инструкция входа была невыполнима.</b> Текст «Отправьте боту <span class="mono">/start</span>» — у платящего клиента Start заменён полем ввода, а целевая аудитория именно платящие. Заменено на кнопку подтверждения.</div></li>
+    <li><span class="num">5</span><div><b>«Обновится до 29.12.2026» обещало автообновление.</b> Приложение не обновляет себя само. Переформулировано в «Перестанет работать — обновите по ссылке из бота».</div></li>
+    <li><span class="num">6</span><div><b>Удаление аккаунта выглядело как безопасная кнопка.</b> Тот же стиль, что у «О сервисе». Теперь деструктивный стиль с красным контуром.</div></li>
+    <li><span class="num">7</span><div><b>Тупик при смене Telegram-аккаунта.</b> Экраны понимали проблему текстом, но не давали выйти — только «Обновить». Добавлено «Войти другим Telegram» на экранах «нет подписки» и «доступ отозван».</div></li>
+  </ul>
+
+  <h3 style="font-size:15px;font-weight:590;margin:20px 0 8px;color:var(--bone)">Что поймал спор агентов</h3>
+  <p class="hint">Обвинитель пересчитал числа за тестировщиками и нашёл у них четыре ошибки: неверный охват преждевременного зелёного (виновен только один экран, а не три), ошибку в легенде цветов, недооценку включённого тумблера и пропущенное обещание «Увеличить контраст» без реализации. Сами находки о контрасте подтвердились — я перепроверил расчёт вручную и получил те же 4.39:1 и 4.01:1.</p>
+
+  <h3 style="font-size:15px;font-weight:590;margin:20px 0 8px;color:var(--bone)">Оценка самих методик</h3>
+  <p class="hint">Больше всего пользы дали <b>эвристики Нильсена</b> (16 находок — все про деньги, доступ и безопасность) и <b>когнитивный обход</b> (14 — вскрыл невыполнимый вход и устаревший статус). <b>WCAG и HIG</b> дали лучшие измеримые находки, но и шум: требования к семантике и фокусу статичный макет выполнить не может по определению. Больше всего шума — от <b>тестирования отказоустойчивости</b>: синтетические инъекции вроде длинного IPv6 и замеров обрезки почти все отклонены как артефакты кадра. Вывод на будущее: эдж-кейсы проверять интеграционно, доступность — на живом устройстве с VoiceOver, а не по макету.</p>
+
+  <div class="rule"></div>
+
+  <h2>Матрица главной кнопки</h2>
+  <p class="hint">Одна кнопка в фиксированном баре. Никогда не сдвигается и не меняет размер — меняется только текст и заливка.</p>
+
+  <table>
+    <tr><th style="width:22%">Состояние</th><th style="width:26%">Кнопка</th><th>Что делает</th></tr>
+    <tr><td>Не подключено</td><td><span class="pill p-p">Подключить</span></td><td>Поднимает туннель на выбранной стране. Перед первым разом — прайминг-шит</td></tr>
+    <tr><td>Подключение</td><td><span class="pill p-g">Отменить</span></td><td>Прерывает попытку. Раньше здесь было «Отключить» — про то, чего ещё нет</td></tr>
+    <tr><td>Проверка защиты</td><td><span class="pill p-g">Отключить</span></td><td>Туннель уже поднят, отключать есть что</td></tr>
+    <tr><td>Проверка не пройдена</td><td><span class="pill p-g">Отключить</span></td><td>Рядом «Проверить снова». Зелёное заблокировано до успеха</td></tr>
+    <tr><td>Подключено</td><td><span class="pill p-g">Отключить</span></td><td>Опускает туннель, профиль остаётся</td></tr>
+    <tr><td>Ошибка / эскалация</td><td><span class="pill p-p">Повторить</span></td><td>Рядом ghost «Выбрать другое». Белая = движение вперёд</td></tr>
+    <tr><td>Нет разрешения VPN</td><td><span class="pill p-p">Открыть Настройки</span></td><td>Ведёт в системные настройки. Обойти нельзя</td></tr>
+    <tr><td>Всё истекло</td><td><span class="pill p-p">Обновить доступ</span></td><td>Обновляет данные. <em>Не ведёт к покупке</em> — продление только нейтральным текстом</td></tr>
+    <tr><td>Подписки нет</td><td><span class="pill p-p">Обновить</span></td><td>Рядом ghost «Войти другим Telegram»</td></tr>
+    <tr><td>Доступ отозван</td><td><span class="pill p-p">Обновить доступ</span></td><td>Рядом ghost «Войти другим Telegram» и путь в поддержку</td></tr>
+    <tr><td>Переключение</td><td><span class="pill p-g">Отменить</span></td><td>Полная непрозрачность — единственный выход из окна без защиты</td></tr>
+  </table>
+
+  <div class="rule"></div>
+
+  <h2>Маршрут перемещения</h2>
+  <p class="hint">Показаны все состояния, включая отказные. Ни одно из них раньше не было нарисовано.</p>
+
+  <div class="flow">
+    <div class="fnode"><div class="id">Старт</div>
+      <div class="bx"><div class="ttl">Проверка сессии</div><div class="ds">Сессия есть → Подключение · Сессии нет → Вход · Оффлайн с сессией → Подключение с пометкой «проверено давно»</div></div></div>
+    <div class="fnode"><div class="id"></div><div class="ar">↓</div><div class="bx" style="border:none;background:none;padding:0"></div></div>
+
+    <div class="fnode"><div class="id">Э1</div>
+      <div class="bx acc"><div class="ttl">Вход</div><div class="ds">Нет Telegram → блок «Нужен Telegram» · Ждём → состояние ожидания · Тайм-аут 90 сек → «Войти снова»</div></div></div>
+    <div class="fnode"><div class="id"></div><div class="ar">↓</div><div class="bx" style="border:none;background:none;padding:0"><div class="ds" style="padding-top:12px">подтверждение в боте · проверка возобновляется при возврате в foreground</div></div></div>
+
+    <div class="fnode"><div class="id">Э2</div>
+      <div class="bx"><div class="ttl">Подключение — 8 состояний</div>
+      <div class="ds">Не подключено · Подключение · Проверка защиты · Подключено · Ошибка · Нет разрешения · Переключение · Всё истекло<br>
+      Список стран скроллится, бар закреплён. Смена страны → шит подтверждения. Обрыв → Ошибка с причиной</div></div></div>
+
+    <div class="fnode"><div class="id"></div><div class="ar">↓</div><div class="bx" style="border:none;background:none;padding:0"><div class="ds" style="padding-top:12px">«Аккаунт» · безвозвратных переходов нет</div></div></div>
+
+    <div class="fnode"><div class="id">Э3</div>
+      <div class="bx"><div class="ttl">Аккаунт</div><div class="ds">Telegram ID (маскирован, по кнопке) · версия и дата смерти сборки · два тумблера · <b style="color:var(--bone)">техподдержка (постоянное место)</b> · диагностика · Выход через подтверждение</div></div></div>
+
+    <div class="fnode"><div class="id">Наружу</div>
+      <div class="bx ext"><div class="ttl">Telegram</div><div class="ds">Наружу ведут только сервисные действия: <b style="color:var(--bone)">поддержка</b> (аккаунт и ошибка подключения), <b style="color:var(--bone)">«Войти другим Telegram»</b> (нет подписки, доступ отозван) и обновление приложения по ссылке из бота. <em>Призывов к покупке в интерфейсе нет</em> — это была анти-стиринг 3.1.1</div></div></div>
+  </div>
+
+  <div class="legend">
+    <span><i class="sw2"></i> обычный переход</span>
+    <span><i class="sw2 d"></i> системный возврат</span>
+    <span><i class="sw2 y"></i> только по действию пользователя, вне приложения</span>
+  </div>
+
+  <div class="rule"></div>
+
+  <h2>Что изменилось против первой версии</h2>
+  <ul class="clean">
+    <li><span class="num">1</span><div><b>Появилось состояние «Не подключено».</b> Главное действие продукта — поднять туннель — не было представлено вообще. После обрыва пользователь застревал.</div></li>
+    <li><span class="num">2</span><div><b>Зелёный больше не врёт.</b> «Подключено» показывалось по системному статусу, а не по факту прохождения трафика. Для VPN ложная уверенность в защите хуже отсутствия защиты — теперь зелёный только после проверки.</div></li>
+    <li><span class="num">3</span><div><b>Появился блок «Защита».</b> Kill switch, IPv6 и выходной адрес не были видны нигде. Утечка в обход туннеля деанонимизирует клиента.</div></li>
+    <li><span class="num">4</span><div><b>Отказ в разрешении VPN перестал быть тупиком.</b> После «Не разрешать» системный диалог не повторяется, а приложение молчало.</div></li>
+    <li><span class="num">5</span><div><b>Смена страны показывает окно без защиты.</b> Соединение рвалось молча, в момент загрузки или звонка.</div></li>
+    <li><span class="num">6</span><div><b>Список скроллится.</b> При четырёх странах и в горизонтальной ориентации кнопка и нижние карточки обрезались.</div></li>
+    <li><span class="num">7</span><div><b>Истёкший конфиг больше не может быть активным.</b> Экран одновременно писал «установка туннеля» и «истёк».</div></li>
+    <li><span class="num">8</span><div><b>«Всё истекло» отделено от «ничего не куплено».</b> Текст «остальные работают» врал, когда страна одна.</div></li>
+    <li><span class="num">9</span><div><b>Убран жаргон.</b> «КОНФИГУРАЦИИ» → «Подключения», «установка туннеля» → «Подключаем», голый таймер подписан.</div></li>
+    <li><span class="num">10</span><div><b>Telegram ID замаскирован.</b> Скриншот в поддержку больше не отдаёт профиль аккаунта.</div></li>
+    <li><span class="num">11</span><div><b>Дата смерти сборки на виду.</b> TestFlight гасит сборку каждые 90 дней, и приложение об этом не сообщало.</div></li>
+    <li><span class="num">12</span><div><b>Выход требует подтверждения.</b> Один тап по красной кнопке рвал защиту и стирал данные.</div></li>
+    <li><span class="num">13</span><div><b>Снимок в переключателе задач закрывается.</b> iOS сохраняет последний кадр — в списке приложений были видны страна и длительность.</div></li>
+    <li><span class="num">14</span><div><b>Интерактив ≥44pt, статус не только цветом.</b> Мелкие зоны, контраст, VoiceOver, дальтонизм, увеличенный шрифт.</div></li>
+    <li><span class="num">15</span><div><b>Появилась техподдержка.</b> Постоянным пунктом в аккаунте и контекстной кнопкой на экране ошибки подключения. Отдельный бот поддержки видит тот же <span class="mono">chat_id</span>, что и продающий — по нему сразу подтягивается подписка.</div></li>
+  </ul>
+
+  <div class="rule"></div>
+
+  <h2>Что делать не будем</h2>
+  <ul class="clean">
+    <li><span class="num no">—</span><div><b>Живая проверка выходного IP через внешний сервис.</b> Внешний сервис сам по себе утекает реальный адрес, а состояние kill switch через API подтверждается не полностью. Пока — честное «не проверено».</div></li>
+    <li><span class="num no">—</span><div><b>Список устройств и лимит сессий.</b> Серверного реестра нет — интерфейс был бы заглушкой, показывающей неправду. Обрабатываем только отказ сервера.</div></li>
+    <li><span class="num no">—</span><div><b>Скорость, объём трафика, пинг.</b> Живые счётчики требуют работы внутри расширения туннеля, а на пути новичка это шум. Отдельной итерацией.</div></li>
+    <li><span class="num no">—</span><div><b>Светлая тема.</b> Вторая палитра несоразмерна этапу. Сейчас — только реакция на «Увеличить контраст».</div></li>
+    <li><span class="num no">—</span><div><b>Показ «Утечек нет» без замера.</b> Это ровно то обещание защиты, которой нет.</div></li>
+    <li><span class="num no">—</span><div><b>Интерактивные кольца и красное «Отключено».</b> Нарушают семантику: красный зарезервирован под реальную опасность.</div></li>
+  </ul>
+
+  <div class="rule"></div>
+
+  <h2>Проверить на живом устройстве</h2>
+  <p class="hint">В макете не решается — нужен движок и телефон.</p>
+  <table>
+    <tr><th style="width:44%">Что проверить</th><th>Почему критично</th></tr>
+    <tr><td>Реальное прохождение трафика через туннель</td><td>Гейт для зелёного «Подключено и защищено». Без движка не проверить</td></tr>
+    <tr><td>Фактическое состояние kill switch и IPv6</td><td>Что вообще доступно через API расширения туннеля</td></tr>
+    <tr><td>Поведение системного диалога VPN и путь после отказа</td><td>Различается между версиями iOS</td></tr>
+    <tr><td>Скорость срабатывания kill switch при смене страны</td><td>От этого зависит момент появления красной строки</td></tr>
+    <tr><td>Тайм-аут подключения в сетях РФ</td><td>Под ТСПУ порог может быть совсем другим, нужен адаптивный</td></tr>
+    <tr><td>Автоподключение и расход батареи</td><td>Влияние на батарею неочевидно</td></tr>
+    <tr><td>Увеличенный шрифт и горизонтальная ориентация</td><td>Проверить обрезку при максимуме и 4–6 странах</td></tr>
+  </table>
+
+</div>
+</body>
+</html>

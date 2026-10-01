@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>iOS-приложение для VPN-сервиса с продажей через Telegram</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.55;
+    color: #1a1a1a;
+    margin: 0;
+  }
+  h1 {
+    font-size: 19pt;
+    line-height: 1.25;
+    margin: 0 0 6pt 0;
+    color: #0b2545;
+    border-bottom: 2.5pt solid #0b2545;
+    padding-bottom: 6pt;
+  }
+  h2 {
+    font-size: 13pt;
+    margin: 20pt 0 7pt 0;
+    color: #0b2545;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 11pt;
+    margin: 13pt 0 5pt 0;
+    color: #14375e;
+    page-break-after: avoid;
+  }
+  p { margin: 0 0 7pt 0; }
+  ul, ol { margin: 0 0 7pt 0; padding-left: 18pt; }
+  li { margin-bottom: 3pt; }
+  .meta {
+    font-size: 9.5pt;
+    color: #555;
+    margin: 8pt 0 16pt 0;
+    padding-bottom: 8pt;
+    border-bottom: 0.5pt solid #ccc;
+  }
+  .meta strong { color: #333; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8pt 0 12pt 0;
+    font-size: 9.5pt;
+    page-break-inside: avoid;
+  }
+  th {
+    background: #0b2545;
+    color: #fff;
+    text-align: left;
+    padding: 5pt 7pt;
+    font-weight: 600;
+    font-size: 9.5pt;
+  }
+  td {
+    border: 0.5pt solid #c8d0da;
+    padding: 5pt 7pt;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #f4f7fa; }
+  code {
+    font-family: "Consolas", "Courier New", monospace;
+    background: #eef2f6;
+    padding: 0.5pt 3pt;
+    border-radius: 2pt;
+    font-size: 9.5pt;
+    color: #14375e;
+  }
+  pre {
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 8pt;
+    line-height: 1.35;
+    background: #f6f8fa;
+    border: 0.5pt solid #d0d7de;
+    border-left: 2.5pt solid #0b2545;
+    padding: 8pt 10pt;
+    margin: 8pt 0 12pt 0;
+    white-space: pre;
+    overflow: visible;
+    page-break-inside: avoid;
+  }
+  strong { color: #0b2545; }
+  .callout {
+    background: #fff8e6;
+    border: 0.5pt solid #e0c060;
+    border-left: 2.5pt solid #c9a227;
+    padding: 7pt 10pt;
+    margin: 9pt 0 12pt 0;
+    font-size: 10pt;
+    page-break-inside: avoid;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .risk-guaranteed { color: #b00020; font-weight: 700; }
+  hr {
+    border: none;
+    border-top: 0.5pt solid #ccc;
+    margin: 16pt 0;
+  }
+  .footer-note {
+    margin-top: 22pt;
+    padding-top: 8pt;
+    border-top: 0.5pt solid #ccc;
+    font-size: 8.5pt;
+    color: #777;
+  }
+</style>
+</head>
+<body>
+
+<h1>iOS-приложение для VPN-сервиса<br>с продажей через Telegram</h1>
+
+<div class="meta">
+  <strong>Дата:</strong> 30 сентября 2026 &nbsp;&nbsp;|&nbsp;&nbsp;
+  <strong>Статус:</strong> на ревью &nbsp;&nbsp;|&nbsp;&nbsp;
+  <strong>Масштаб:</strong> ~1000 пользователей
+</div>
+
+<h2>1. Задача</h2>
+<p>Дать клиентам существующего Telegram-бота бесшовный iOS-клиент: человек покупает подписку <strong>в Telegram</strong>, а приложение само получает конфиг с нашего сервера и подключается по OpenVPN. Пользователь не скачивает файлы и не задумывается о настройке.</p>
+<p>Масштаб: ~1000 пользователей.</p>
+
+<h2>2. Зафиксированные решения</h2>
+<table>
+  <tr><th style="width:32%">Вопрос</th><th>Решение</th></tr>
+  <tr><td>Протокол</td><td>OpenVPN (существующая инфраструктура, конфиги проверены)</td></tr>
+  <tr><td>Продажа</td><td>Только Telegram. Приложение ничего не продаёт</td></tr>
+  <tr><td>Канал доставки</td><td>TestFlight (публичная ссылка)</td></tr>
+  <tr><td>Аккаунт разработчика</td><td>Зарубежный Apple ID, <strong>физлицо</strong>, $99/год</td></tr>
+  <tr><td>Авторизация</td><td>Вход через бота (deep link + polling)</td></tr>
+  <tr><td>Приложение</td><td>Своё, брендированное</td></tr>
+</table>
+<p>Приложение <strong>не является</strong> VPN-сервисом по духу Guideline&nbsp;5.4: оно не продаёт и не предоставляет VPN-услугу, а выступает клиентом для уже оплаченного стороннего доступа. Это осознанная позиция, снижающая риск 5.4, но не устраняющая его.</p>
+
+<h2>3. Что показало исследование</h2>
+<h3>Ограничения, которые нельзя обойти технически</h3>
+<ol>
+  <li><strong>TestFlight-сборки умирают каждые 90 дней.</strong> Безусловно, без продления. Когда сборка истекает, тестер теряет приложение целиком — вместе с логином и локальными данными.</li>
+  <li><strong>Apple Developer Program License Agreement запрещает</strong> брать плату с Beta Testers и использовать TestFlight для «continuous distribution... in attempt to circumvent App Store».</li>
+  <li><strong>Guideline 5.4</strong> требует, чтобы VPN-приложения публиковались организацией, а не физлицом.</li>
+</ol>
+
+<h3>Что работает в нашу пользу</h3>
+<ul>
+  <li>TestFlight доступен в РФ-сторе, смена региона и Apple ID не нужны.</li>
+  <li>Действующие РФ-провайдеры (NvoVPN, MosVPN, WAY VPN, «Дядя Ваня РФ») уже годами распространяются именно через TestFlight и подтверждают работоспособность канала.</li>
+  <li>Продажа вне приложения не требует IAP по Guideline 3.1.1, потому что приложение не даёт доступ к цифровому контенту — оно подключает уже приобретённую услугу.</li>
+</ul>
+
+<div class="callout">
+  <p><strong>Технический флаг (не блокер):</strong> с декабря 2025 ТСПУ блокирует OpenVPN, L2TP и WireGuard. Пользователь подтверждает, что его конфиги коннектятся у клиентов через OpenVPN Connect. Это значит, что либо блокировка не повсеместна, либо на серверах есть обфускация. Риск отложен, но должен отслеживаться: если начнутся массовые отвалы, спасёт не приложение, а смена протокола.</p>
+</div>
+
+<h2>4. Энтайтлменты и ограничения аккаунта</h2>
+<p><code>com.apple.developer.networking.networkextension</code> со значением <code>packet-tunnel-provider</code> — <strong>self-serve с 2016 года</strong>. Запрос к Apple не требуется, одобрение не нужно: capability включается в Xcode и в App ID на портале. Запрос формы нужен только для managed-типов (Hotspot Helper, NE app push), к нам не относится.</p>
+<p><strong>Тип аккаунта (физлицо или организация) на этом слое не влияет ни на что.</strong></p>
+<p>Понадобится также App Group для передачи конфига между приложением и расширением.</p>
+<p>Personal VPN (<code>com.apple.developer.networking.vpn.api</code>) — отдельный вопрос, который решается при реализации. Он нужен для <code>NEVPNManager</code>, но для <code>NEPacketTunnelProvider</code> с кастомным протоколом обычно достаточно <code>packet-tunnel-provider</code>. Если на устройстве всплывёт ошибка <code>saveToPreferences → Code 5 "permission denied"</code>, значит нужен и он.</p>
+
+<h3>Разделение слоёв</h3>
+<table>
+  <tr><th style="width:26%">Слой</th><th style="width:20%">Физлицо</th><th>Что это значит</th></tr>
+  <tr><td>Сборка и подпись</td><td>Ограничений нет</td><td><code>packet-tunnel-provider</code> — self-serve, доступен всем аккаунтам</td></tr>
+  <tr><td>Beta App Review</td><td>Ограничений нет де-факто</td><td>4 живых РФ-конкурента раздают VPN через TestFlight</td></tr>
+  <tr><td>App Store</td><td>Требуется организация</td><td>Именно сюда мы не идём</td></tr>
+</table>
+
+<h2>5. Архитектура</h2>
+<pre>┌─────────────────────────────────────────┐
+│  iOS-приложение (SwiftUI)               │
+│  ┌───────────────┐  ┌────────────────┐  │
+│  │  UI-процесс   │  │  Расширение    │  │
+│  │  вход, статус │─▶│  NEPacketTunnel│  │
+│  │  Connect      │  │  Provider      │  │
+│  └───────┬───────┘  └────────┬───────┘  │
+│          │ App Group         │ TunnelKit│
+└──────────┼───────────────────┼──────────┘
+           │ HTTPS             │ OpenVPN
+           ▼                   ▼
+   ┌───────────────┐   ┌──────────────┐
+   │   Бэкенд      │   │ OpenVPN-     │
+   │  /auth/*      │   │ серверы      │
+   │  /me /config  │   └──────────────┘
+   └───────┬───────┘
+           │
+   ┌───────▼───────┐
+   │  Telegram-бот │
+   │  покупка,     │
+   │  login_*      │
+   └───────────────┘</pre>
+
+<h3>Разделение ответственности</h3>
+<ul>
+  <li><strong>UI-процесс</strong> — показывает состояние и инициирует подключение. Не содержит логики туннеля.</li>
+  <li><strong>Расширение (<code>NEPacketTunnelProvider</code>)</strong> — единственное место, где живёт VPN. Работает в отдельном системном процессе, поднимается даже когда приложение свёрнуто.</li>
+  <li><strong>App Group</strong> — единственный канал передачи данных между ними. Конфиг кладётся в общий контейнер.</li>
+  <li><strong>Бэкенд</strong> — выдаёт профиль только активным подписчикам. Не знает, как работает OpenVPN.</li>
+</ul>
+
+<h2>6. Потоки</h2>
+
+<h3>6.1 Вход по deep link</h3>
+<pre>Юзер в приложении → «Войти через Telegram»
+  → приложение открывает t.me/&lt;bot&gt;?start=login_&lt;одноразовый токен&gt;
+  → пользователь жмёт Start в Telegram (бот уже знает его chat_id)
+  → бот кладёт: токен → chat_id, срок жизни 5 минут, одноразовый
+  → приложение опрашивает /auth/poll каждые 2 сек
+  → получает долгоживущий сессионный токен
+  → сохраняет в Keychain</pre>
+<p>Токен одноразовый и короткоживущий: даже если перехвачен, повторно не сработает.</p>
+
+<h3>6.2 Покупка → доступ</h3>
+<pre>Юзер покупает в боте → вебхук платёжки → бот продлевает подписку (срок = now + N)
+  → приложение при следующем обновлении /me видит активную подписку
+  → разблокируется кнопка подключения</pre>
+<p>Приложение про подписку <strong>не знает ничего</strong> до запроса к бэкенду. Логика доступа живёт в одном месте.</p>
+
+<h3>6.3 «Обновить профиль»</h3>
+<pre>Кнопка → GET /config (сессионный токен)
+  → бэкенд проверяет: подписка активна?
+      нет → 403 + причина (истекла / не оплачена)
+      да  → возвращает .ovpn со свежими серверами
+  → приложение пишет конфиг в App Group
+  → расширение подхватывает при следующем подключении</pre>
+<p>Это ключевой механизм, ради которого всё делается: ротация серверов не требует действий от пользователя.</p>
+
+<h3>6.4 Подключение</h3>
+<p>Кнопка Connect → сохранение <code>NETunnelProviderManager</code> (система один раз спрашивает разрешение) → расширение читает конфиг из App Group → поднимает туннель через TunnelKit.</p>
+
+<h2>7. Компоненты</h2>
+
+<h3>iOS</h3>
+<ul>
+  <li>SwiftUI-приложение: экран входа, статус подписки, кнопка Connect, кнопка «Обновить профиль».</li>
+  <li>Расширение <code>NEPacketTunnelProvider</code>.</li>
+  <li><code>TunnelKit</code> / <code>Partout</code> — реализация протокола OpenVPN на Swift. Лицензия GPLv3 с дополнительным разрешением на распространение через App Store под MPL 2.0, что для нас подходит.</li>
+  <li>Хранилище: сессионный токен — в Keychain, конфиг — в общем контейнере App Group.</li>
+</ul>
+
+<h3>Бэкенд (FastAPI или Go + PostgreSQL)</h3>
+<table>
+  <tr><th style="width:30%">Эндпоинт</th><th>Назначение</th></tr>
+  <tr><td><code>POST /auth/link</code></td><td>Создать одноразовый токен</td></tr>
+  <tr><td><code>GET /auth/poll</code></td><td>Обменять токен на сессию</td></tr>
+  <tr><td><code>GET /me</code></td><td>Статус подписки</td></tr>
+  <tr><td><code>GET /config</code></td><td>Выдать .ovpn</td></tr>
+</table>
+
+<h3>Бот</h3>
+<p>Существующий, плюс: хендлер <code>login_&lt;token&gt;</code> в <code>/start</code> и выдача ссылки-подписки как резервный путь.</p>
+
+<h2>8. Риски</h2>
+<table>
+  <tr><th style="width:30%">Риск</th><th style="width:19%">Вероятность</th><th>Митигация</th></tr>
+  <tr>
+    <td>Сборка истекает каждые 90 дней</td>
+    <td class="risk-guaranteed">гарантированно</td>
+    <td>Автоматический релиз каждые ~60 дней через CI (fastlane + GitHub Actions). Вручную это не выживет. Это риск №1, он не зависит от типа аккаунта</td>
+  </tr>
+  <tr>
+    <td>Бан аккаунта разработчика</td>
+    <td>средняя</td>
+    <td>Зарубежный Apple ID, не связанный с РФ. Бэкапный аккаунт наготове</td>
+  </tr>
+  <tr>
+    <td>Guideline 5.4 предъявят при бета-ревью</td>
+    <td>низкая, но не нулевая</td>
+    <td>Позиция: приложение не оказывает VPN-услугу, а подключает к уже оплаченной. Формально Beta App Review проверяет по гайдлайнам, де-факто 4 живых конкурента раздаются через TestFlight</td>
+  </tr>
+  <tr>
+    <td>РФ-юзер не дотянется до TestFlight</td>
+    <td>низко-средняя</td>
+    <td>Канал подтверждён действующими сервисами. Резерв: инструкция по зарубежному Apple ID</td>
+  </tr>
+  <tr>
+    <td>Удаление по требованию РКН</td>
+    <td>средняя</td>
+    <td>Apple удалила 1000+ VPN-приложений точечно, по названию. TestFlight задевает меньше, но гарантий нет</td>
+  </tr>
+  <tr>
+    <td>Apple закрутит гайки к TestFlight</td>
+    <td>средняя</td>
+    <td>Архитектура не зависит от канала: переход на своё приложение в App Store затрагивает только этап дистрибуции</td>
+  </tr>
+  <tr>
+    <td>ТСПУ начнёт валить OpenVPN</td>
+    <td>средняя</td>
+    <td>Наблюдать. Решение — смена протокола на VLESS/Reality, что не затрагивает архитектуру приложения</td>
+  </tr>
+</table>
+
+<h2>9. Что сознательно не делаем</h2>
+<ul>
+  <li><strong>Не продаём из приложения.</strong> Любая кнопка оплаты внутри приложения немедленно создаёт нарушение 3.1.1 и риск 5.4. Продажа остаётся в Telegram.</li>
+  <li><strong>Не пишем свой OpenVPN-движок.</strong> TunnelKit решает эту задачу и уже используется в бою.</li>
+  <li><strong>Не делаем собственный личный кабинет.</strong> Функции кабинета — это бот.</li>
+  <li><strong>Не поддерживаем iOS ниже 15</strong> на первом этапе.</li>
+  <li><strong>Не мигрируем на VLESS сейчас.</strong> Протокол работает; миграция — отдельное решение при появлении проблем.</li>
+</ul>
+
+<h2>10. Открытые вопросы</h2>
+<ol>
+  <li><strong>Обфускация OpenVPN.</strong> Если ТСПУ начнёт валить соединения, <code>obfsproxy</code>/<code>scramble</code> в OpenVPN слабее, чем Reality. Решение о миграции откладывается до первых массовых жалоб.</li>
+  <li><strong>Лимит устройств.</strong> Сейчас не определён. Нужен ли лимит на количество устройств на подписку?</li>
+  <li><strong>Продление.</strong> Что видит пользователь, когда подписка истекла и профиль не обновляется — решаем на этапе плана.</li>
+</ol>
+
+<h2>11. План работ</h2>
+<ol>
+  <li>Зарубежный Apple ID + Developer Program, регистрация App ID с энтайтлментами.</li>
+  <li>Каркас приложения + расширение, туннель поднимается на статичном конфиге.</li>
+  <li>Бэкенд: четыре эндпоинта.</li>
+  <li>Вход через бота end-to-end.</li>
+  <li>«Обновить профиль» + проверка ротации на живом сервере.</li>
+  <li>Закрытое тестирование на своих, затем публичная ссылка.</li>
+  <li>CI для автоматического релиза каждые 60 дней.</li>
+</ol>
+<p>Шаги 1–2 можно вести параллельно с 3–4.</p>
+
+<div class="footer-note">
+  Документ подготовлен по итогам исследования публичных источников: App Store Review Guidelines (5.4, 3.1.1), Apple Developer Program License Agreement, документация Apple по Network Extension и TestFlight, публичные материалы действующих РФ-провайдеров.
+</div>
+
+</body>
+</html>
