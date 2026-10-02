@@ -174,18 +174,29 @@ public final class AuthFlowController {
         self.nonce = nonce
         state = .verifying
         do {
-            let session = try await authService.pollSession(operation: inFlight,
-                                                            deviceNonce: nonce)
-            try? sessionStore.save(session)
-            // Operation is spent: do not resume it again.
-            try? operationStore.clear()
-            operation = nil
-            self.nonce = nil
-            state = .authenticated(session)
+            switch try await authService.pollSession(operation: inFlight, deviceNonce: nonce) {
+            case .confirmed(let session):
+                try? sessionStore.save(session)
+                // Operation is spent: do not resume it again.
+                try? operationStore.clear()
+                operation = nil
+                self.nonce = nil
+                state = .authenticated(session)
+            case .pending:
+                // Нормальное состояние, пока пользователь в боте. Операция и nonce
+                // сохраняются — `resume()` (или следующий опрос) продолжится.
+                state = .awaitingCode
+            case .expired, .denied, .attemptLimitExceeded:
+                // Терминальные: операция больше не возобновляется, начинаем заново.
+                try? operationStore.clear()
+                operation = nil
+                self.nonce = nil
+                state = .failed(.pollFailed)
+            }
         } catch let error as AuthFlowError {
             state = .failed(error)
         } catch {
-            // Keep operation + nonce so `resume()` can retry.
+            // Сеть/сервер: операцию и nonce сохраняем, `resume()` повторит.
             state = .failed(.pollFailed)
         }
     }

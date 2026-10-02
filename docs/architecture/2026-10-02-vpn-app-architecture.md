@@ -148,16 +148,29 @@ TestSupport (fixtures + fakes) ── импортируется только т
 Это ключевой артефакт: интерфейсы пишутся **до** реализаций, чтобы потоки разработки не блокировали друг друга.
 
 ```swift
-// CoreDomain/Auth
+// CoreDomain/Auth — версия W0-v2
+public enum PollOutcome: Equatable {
+    case pending(retryAfterMilliseconds: Int?)   // не ошибка: пользователь ещё в боте
+    case confirmed(Session)
+    case expired
+    case denied
+    case attemptLimitExceeded
+}
+
 public protocol AuthService {
     func requestLink() async throws -> (link: AuthLink, operation: AuthOperation)
     /// Предъявляет СЕКРЕТ (сгенерирован приложением) И deviceNonce (ввёл пользователь,
     /// прочитав в боте). Без nonce подтверждение не привязано к этому устройству — login-CSRF.
-    func pollSession(operation: AuthOperation, deviceNonce: String) async throws -> Session
+    func pollSession(operation: AuthOperation, deviceNonce: String) async throws -> PollOutcome
     func logout() async throws
 }
 // operation несёт secret. secret НИКОГДА не проходит через Telegram.
 // deviceNonce приходит в чат бота и НЕ возвращается в /auth/link — см. api-contract §2.1.
+//
+// ПОПРАВКА W0-v2 (2026-10-03): прежде `pollSession` возвращал `Session`, из-за чего
+// «ещё не подтверждено» было неотличимо от терминальной ошибки, и цикл входа не мог
+// ждать подтверждения. Теперь возвращается исход опроса. Поднято интеграцией W1↔W3.
+```
 
 public protocol SessionStore {
     func save(_ session: Session) throws

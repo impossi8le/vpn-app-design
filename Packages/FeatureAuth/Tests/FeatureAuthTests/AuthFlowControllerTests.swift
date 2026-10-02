@@ -321,7 +321,7 @@ private final class FailingAuthService: AuthService {
     func requestLink() async throws -> (link: AuthLink, operation: AuthOperation) {
         throw requestLinkError
     }
-    func pollSession(operation: AuthOperation, deviceNonce: String) async throws -> Session {
+    func pollSession(operation: AuthOperation, deviceNonce: String) async throws -> PollOutcome {
         throw requestLinkError
     }
     func logout() async throws {}

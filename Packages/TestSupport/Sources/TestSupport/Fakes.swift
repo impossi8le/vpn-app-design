@@ -118,6 +118,8 @@ public final class FakeAuthService: AuthService {
                                expiresAt: Date(timeIntervalSince1970: 0))
     public private(set) var lastNonce: String?
     public var session: Session?
+    /// По умолчанию — `pending`: тест обязан явно подтвердить, иначе вход не завершается.
+    public var nextOutcome: PollOutcome = .pending(retryAfterMilliseconds: nil)
     public var pollError: Error?
     public private(set) var logoutCalled = false
     public init() {}
@@ -127,11 +129,13 @@ public final class FakeAuthService: AuthService {
                              createdAt: Date(timeIntervalSince1970: 0)))
     }
 
-    public func pollSession(operation: AuthOperation, deviceNonce: String) async throws -> Session {
+    public func pollSession(operation: AuthOperation, deviceNonce: String) async throws -> PollOutcome {
         lastNonce = deviceNonce
         if let error = pollError { throw error }
-        guard let session else { throw TunnelError.notConfigured }
-        return session
+        guard case .pending = nextOutcome else { return nextOutcome }
+        // pending: если задана сессия, считаем, что пользователь уже подтвердил.
+        if let session { return .confirmed(session) }
+        return nextOutcome
     }
 
     public func logout() async throws { logoutCalled = true }
