@@ -103,19 +103,23 @@ TestSupport (fixtures + fakes) ── импортируется только т
 **Зависит:** `CoreDomain`.
 **Тестируется:** с fake-обёрткой над Keychain (протокол `KeychainBackend`).
 
-### 4.5 TunnelKitAdapter
+### 4.5 TunnelKitAdapter и TunnelManager (разделены)
 
-**Что:** обёртка над TunnelKit. Парсит `.ovpn`, строит конфигурацию туннеля, управляет `NETunnelProviderManager`.
-**Как:** реализует `TunnelControlling`.
-**Зависит:** `CoreDomain`, TunnelKit.
+Раньше это был один модуль; ревью показало, что так нельзя: расширение не создаёт `NETunnelProviderManager`, а среда NetworkExtension недоступна на симуляторе.
+
+- **`TunnelKitCore`** — чистое ядро: парсит `.ovpn`, строит конфигурацию туннеля, предъявляет пакеты. Линкуется **и в приложение, и в расширение**. Не импортирует `NetworkExtension` вообще. Тестируется без устройства (байты → конфигурация).
+- **`TunnelManager`** — только app-side: `NETunnelProviderManager`, `saveToPreferences`, `startVPNTunnel`, наблюдение `NEVPNStatusDidChange`. Линкуется **только в приложение**. Реализует `TunnelControlling`.
+- **`VpnTunnelExtension`** — `NEPacketTunnelProvider`, использует `TunnelKitCore` напрямую, менеджер не создаёт.
+
+Отображение `NEVPNStatus → SystemTunnelState → ConnectionStatus.map(system:)` живёт в `TunnelManager`, а не в ядре.
+
 **Тестируется:**
-- Парсинг реальных продакшен-`.ovpn` — **без устройства** (чистая функция: байты → конфигурация).
+- Парсинг реальных продакшен-`.ovpn` — без устройства.
 - Конфигурация (DNS, IPv6, маршруты, kill switch) — юнит-тестами на построенном объекте.
-- Реальное поднятие туннеля — только на устройстве (см. W9).
+- Build/link проверка: архивный TunnelKit собирается и линкуется в NE-таргет (см. W4) — это и есть реальный риск архивации.
+- Реальное поднятие туннеля — только на устройстве; симулятор туннели не поднимает (см. W9).
 
-Это разделение — намеренное: самая рискованная часть (совместимость с архивным TunnelKit) проверяется юнит-тестами на реальных конфигах до того, как появится первая сборка.
-
-### 4.6 Восемь исключений: CoreObservability
+### 4.6 CoreObservability
 
 **Что:** структурированные логи без приватных ключей, токенов и адресов. Явный allow-list полей.
 **Зависит:** `CoreDomain`.
@@ -135,7 +139,9 @@ TestSupport (fixtures + fakes) ── импортируется только т
 
 ### 4.10 VpnTunnelExtension
 
-`NEPacketTunnelProvider`. Читает профиль из App Group, поднимает туннель через `TunnelKitAdapter`. Собственной логики парсинга не имеет — вся она в адаптере, который линкуется и в расширение.
+`NEPacketTunnelProvider`. Читает профиль из App Group, поднимает туннель через `TunnelKitCore`. Логики парсинга не имеет — она в ядре, которое линкуется и в расширение. `NETunnelProviderManager` не создаёт: это делает только `TunnelManager` в приложении.
+
+**App Group и энтайтлменты (определить на W6):** один идентификатор App Group, включённый в оба таргета (`com.apple.security.application-groups`); Network Extension (Packet Tunnel) включён в оба; bundle ID расширения — с префиксом ID приложения.
 
 ## 5. Протоколы границ (контракт между агентами)
 
@@ -145,11 +151,13 @@ TestSupport (fixtures + fakes) ── импортируется только т
 // CoreDomain/Auth
 public protocol AuthService {
     func requestLink() async throws -> (link: AuthLink, operation: AuthOperation)
-    func pollSession(operation: AuthOperation) async throws -> Session   // предъявляет СЕКРЕТ
+    /// Предъявляет СЕКРЕТ (сгенерирован приложением) И deviceNonce (ввёл пользователь,
+    /// прочитав в боте). Без nonce подтверждение не привязано к этому устройству — login-CSRF.
+    func pollSession(operation: AuthOperation, deviceNonce: String) async throws -> Session
     func logout() async throws
 }
-// operation несёт secret, сгенерированный приложением. Он нужен для pollSession
-// и НИКОГДА не проходит через Telegram.
+// operation несёт secret. secret НИКОГДА не проходит через Telegram.
+// deviceNonce приходит в чат бота и НЕ возвращается в /auth/link — см. api-contract §2.1.
 
 public protocol SessionStore {
     func save(_ session: Session) throws
@@ -184,22 +192,15 @@ public protocol ProfileStore {
 public protocol TunnelControlling {
     func connect(profile: Profile) async throws
     func disconnect() async throws
-    var statusStream: AsyncStream<ConnectionStatus> { get }
+    /// Текущее состояние — для поздно подписавшихся и для возврата из фона.
+    /// Без него подписчик, пришедший после .connecting, теряет контекст.
+    var current: ConnectionStatus { get }
+    /// Мультиподписчичная лента. Новый подписчик получает current первым событием.
+    func statusStream() -> AsyncStream<ConnectionStatus>
 }
 
-public enum ConnectionStatus: Equatable {
-    case disconnected
-    case connecting
-    case verifyingProtection      // поднято, идёт замер
-    case protected(ProtectionVerdict)
-    case protectionFailed(ProtectionVerdict)
-    case failed(TunnelError)
-}
-
-public enum ProtectionVerdict: Equatable {
-    case confirmed(ipv4Bypassed: Bool, ipv6Closed: Bool, dnsInside: Bool)
-    case failed(reason: ProtectionFailure)
-}
+// ВАЖНО: TunnelControlling НЕ эмитит .protected. Он эмитит .connecting /
+// .verifyingProtection / .disconnected / .failed. Зелёное добавляет ProtectionGate.
 ```
 
 ```swift
@@ -207,9 +208,62 @@ public enum ProtectionVerdict: Equatable {
 public protocol ProtectionProbe {
     func verify() async throws -> ProtectionVerdict
 }
+
+/// Доказательство защиты. `init` внутренний — конструируется только внутри CoreDomain.
+/// Внешние модули не могут собрать evidence руками.
+public struct ProtectionEvidence: Equatable {
+    public let ipv4Bypassed: Bool
+    public let ipv6Closed: Bool
+    public let dnsInside: Bool
+    init(ipv4Bypassed: Bool, ipv6Closed: Bool, dnsInside: Bool) {
+        self.ipv4Bypassed = ipv4Bypassed
+        self.ipv6Closed = ipv6Closed
+        self.dnsInside = dnsInside
+    }
+}
+
+public enum ProtectionVerdict: Equatable {
+    case confirmed(ProtectionEvidence)
+    case failed(ProtectionFailure)
+
+    /// ЕДИНСТВЕННЫЙ конструктор зелёного. Все три условия обязаны быть истинны,
+    /// иначе возвращается .failed(.inconclusive). Проверка на входе, а не на выводе.
+    public static func evaluate(ipv4Bypassed: Bool, ipv6Closed: Bool, dnsInside: Bool) -> ProtectionVerdict {
+        guard ipv4Bypassed, ipv6Closed, dnsInside else { return .failed(.inconclusive) }
+        return .confirmed(ProtectionEvidence(ipv4Bypassed: true, ipv6Closed: true, dnsInside: true))
+    }
+
+    public var isConfirmed: Bool {
+        if case .confirmed = self { return true }
+        return false
+    }
+}
+
+/// Единственный владелец перехода в .protected. Никакой другой код не конструирует зелёное.
+public struct ProtectionGate {
+    private let probe: ProtectionProbe
+    public init(probe: ProtectionProbe) { self.probe = probe }
+
+    public func evaluate() async -> ConnectionStatus {
+        do {
+            let verdict = try await probe.verify()
+            if case .confirmed(let evidence) = verdict {
+                return .protected(evidence)
+            }
+            return .protectionFailed(verdict)
+        } catch {
+            return .protectionFailed(.failed(.probeUnavailable))
+        }
+    }
+}
+
+// ВАЖНО: case .confirmed принимает ProtectionEvidence с внутренним init, а не bool-ы.
+// Поэтому .confirmed невозможно собрать из чужого модуля — только через .evaluate(...).
 ```
 
-**Инвариант домена:** `ConnectionStatus`.protected существует только как результат `ProtectionProbe.verify()`, вернувшего `confirmed`. Адаптер не может сконструировать `.protected` из `NEVPNStatus` — тип не даёт.
+**Инвариант домена (честная формулировка).** Из `NEVPNStatus.connected` зелёное получить нельзя: `map(system:)` возвращает `.verifyingProtection`. Зелёное конструируется только через `ProtectionGate.evaluate()` (владелец перехода) и только при `ProtectionEvidence`, все три поля которого истинны. `ProtectionEvidence` имеет внутренний `init`, поэтому собрать его из чужого модуля нельзя.
+
+Что это НЕ гарантирует: честность самой пробы. Если `ProtectionProbe` реализован с ошибкой и всегда возвращает подтверждение, тип этого не поймает. Это проверяется тестом пробы на реальном устройстве (W9), а не типом. Раньше формулировка «тип не даёт сконструировать» была неверной — исправлено по итогам ревью.
 
 ## 6. Критический инвариант: защита подтверждается замером
 
@@ -223,7 +277,11 @@ public protocol ProtectionProbe {
 4. Провал замера — это отдельный третий исход (`protectionFailed`), а не вечное «проверяем» и не ложный зелёный.
 5. Замер **не** ходит на внешний сервис за реальным IP: внешний сервис сам видит реальный адрес. Проверка строится на локально наблюдаемых признаках (какой интерфейс держит маршрут по умолчанию, закрыт ли IPv6, уходит ли DNS в туннель).
 
-Это правило — не пожелание, а требование к типам. Тест `ConnectionStatusTests` проверяет, что из `NEVPNStatus.connected` нельзя получить `.protected` без прохождения пробы.
+Это правило — не пожелание. Оно закреплено типами настолько, насколько это возможно: (а) `map(system:)` физически не возвращает `.protected`; (б) единственный вход в зелёное — `ProtectionGate.evaluate()`; (в) `ProtectionEvidence` нельзя собрать вне CoreDomain; (г) `ProtectionVerdict.evaluate(ipv4Bypassed:ipv6Closed:dnsInside:)` при любом `false` возвращает `.failed(.inconclusive)` — зелёный при сломанном замере невозможен.
+
+Тесты: `StatusMappingTests` (нет `.protected` ни из одного системного состояния), `ProtectionGateTests` (все три `false` → не зелёное; успешная проба → `.protected`).
+
+**Кто владеет переходом:** `ProtectionGate` вызывается один раз в потоке подключения — после того как туннель поднят (`.verifyingProtection`), до показа статуса пользователю. `TunnelControlling` не эмитит `.protected` сам; он эмитит `.connecting`/`.verifyingProtection`/`.disconnected`, а результат пробы добавляет вызывающая сторона (адаптер подключения в `VpnApp`).
 
 ## 7. Протокол согласованной записи конфига
 
@@ -265,13 +323,17 @@ public protocol ProtectionProbe {
 FeatureAuth → AuthService.requestLink()
   → { publicCode, deepLink: t.me/<bot>?start=login_<publicCode> }
   → приложение: openURL(deepLink)
-  → [пользователь жмёт inline-кнопку в боте]
-  → AuthService.pollSession(operation)   // предъявляет СЕКРЕТ, не publicCode
+  → [бот показывает пользователю device_nonce, пользователь жмёт «Подтвердить»]
+  → пользователь вводит device_nonce в приложение   ← ЗАМЫКАЕТ вход на это устройство
+  → AuthService.pollSession(operation, deviceNonce)  // СЕКРЕТ + nonce, не publicCode
       → при возврате из фона (scenePhase) опрос возобновляется
   → Session → SessionStore.save() → Keychain
 ```
 
-Разделение кода и секрета обязательно: `publicCode` виден в ссылке и чате; секрет генерируется приложением, через Telegram не проходит. Детали — в `2026-10-02-api-contract.md`.
+Два независимых разделения:
+
+1. **Код против секрета.** `publicCode` виден в ссылке и чате; секрет генерируется приложением, через Telegram не проходит.
+2. **nonce против ссылки.** `device_nonce` бот показывает только в чате инициировавшей стороны, в приложение из `/auth/link` он не возвращается. Без него злоумышленник, подсунувший жертве свой deep link, получил бы сессию её аккаунта (login-CSRF). Детали — `2026-10-02-api-contract.md` §2.1.
 
 Опрос не идёт непрерывно: iOS усыпляет приложение в фоне. Незавершённая операция персистится, проверка возобновляется при возврате в foreground.
 
