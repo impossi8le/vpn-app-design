@@ -45,8 +45,8 @@ Packages/
       FakeBehaviourTests.swift
       FixtureDecodingTests.swift
   TestSupportMockBackend/
-    Package.swift           — пустой таргет, наполняет W7
-    Sources/TestSupportMockBackend/.gitkeep
+    Package.swift                              — объявлен заранее, наполняет W7
+    Sources/TestSupportMockBackend/Placeholder.swift  — заглушка: пустой таргет не собирается
 ```
 
 ---
@@ -604,21 +604,22 @@ import CoreDomain
 
 final class FakeBehaviourTests: XCTestCase {
 
-    func testTunnelEmitsToSubscriber() async {
+    func testTunnelEmitsToSubscriberStartingFromCurrent() async {
         let tunnel = FakeTunnelControlling()
-        let stream = tunnel.statusStream()          // подписчик привязан СРАЗУ
+        let stream = tunnel.statusStream()          // подписка СИНХРОННА
         let collected = Task { () -> [ConnectionStatus] in
             var out: [ConnectionStatus] = []
             for await s in stream {
                 out.append(s)
-                if out.count == 2 { break }
+                if out.count == 3 { break }
             }
             return out
         }
-        tunnel.emit(.connecting)                     // после привязки — не теряется
+        tunnel.emit(.connecting)                     // после подписки — не теряется
         tunnel.emit(.verifyingProtection)
         let result = await collected.value
-        XCTAssertEqual(result, [.connecting, .verifyingProtection])
+        // Первым идёт снимок current (.disconnected), затем оба emit по порядку.
+        XCTAssertEqual(result, [.disconnected, .connecting, .verifyingProtection])
     }
 
     func testTunnelCurrentReflectsLastEmit() {
@@ -637,7 +638,10 @@ final class FakeBehaviourTests: XCTestCase {
     func testProbeReturnsConfiguredVerdict() async throws {
         let probe = FakeProtectionProbe()
         probe.nextVerdict = .failed(.ipv6Leak)
-        XCTAssertEqual(try await probe.verify(), .failed(.ipv6Leak))
+        // XCTAssertEqual использует autoclosure без поддержки concurrency —
+        // await обязан стоять отдельной строкой (иначе ошибка компиляции).
+        let verdict = try await probe.verify()
+        XCTAssertEqual(verdict, .failed(.ipv6Leak))
     }
 }
 ```
@@ -654,42 +658,44 @@ Expected: FAIL — `cannot find 'FakeTunnelControlling' in scope`
 import Foundation
 import CoreDomain
 
-/// Поток создаётся ОДИН РАЗ в init. Computed-свойство, создающее поток на каждое
-/// обращение, теряет события (гонка) — исправлено по итогам ревью.
+/// Один брокер, много подписчиков. Подписка синхронна (замыкание AsyncStream
+/// исполняется сразу), поэтому emit после подписки не теряет событие. Новый
+/// подписчик первым получает current. Прошлый вариант с ретрансляцией через
+/// Task терял события — исправлено прогоном на реальном компиляторе.
 public final class FakeTunnelControlling: TunnelControlling, @unchecked Sendable {
     private let lock = NSLock()
     private var _current: ConnectionStatus = .disconnected
-    private var continuation: AsyncStream<ConnectionStatus>.Continuation?
-    private let stream: AsyncStream<ConnectionStatus>
+    private var subscribers: [UUID: AsyncStream<ConnectionStatus>.Continuation] = [:]
     public private(set) var connectedProfiles: [Profile] = []
     public var connectError: TunnelError?
 
-    public init() {
-        var cont: AsyncStream<ConnectionStatus>.Continuation!
-        stream = AsyncStream { cont = $0 }
-        continuation = cont
-    }
+    public init() {}
 
     public var current: ConnectionStatus {
         lock.lock(); defer { lock.unlock() }; return _current
     }
 
     public func statusStream() -> AsyncStream<ConnectionStatus> {
-        // Новый подписчик первым получает текущее состояние.
-        var cont: AsyncStream<ConnectionStatus>.Continuation!
-        let merged = AsyncStream<ConnectionStatus> { cont = $0 }
-        cont.yield(_current)
-        let upstream = continuation
-        Task {
-            for await s in stream { cont.yield(s) }
-            _ = upstream
+        let id = UUID()
+        return AsyncStream { cont in
+            lock.lock()
+            subscribers[id] = cont
+            let snapshot = _current
+            lock.unlock()
+            cont.yield(snapshot)                 // новый подписчик сразу видит текущее
+            cont.onTermination = { [weak self] _ in
+                guard let self else { return }
+                self.lock.lock(); self.subscribers[id] = nil; self.lock.unlock()
+            }
         }
-        return merged
     }
 
     public func emit(_ status: ConnectionStatus) {
-        lock.lock(); _current = status; lock.unlock()
-        continuation?.yield(status)
+        lock.lock()
+        _current = status
+        let live = Array(subscribers.values)
+        lock.unlock()
+        for c in live { c.yield(status) }
     }
 
     public func connect(profile: Profile) async throws {
