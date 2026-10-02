@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Плейсхолдер. Заполнить на этапе W6/W9, когда появятся app-таргет и расширение.
+
+  Главное правило: запись provisioningProfiles нужна ДЛЯ КАЖДОГО bundle id,
+  включая расширение NetworkExtension. Пропущенное расширение — самая частая
+  причина ошибки "wrong profile type" в CI. Автоматическую подпись гасить
+  в КАЖДОМ таргете отдельно (CODE_SIGN_STYLE=Manual), не на уровне проекта.
+
+  Team ID и имена профилей подставить свои.
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store-connect</string>
+    <key>teamID</key>
+    <string>YOUR_TEAM_ID</string>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>provisioningProfiles</key>
+    <dict>
+        <!-- приложение -->
+        <key>com.example.vpnapp</key>
+        <string>VpnApp AppStore</string>
+        <!-- расширение — без этой строки сборка падает в CI -->
+        <key>com.example.vpnapp.PacketTunnel</key>
+        <string>VpnAppTunnel AppStore</string>
+    </dict>
+</dict>
+</plist>

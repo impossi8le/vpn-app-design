@@ -1,0 +1,114 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Собирает и тестирует все SPM-пакеты на macOS-раннере.
+  # Работает уже сейчас — до появления app-таргета.
+  # На публичном репозитории macOS-минуты бесплатны.
+  packages:
+    name: Packages (build + test)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build & test each package
+        run: |
+          set -euo pipefail
+          for pkg in Packages/*/Package.swift; do
+            dir=$(dirname "$pkg")
+            echo "::group::$dir"
+            swift build --package-path "$dir"
+            # Тест-таргет есть не у всех пакетов — не падаем, если его нет.
+            if grep -q "testTarget" "$pkg"; then
+              swift test --package-path "$dir"
+            fi
+            echo "::endgroup::"
+          done
+
+  # Включается, когда появятся app-таргет и расширение (W6/W9).
+  # Пока app-проекта нет — job пропускается, а не падает.
+  #
+  # Что понадобится, прежде чем этот job заработает (см. §14 спеки):
+  #   secrets: BUILD_CERTIFICATE_BASE64, P12_PASSWORD, BUILD_PROVISION_PROFILE_BASE64,
+  #            KEYCHAIN_PASSWORD, APPSTORE_CONNECT_API_KEY (.p8 base64),
+  #            APPSTORE_API_KEY_ID, APPSTORE_API_ISSUER_ID
+  #   exportOptions.plist с записью provisioningProfiles ДЛЯ КАЖДОГО bundle id,
+  #            включая расширение — иначе "wrong profile type" (частая причина CI-падений).
+  build:
+    name: Archive → TestFlight
+    runs-on: macos-15
+    needs: packages
+    if: ${{ hashFiles('Apps/VpnApp/*.xcodeproj/project.pbxproj', 'Apps/VpnApp/*.xcworkspace/contents.xcworkspacedata') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install certificate and provisioning profiles
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+
+      - name: Archive
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project Apps/VpnApp/VpnApp.xcodeproj \
+            -scheme VpnApp \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/VpnApp.xcarchive \
+            -allowProvisioningUpdates \
+            CODE_SIGN_STYLE=Manual
+
+      - name: Export IPA
+        run: |
+          set -euo pipefail
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/VpnApp.xcarchive \
+            -exportPath $RUNNER_TEMP/export \
+            -exportOptionsPlist .github/exportOptions.plist
+
+      - name: Upload to TestFlight
+        env:
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/private_keys
+          echo -n "${{ secrets.APPSTORE_API_KEY }}" | base64 --decode -o ~/private_keys/AuthKey_$APPSTORE_API_KEY_ID.p8
+          xcrun altool --upload-app \
+            --type ios \
+            -f $RUNNER_TEMP/export/*.ipa \
+            --apiKey "$APPSTORE_API_KEY_ID" \
+            --apiIssuer "$APPSTORE_API_ISSUER_ID"
