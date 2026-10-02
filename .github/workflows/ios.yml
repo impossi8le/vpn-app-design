@@ -43,17 +43,37 @@ jobs:
   # Включается, когда появятся app-таргет и расширение (W6/W9).
   # Пока app-проекта нет — job пропускается, а не падает.
   #
+  # Проверку существования проекта делает отдельный job: hashFiles() доступен
+  # только внутри steps, не в job-level `if` (иначе весь workflow не стартует).
+  #
   # Что понадобится, прежде чем этот job заработает (см. §14 спеки):
   #   secrets: BUILD_CERTIFICATE_BASE64, P12_PASSWORD, BUILD_PROVISION_PROFILE_BASE64,
-  #            KEYCHAIN_PASSWORD, APPSTORE_CONNECT_API_KEY (.p8 base64),
+  #            KEYCHAIN_PASSWORD, APPSTORE_API_KEY (.p8 base64),
   #            APPSTORE_API_KEY_ID, APPSTORE_API_ISSUER_ID
   #   exportOptions.plist с записью provisioningProfiles ДЛЯ КАЖДОГО bundle id,
   #            включая расширение — иначе "wrong profile type" (частая причина CI-падений).
+  detect:
+    name: Detect app project
+    runs-on: ubuntu-latest
+    outputs:
+      has_project: ${{ steps.check.outputs.has_project }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          set -euo pipefail
+          if compgen -G "Apps/VpnApp/*.xcodeproj/project.pbxproj" > /dev/null \
+             || compgen -G "Apps/VpnApp/*.xcworkspace/contents.xcworkspacedata" > /dev/null; then
+            echo "has_project=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_project=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Archive → TestFlight
     runs-on: macos-15
-    needs: packages
-    if: ${{ hashFiles('Apps/VpnApp/*.xcodeproj/project.pbxproj', 'Apps/VpnApp/*.xcworkspace/contents.xcworkspacedata') != '' }}
+    needs: [packages, detect]
+    if: ${{ needs.detect.outputs.has_project == 'true' }}
     steps:
       - uses: actions/checkout@v4
 
