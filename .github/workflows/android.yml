@@ -139,6 +139,18 @@ jobs:
       - name: Assemble debug
         run: ./gradlew :app:assembleDebug --no-daemon
 
+      # Debug-APK публикуется артефактом: это то, что можно поставить на телефон
+      # прямо сейчас, без keystore и секретов подписи. Подписан debug-ключом —
+      # для сайдлоада этого достаточно, а для раздачи пользователям нужен
+      # release (см. джобу release).
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-app-debug-${{ github.run_number }}
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+          if-no-files-found: error
+
   # Отдельная джоба, а не продолжение `test`: инструментальные тесты идут под
   # AndroidJUnitRunner (JUnit4) и требуют эмулятора. Держать их в `test` нельзя —
   # тогда падение эмулятора выглядит как падение юнит-тестов.
