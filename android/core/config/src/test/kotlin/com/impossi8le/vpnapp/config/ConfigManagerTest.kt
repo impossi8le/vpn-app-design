@@ -110,9 +110,16 @@ class ConfigManagerTest {
         val s = store()
         s.commit(s.stage(valid))
 
-        val manager = ConfigManager(FakeConfigService(failure = IllegalStateException("сеть")), s)
-        expectApply(manager, null, ApplyResult.Rejected)
-        assertEquals(String(valid), String(store().load()!!.raw))
+        // Недоступная сеть даёт типизированный исход, а не сведение к «конфиг
+        // плохой»: экран предложит повторить, а не покажет порчу конфига.
+        val manager = ConfigManager(FailingFetchService(ConfigFetchError.NetworkUnavailable), s)
+        expectApply(manager, null, ApplyResult.FetchFailed(ConfigFetchError.NetworkUnavailable))
+
+        assertEquals(
+            String(valid),
+            String(store().load()!!.raw),
+            "установленный профиль обязан остаться нетронутым при любом сбое получения",
+        )
     }
 
     @Test
