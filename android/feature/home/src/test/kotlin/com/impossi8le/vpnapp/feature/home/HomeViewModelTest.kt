@@ -91,9 +91,14 @@ class HomeViewModelTest {
         vm.connect()
         assertTrue(vm.status.value.isProtected)
 
-        // Сеть сменилась: туннель сообщает «проверяем заново».
-        tunnel.emit(ConnectionStatus.VerifyingProtection)
+        // Сеть сменилась, но статус остался прежним — это и есть опасный случай,
+        // который StateFlow схлопнул бы. Сигнал идёт отдельным каналом.
+        tunnel.emitNetworkChange()
         assertFalse(vm.status.value.isProtected, "зелёное не должно пережить смену сети")
+
+        // И отдельно: падение туннеля тоже снимает зелёное.
+        tunnel.emit(ConnectionStatus.VerifyingProtection)
+        assertFalse(vm.status.value.isProtected)
 
         // Перепроверка с провалившимися фактами зелёное не возвращает.
         probe.withFacts(ipv4 = true, ipv6 = false, dns = true)

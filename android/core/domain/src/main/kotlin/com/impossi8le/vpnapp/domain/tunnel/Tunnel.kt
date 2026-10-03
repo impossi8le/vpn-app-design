@@ -1,6 +1,7 @@
 package com.impossi8le.vpnapp.domain.tunnel
 
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -13,6 +14,17 @@ import kotlinx.coroutines.flow.StateFlow
  */
 interface TunnelControlling {
     val status: StateFlow<ConnectionStatus>
+
+    /**
+     * Смена сети: роуминг, переход Wi-Fi ↔ LTE, потеря и восстановление линка.
+     *
+     * Отдельный сигнал, потому что [status] — `StateFlow`, а он схлопывает
+     * одинаковые значения. «Тот же статус, другая сеть» через него не выразить:
+     * повторная эмиссия `VerifyingProtection` не придёт подписчику вовсе. А для
+     * §6 это принципиально — замер, сделанный в прежней сети, после смены
+     * недействителен, и зелёное обязано исчезнуть даже если статус не изменился.
+     */
+    val networkChanges: Flow<Unit>
 
     /** Запустить туннель. Идемпотентно: повторный вызов не поднимает второй. */
     suspend fun connect()

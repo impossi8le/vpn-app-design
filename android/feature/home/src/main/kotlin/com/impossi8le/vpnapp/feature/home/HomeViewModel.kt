@@ -54,6 +54,12 @@ class HomeViewModel(
                 system.value = incoming
             }
         }
+        viewModelScope.launch {
+            // ОТДЕЛЬНЫЙ канал: смена сети может не изменить `status` вовсе,
+            // а StateFlow одинаковые значения схлопывает. Без этой подписки
+            // зелёное пережило бы роуминг, если статус остался «поднято».
+            tunnel.networkChanges.collect { measured.value = null }
+        }
     }
 
     /**
