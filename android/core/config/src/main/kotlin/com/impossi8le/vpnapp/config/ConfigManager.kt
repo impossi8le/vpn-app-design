@@ -1,5 +1,7 @@
 package com.impossi8le.vpnapp.config
 
+import com.impossi8le.vpnapp.domain.config.ConfigFetchError
+import com.impossi8le.vpnapp.domain.config.ConfigFetchException
 import com.impossi8le.vpnapp.domain.config.ConfigService
 import com.impossi8le.vpnapp.domain.config.FetchedConfig
 import com.impossi8le.vpnapp.domain.config.Profile
@@ -23,6 +25,15 @@ sealed interface ApplyResult {
 
     /** Хеш после записи не совпал; выполнен откат. */
     data object HashMismatch : ApplyResult
+
+    /**
+     * Получить конфиг не удалось, и причина сохранена.
+     *
+     * Отдельный исход с вложенной причиной, а не сведение к [Rejected]:
+     * «подписка истекла», «конфиг отозван» и «нет сети» требуют от экрана
+     * разного, и раньше они были неразличимы (контракт §5).
+     */
+    data class FetchFailed(val error: ConfigFetchError) : ApplyResult
 }
 
 /**
@@ -50,7 +61,13 @@ class ConfigManager(
      */
     suspend fun apply(configId: String, currentVersion: String?): ApplyResult {
         val result = service.fetchConfig(configId)
-        if (result.isFailure) return ApplyResult.Rejected
+        if (result.isFailure) {
+            // Причина сохраняется, а не сводится к «конфиг плохой»: экран обязан
+            // различить истёкшую подписку, отозванный конфиг и недоступную сеть.
+            val error = (result.exceptionOrNull() as? ConfigFetchException)?.error
+                ?: ConfigFetchError.Unexpected(statusCode = 0)
+            return ApplyResult.FetchFailed(error)
+        }
         val fetched = result.getOrThrow()
 
         // Идемпотентность: та же версия — писать нечего.

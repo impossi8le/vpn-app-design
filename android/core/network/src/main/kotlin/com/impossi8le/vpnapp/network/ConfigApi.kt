@@ -1,6 +1,8 @@
 package com.impossi8le.vpnapp.network
 
 import com.impossi8le.vpnapp.domain.config.ConfigList
+import com.impossi8le.vpnapp.domain.config.ConfigFetchError
+import com.impossi8le.vpnapp.domain.config.ConfigFetchException
 import com.impossi8le.vpnapp.domain.config.ConfigService
 import com.impossi8le.vpnapp.domain.config.ConfigSummary
 import com.impossi8le.vpnapp.domain.config.FetchedConfig
@@ -82,14 +84,18 @@ class ConfigApi(
             client.http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     val body = response.body?.string().orEmpty()
+                    // Ошибка переводится в доменный тип: вызывающий обязан
+                    // различить истёкшую подписку, отозванный конфиг и обрыв сети.
                     return@withContext Result.failure(
-                        ApiException(ErrorMapping.fromStatus(response.code, body)),
+                        ConfigFetchException(
+                            ErrorMapping.fromStatus(response.code, body).toConfigFetchError(),
+                        ),
                     )
                 }
 
                 val bytes = response.body?.bytes()
                     ?: return@withContext Result.failure(
-                        ApiException(ApiError.Unexpected(response.code, "пустое тело")),
+                        ConfigFetchException(ConfigFetchError.Unexpected(response.code)),
                     )
 
                 Result.success(
@@ -100,12 +106,12 @@ class ConfigApi(
                     ),
                 )
             }
-        } catch (e: ApiException) {
+        } catch (e: ConfigFetchException) {
             Result.failure(e)
         } catch (e: IOException) {
-            Result.failure(ApiException(ApiError.Network(e.message ?: "сеть недоступна")))
+            Result.failure(ConfigFetchException(ConfigFetchError.NetworkUnavailable))
         } catch (e: Exception) {
-            Result.failure(ApiException(ApiError.Network(e.message ?: "неожиданный сбой")))
+            Result.failure(ConfigFetchException(ConfigFetchError.Unexpected(statusCode = 0)))
         }
     }
 

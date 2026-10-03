@@ -1,5 +1,7 @@
 package com.impossi8le.vpnapp.network
 
+import com.impossi8le.vpnapp.domain.config.ConfigFetchError
+import com.impossi8le.vpnapp.domain.config.ConfigFetchException
 import com.impossi8le.vpnapp.domain.config.SubscriptionStatus
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
@@ -123,16 +125,16 @@ class ConfigApiTest {
             MockResponse().setResponseCode(403).setBody("""{"error":{"code":"config_revoked","message":"отозван"}}"""),
         )
         assertEquals(
-            ApiError.ConfigRevoked,
-            (api.fetchConfig("x").exceptionOrNull() as ApiException).error,
+            ConfigFetchError.ConfigRevoked,
+            (api.fetchConfig("x").exceptionOrNull() as ConfigFetchException).error,
         )
 
         server.enqueue(
             MockResponse().setResponseCode(403).setBody("""{"error":{"code":"subscription_expired","message":"истекла"}}"""),
         )
         assertEquals(
-            ApiError.SubscriptionExpired,
-            (api.fetchConfig("x").exceptionOrNull() as ApiException).error,
+            ConfigFetchError.SubscriptionExpired,
+            (api.fetchConfig("x").exceptionOrNull() as ConfigFetchException).error,
         )
     }
 

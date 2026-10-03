@@ -1,10 +1,13 @@
 package com.impossi8le.vpnapp.config
 
+import com.impossi8le.vpnapp.domain.config.ConfigFetchError
+import com.impossi8le.vpnapp.domain.config.ConfigFetchException
 import com.impossi8le.vpnapp.domain.config.ConfigList
 import com.impossi8le.vpnapp.domain.config.ConfigService
 import com.impossi8le.vpnapp.domain.config.FetchedConfig
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -19,6 +22,13 @@ private class FakeConfigService(
     override suspend fun listConfigs(): Result<ConfigList> = Result.failure(NotImplementedError())
     override suspend fun fetchConfig(configId: String): Result<FetchedConfig> =
         if (failure != null) Result.failure(failure) else Result.success(config!!)
+}
+
+/** Фейк сервиса, падающий типизированной ошибкой получения конфига. */
+private class FailingFetchService(private val error: ConfigFetchError) : ConfigService {
+    override suspend fun listConfigs(): Result<ConfigList> = Result.failure(NotImplementedError())
+    override suspend fun fetchConfig(configId: String): Result<FetchedConfig> =
+        Result.failure(ConfigFetchException(error))
 }
 
 /**
@@ -73,6 +83,29 @@ class ConfigManagerTest {
     }
 
     @Test
+    fun `истёкшая подписка отличается от недоступной сети`() {
+        // Контракт §5 разводит эти случаи: «подписка истекла» — состояние экрана,
+        // конфиг не трогаем; «нет сети» — предложение повторить. Свести их к
+        // одному исходу значит потерять реакцию UI.
+        val expired = ConfigManager(FailingFetchService(ConfigFetchError.SubscriptionExpired), store())
+        val offline = ConfigManager(FailingFetchService(ConfigFetchError.NetworkUnavailable), store())
+
+        assertNotEquals(
+            applyOf(expired),
+            applyOf(offline),
+            "истёкшая подписка и недоступная сеть обязаны различаться",
+        )
+    }
+
+    @Test
+    fun `отозванный конфиг отличается от истёкшей подписки`() {
+        val revoked = ConfigManager(FailingFetchService(ConfigFetchError.ConfigRevoked), store())
+        val expired = ConfigManager(FailingFetchService(ConfigFetchError.SubscriptionExpired), store())
+
+        assertNotEquals(applyOf(revoked), applyOf(expired))
+    }
+
+    @Test
     fun `сбой скачивания не трогает установленный конфиг`() {
         val s = store()
         s.commit(s.stage(valid))
@@ -118,4 +151,8 @@ class ConfigManagerTest {
         currentVersion: String?,
         expected: ApplyResult,
     ) = runTest { assertEquals(expected, manager.apply("nl-ams-1", currentVersion)) }
+
+    /** Результат применения для тестов, сравнивающих исходы между собой. */
+    private fun applyOf(manager: ConfigManager): ApplyResult =
+        kotlinx.coroutines.runBlocking { manager.apply("nl-ams-1", null) }
 }
