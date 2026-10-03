@@ -86,10 +86,13 @@ class ConfigManager(
      * это не повод считать конфиг испорченным.
      */
     private fun hashMatches(fetched: FetchedConfig): Boolean {
-        val expected = fetched.hash.removePrefix("sha256:").takeIf { it.isNotEmpty() }
-            ?: return true
-        val actual = sha256Hex(fetched.raw)
-        return actual.equals(expected, ignoreCase = true)
+        // Пустой заголовок означает «сверять нечего» — это не ошибка конфига.
+        if (fetched.hash.isEmpty()) return true
+
+        // Префикс алгоритма срезается по ':' независимо от регистра: сервер
+        // вправе прислать "sha256:" или "SHA256:", и это не порча конфига.
+        val expected = fetched.hash.substringAfter(':', fetched.hash)
+        return sha256Hex(fetched.raw).equals(expected, ignoreCase = true)
     }
 
     private fun sha256Hex(bytes: ByteArray): String =

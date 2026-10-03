@@ -61,7 +61,15 @@ class FileProfileStore(
     }
 
     override fun rollback() {
-        if (backup.exists()) move(backup, profile)
+        if (backup.exists()) {
+            move(backup, profile)
+        } else {
+            // Откатывать нечего: это была ПЕРВАЯ запись, предыдущей версии нет.
+            // «Вернуть прежнюю» здесь означает «вернуть отсутствие профиля»,
+            // иначе неудачная первая запись остаётся на диске как рабочая.
+            if (profile.exists()) profile.delete()
+            if (pending.exists()) pending.delete()
+        }
     }
 
     override fun clear() {
