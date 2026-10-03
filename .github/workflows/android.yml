@@ -69,8 +69,18 @@ jobs:
       # и их задача называется `test`. С `testDebugUnitTest` самые важные тесты
       # (домен, инвариант защиты, протокол записи) молча не запускались бы.
       # `test` покрывает оба вида модулей.
+      # Вывод Gradle заворачивается в аннотацию: скачать лог джобы может только
+      # администратор репозитория, а аннотации доступны через check-runs API
+      # любому, у кого есть доступ на чтение. Без этого отладка вслепую.
       - name: Unit tests
-        run: ./gradlew test --no-daemon
+        run: |
+          set +e
+          ./gradlew test --no-daemon 2>&1 | tee gradle-test.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::error title=Gradle test failed::$(grep -E 'e: |error:|FAILED|Execution failed|Could not|Caused by|> ' gradle-test.log | head -40 | tr '\n' '|')"
+          fi
+          exit "$status"
 
       # Зелёная сборка без единого выполненного теста — худший отказ этого проекта:
       # инвариант защиты и протокол записи считались бы проверенными, не будучи
