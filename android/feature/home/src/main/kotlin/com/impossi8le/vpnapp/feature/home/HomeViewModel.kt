@@ -8,10 +8,8 @@ import com.impossi8le.vpnapp.domain.protection.ReverificationPolicy
 import com.impossi8le.vpnapp.domain.tunnel.TunnelControlling
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 
@@ -30,9 +28,10 @@ import kotlinx.coroutines.yield
  * описывал прежнее состояние сети; после смены он недействителен, и зелёное не
  * должно его пережить. Это требование §6, а не оптимизация.
  *
- * Повторная проверка по времени и по смене сети делегирована [ProtectionWatcher]:
- * это самостоятельная ответственность со своей политикой, и она проверяется
- * отдельными тестами.
+ * [status] обновляется явно, а не через `stateIn(viewModelScope, Eagerly)`.
+ * `stateIn` заводит корутину в `viewModelScope`, которая живёт до `onCleared()`
+ * и не отменяется вместе с наблюдением — то есть остаётся висеть после [stop].
+ * Здесь этого нет: после [stop] не остаётся ни одной живой корутины.
  *
  * Зависимость на [ProtectionGate], а не на пробу, не даёт этому классу собрать
  * `Protected` руками: `ProtectionEvidence` вне `core:domain` не конструируется.
@@ -48,21 +47,18 @@ class HomeViewModel(
     /** Результат последнего замера. `null` — замера для текущего состояния нет. */
     private val measured = MutableStateFlow<ConnectionStatus?>(null)
 
+    private val _status = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
+    val status: StateFlow<ConnectionStatus> = _status.asStateFlow()
+
     private val watcher = ProtectionWatcher(gate, policy)
-
-    val status: StateFlow<ConnectionStatus> =
-        combine(system, measured) { sys, verdict -> resolve(sys, verdict) }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, ConnectionStatus.Disconnected)
-
     private var statusJob: Job? = null
 
     /**
      * Начать наблюдение за туннелем и защитой.
      *
-     * Вызывается экраном при появлении, а НЕ из конструктора. Причина не только
-     * в тестируемости: таймер перепроверки делает сетевые обращения, и запускать
-     * его до того, как экран показан, значит опрашивать сеть в фоне без причины.
-     * Останавливается в [stop] при уходе с экрана.
+     * Вызывается экраном при появлении, а НЕ из конструктора: таймер
+     * перепроверки делает сетевые обращения, и запускать его до того, как экран
+     * показан, значит опрашивать сеть в фоне без причины.
      */
     fun start() {
         if (statusJob?.isActive == true) return
@@ -73,14 +69,15 @@ class HomeViewModel(
                 // прежней сети, а не к этой.
                 measured.value = null
                 system.value = incoming
+                recompute()
             }
         }
 
         watcher.start(
             scope = viewModelScope,
             networkChanges = tunnel.networkChanges,
-            onVerdict = { measured.value = it },
-            onInvalidated = { measured.value = null },
+            onVerdict = { measured.value = it; recompute() },
+            onInvalidated = { measured.value = null; recompute() },
         )
     }
 
@@ -101,6 +98,7 @@ class HomeViewModel(
         tunnel.connect()
         yield()
         measured.value = gate.evaluate()
+        recompute()
     }
 
     suspend fun disconnect() {
@@ -110,12 +108,17 @@ class HomeViewModel(
     /** Перепроверка по требованию, например с кнопки «проверить снова». */
     suspend fun reverify() {
         measured.value = gate.evaluate()
+        recompute()
         tunnel.reverifyProtection()
     }
 
     override fun onCleared() {
         stop()
         super.onCleared()
+    }
+
+    private fun recompute() {
+        _status.value = resolve(system.value, measured.value)
     }
 
     /**

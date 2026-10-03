@@ -27,5 +27,9 @@ allprojects {
 subprojects {
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
+        // Зависший тест не должен держать джобу до её таймаута в шесть часов:
+        // это скрывает причину и съедает минуты CI. Падаем быстро и с внятным
+        // сообщением о зависании.
+        timeout.set(java.time.Duration.ofMinutes(5))
     }
 }
