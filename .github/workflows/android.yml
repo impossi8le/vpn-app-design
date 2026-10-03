@@ -91,6 +91,32 @@ jobs:
           fi
           exit "$status"
 
+      # Имя упавшего теста без текста утверждения отладке не помогает: неясно,
+      # что именно вернул код. Аннотация несёт только первую строку, поэтому
+      # сообщения собираются из XML-отчётов в отдельную аннотацию.
+      - name: Report test failures
+        if: failure()
+        run: |
+          python3 - <<'PY' > failures.txt || true
+          import glob, xml.etree.ElementTree as ET
+          for path in glob.glob('**/TEST-*.xml', recursive=True):
+              try:
+                  root = ET.parse(path).getroot()
+              except Exception:
+                  continue
+              for case in root.iter('testcase'):
+                  for fail in list(case.iter('failure')) + list(case.iter('error')):
+                      name = f"{case.get('classname')}.{case.get('name')}"
+                      message = (fail.get('message') or '').strip()
+                      body = [l for l in (fail.text or '').strip().splitlines() if l.strip()][:4]
+                      print(f"--- {name}\n{message}")
+                      for line in body:
+                          print(f"    {line}")
+          PY
+          if [ -s failures.txt ]; then
+            echo "::error title=Test failures::$(sed 's/"/\x27/g' failures.txt | tr '\n' '|' | cut -c1-4000)"
+          fi
+
       # Зелёная сборка без единого выполненного теста — худший отказ этого проекта:
       # инвариант защиты и протокол записи считались бы проверенными, не будучи
       # запущенными ни разу. JUnit5 при отсутствии движка/лаунчера именно так и
