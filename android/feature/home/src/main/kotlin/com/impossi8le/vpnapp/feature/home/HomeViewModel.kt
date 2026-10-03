@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
+import com.impossi8le.vpnapp.domain.protection.ReverificationPolicy
 import com.impossi8le.vpnapp.domain.tunnel.TunnelControlling
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,7 +27,11 @@ import kotlinx.coroutines.yield
  *
  * Ключевое свойство: **любое новое состояние туннеля обнуляет замер.** Замер
  * описывал прежнее состояние сети; после смены он недействителен, и зелёное не
- * должно его пережить. Это не оптимизация, а требование §6.
+ * должно его пережить. Это требование §6, а не оптимизация.
+ *
+ * Повторная проверка по времени и по смене сети делегирована [ProtectionWatcher]:
+ * это самостоятельная ответственность со своей политикой, и она проверяется
+ * отдельными тестами.
  *
  * Зависимость на [ProtectionGate], а не на пробу, не даёт этому классу собрать
  * `Protected` руками: `ProtectionEvidence` вне `core:domain` не конструируется.
@@ -34,12 +39,15 @@ import kotlinx.coroutines.yield
 class HomeViewModel(
     private val tunnel: TunnelControlling,
     private val gate: ProtectionGate,
+    policy: ReverificationPolicy = ReverificationPolicy.Default,
 ) : ViewModel() {
 
     private val system = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
 
     /** Результат последнего замера. `null` — замера для текущего состояния нет. */
     private val measured = MutableStateFlow<ConnectionStatus?>(null)
+
+    private val watcher = ProtectionWatcher(gate, policy)
 
     val status: StateFlow<ConnectionStatus> =
         combine(system, measured) { sys, verdict -> resolve(sys, verdict) }
@@ -54,12 +62,13 @@ class HomeViewModel(
                 system.value = incoming
             }
         }
-        viewModelScope.launch {
-            // ОТДЕЛЬНЫЙ канал: смена сети может не изменить `status` вовсе,
-            // а StateFlow одинаковые значения схлопывает. Без этой подписки
-            // зелёное пережило бы роуминг, если статус остался «поднято».
-            tunnel.networkChanges.collect { measured.value = null }
-        }
+
+        watcher.start(
+            scope = viewModelScope,
+            networkChanges = tunnel.networkChanges,
+            onVerdict = { measured.value = it },
+            onInvalidated = { measured.value = null },
+        )
     }
 
     /**
@@ -78,10 +87,15 @@ class HomeViewModel(
         tunnel.disconnect()
     }
 
-    /** Перепроверка при смене сети: зелёное не сохраняется, а подтверждается заново. */
+    /** Перепроверка по требованию, например с кнопки «проверить снова». */
     suspend fun reverify() {
         measured.value = gate.evaluate()
         tunnel.reverifyProtection()
+    }
+
+    override fun onCleared() {
+        watcher.stop()
+        super.onCleared()
     }
 
     /**

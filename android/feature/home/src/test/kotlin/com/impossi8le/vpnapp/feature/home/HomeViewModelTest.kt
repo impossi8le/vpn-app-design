@@ -2,6 +2,7 @@ package com.impossi8le.vpnapp.feature.home
 
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
+import com.impossi8le.vpnapp.domain.protection.ReverificationPolicy
 import com.impossi8le.vpnapp.testsupport.FactProbe
 import com.impossi8le.vpnapp.testsupport.FakeTunnelControlling
 import com.impossi8le.vpnapp.testsupport.ThrowingProbe
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Ловушка на ложную защиту.
@@ -31,7 +33,16 @@ class HomeViewModelTest {
     private fun viewModel(
         tunnel: FakeTunnelControlling,
         probe: com.impossi8le.vpnapp.domain.protection.ProtectionProbe,
-    ) = HomeViewModel(tunnel, ProtectionGate(probe))
+    ) = HomeViewModel(
+        tunnel,
+        ProtectionGate(probe),
+        // Таймер перепроверки в этих тестах не нужен: он проверяется отдельно
+        // в ProtectionWatcherTest. Здесь важна только логика состояний.
+        ReverificationPolicy(
+            interval = 60.seconds,
+            onNetworkChange = true,
+        ),
+    )
 
     @Test
     fun `поднятый туннель сам по себе не даёт зелёного`() = runTest(mainDispatcher.scheduler) {
