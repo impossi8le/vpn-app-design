@@ -34,3 +34,19 @@ android/captures/
 *.jks
 *.keystore
 android/app/release/
+
+# Черновые файлы разбора CI (ответы GitHub API, логи прогонов). В репозитории
+# им не место: это мусор от отладки, а не часть проекта.
+/j.json
+/a.json
+/r.json
+/cs.json
+/cr.json
+/ra.json
+/jobs.json
+/log.txt
+/err.txt
+/gradle-test.log
+/instrumented.log
+/failures.txt
+/*.log
