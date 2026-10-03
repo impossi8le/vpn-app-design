@@ -111,29 +111,36 @@ jobs:
           echo "--- есть ли ovpncli.i для SWIG ---"
           ls -la client/ovpncli.i
 
-      # Пробуем собрать через CMake-пресет проекта, с android-toolchain NDK.
-      # Если пресет не подойдёт — это и есть ответ «путь тяжелее, чем казалось».
+      # Конфигурация под Android через vcpkg + NDK.
+      #
+      # Два урока из прогонов, которые надо держать в голове:
+      #  1. `VCPKG_CHAINLOAD_TOOLCHAIN_FILE` с NDK-тулчейном ОБЯЗАТЕЛЕН. Без него
+      #     `CMAKE_SYSTEM_NAME` остаётся `Linux`, и ядро начинает искать
+      #     Linux-утилиты (`libcap`, `libnl-genl`), которых на Android нет:
+      #     ровно это и упало в прогоне 37159078551.
+      #  2. Тесты выключаются флагом `BUILD_TESTING=OFF` — внутри своей
+      #     CMakeLists они делают `if (NOT BUILD_TESTING) return()`. Имя
+      #     `ENABLE_TESTING` не подходит: это опция mbedTLS, и она ни на что
+      #     здесь не влияет.
       - name: Configure for Android arm64
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/engine/openvpn3"
-          cat > /tmp/android-toolchain.cmake <<'EOF'
-          set(CMAKE_SYSTEM_NAME Android)
-          set(CMAKE_SYSTEM_VERSION 26)
-          set(CMAKE_ANDROID_ARCH_ABI arm64-v8a)
-          set(CMAKE_ANDROID_NDK $ENV{NDK_PATH})
-          set(CMAKE_ANDROID_STL_TYPE c++_static)
-          set(CMAKE_CXX_STANDARD 23)
-          EOF
+          ndk_toolchain="$NDK_PATH/build/cmake/android.toolchain.cmake"
+          [ -f "$ndk_toolchain" ] || { echo "нет NDK-тулчейна: $ndk_toolchain"; exit 1; }
+
           cmake -S . -B build-android \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ndk_toolchain" \
             -DVCPKG_TARGET_TRIPLET=arm64-android \
             -DVCPKG_OVERLAY_TRIPLETS="$VCPKG_ROOT/triplets/community" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-26 \
+            -DANDROID_STL=c++_static \
             -DCMAKE_BUILD_TYPE=Release \
             -DASIO_INCLUDE_DIR="$ASIO_INCLUDE_DIR" \
-            -DOPENSSL_ROOT_DIR="$VCPKG_ROOT/installed/arm64-android" \
+            -DBUILD_TESTING=OFF \
             -DENABLE_PROGRAMS=OFF \
-            -DENABLE_TESTING=OFF \
             2>&1 | tail -40
 
       - name: Build
