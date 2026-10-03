@@ -8,19 +8,25 @@ import com.impossi8le.vpnapp.domain.tunnel.TunnelAddressing
 import com.impossi8le.vpnapp.domain.tunnel.TunnelPlan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
  * То, что про туннель проверяется ТОЛЬКО на устройстве.
  *
+ * ИМЕНА МЕТОДОВ ЗДЕСЬ БЕЗ ПРОБЕЛОВ И БЕЗ ОБРАТНЫХ КАВЫЧЕК, и это не стиль.
+ * Инструментальные тесты компилируются в DEX, а D8 до версии 040 запрещает
+ * пробелы в именах методов: «Space characters in SimpleName ... are not allowed
+ * prior to DEX version 040». На JVM обратные кавычки работают, здесь — ломают
+ * сборку. Поэтому в `src/test` имена описательные, а в `src/androidTest` — camelCase.
+ *
  * Чего здесь НЕТ и почему:
  *  - `VpnService.Builder` **невозможно построить в тесте**. Это внутренний класс
- *    (`inner class Builder`), и его конструктор требует получателя — экземпляр
- *    `VpnService`, которому система выделила fd. Собрать его в инструментальном
- *    тесте нечем, поэтому попытка «проверить настройку Builder» — проверка
- *    неверного предположения, а не кода. Правила настройки проверяются на JVM
- *    через [TunnelPlan], где они и живут.
+ *    (`inner class Builder`), его конструктор требует получателя — экземпляр
+ *    `VpnService`, которому система выделила fd. Собрать его нечем, поэтому
+ *    «проверка настройки Builder» была бы проверкой неверного предположения.
+ *    Правила настройки живут в [TunnelPlan] и проверяются на JVM.
  *  - проба защиты (§6) и прохождение трафика требуют живого сервера: эмулятор
  *    даёт сетевой стек, но не даёт сервера.
  */
@@ -30,7 +36,7 @@ class TunnelPlanInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Test
-    fun `система знает о нашем VpnService`() {
+    fun systemKnowsAboutOurVpnService() {
         // prepare() возвращает null, когда согласие уже получено, и Intent, когда
         // его надо запросить. Отсутствие исключения означает, что сервис объявлен
         // корректно и зарегистрирован системой — а это проверяется только на
@@ -43,7 +49,7 @@ class TunnelPlanInstrumentedTest {
     }
 
     @Test
-    fun `план туннеля содержит оба маршрута и DNS из профиля`() {
+    fun tunnelPlanCarriesBothRoutesAndProfileDns() {
         // Значения плана от платформы не зависят, но здесь они читаются тем же
         // кодом, что пойдёт в сервис, — так ловится расхождение между доменом и
         // тем, что реально соберёт приложение.
@@ -64,12 +70,12 @@ class TunnelPlanInstrumentedTest {
     }
 
     @Test
-    fun `план не собирается без DNS`() {
+    fun planIsRejectedWithoutDns() {
         // Отрицательный случай: без DNS запросы ушли бы системному резолверу
         // мимо туннеля, поэтому такой план обязан отвергаться.
         try {
             TunnelPlan.build(TunnelAddressing("10.8.0.2", 24, emptyList()))
-            throw AssertionError("план без DNS должен быть отвергнут")
+            fail("план без DNS должен быть отвергнут")
         } catch (expected: IllegalArgumentException) {
             // Именно это и ожидалось.
         }

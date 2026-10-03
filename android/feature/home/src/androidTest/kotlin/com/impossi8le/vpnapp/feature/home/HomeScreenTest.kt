@@ -14,10 +14,14 @@ import org.junit.Test
 /**
  * Экран как его видит пользователь.
  *
- * На JVM уже проверено, что `presentation()` выбирает правильный текст и цвет;
- * здесь проверяется то, чего на JVM не видно: что это решение действительно
- * доходит до экрана. Тест падает, если кто-то однажды захардкодит зелёный
- * заголовок в разметке, минуя `presentation()`.
+ * ИМЕНА МЕТОДОВ БЕЗ ПРОБЕЛОВ И ОБРАТНЫХ КАВЫЧЕК: инструментальные тесты идут в
+ * DEX, а D8 до версии 040 запрещает пробелы в именах методов. На JVM обратные
+ * кавычки работают, здесь ломают сборку.
+ *
+ * На JVM уже проверено, что `presentation()` выбирает правильный текст и цвет.
+ * Здесь проверяется то, чего на JVM не видно: что решение действительно доходит
+ * до экрана. Тест падает, если кто-то захардкодит зелёный заголовок в разметке
+ * мимо `presentation()` — это и был дефект, найденный на UX-ревью.
  */
 class HomeScreenTest {
 
@@ -35,7 +39,7 @@ class HomeScreenTest {
     }
 
     @Test
-    fun `поднятый туннель показывает «не проверено», а не «защищено»`() {
+    fun raisedTunnelShowsNotVerifiedRatherThanProtected() {
         setScreen(ConnectionStatus.VerifyingProtection)
 
         // Главный дефект UX-ревью: зелёный заголовок при неподтверждённой защите.
@@ -45,7 +49,7 @@ class HomeScreenTest {
     }
 
     @Test
-    fun `подтверждённая защита показывает «защищено»`() {
+    fun confirmedProtectionShowsProtected() {
         setScreen(protected())
 
         compose.onNodeWithText("Защищено").assertIsDisplayed()
@@ -53,7 +57,7 @@ class HomeScreenTest {
     }
 
     @Test
-    fun `сбой пробы объясняет, что защиты нет`() {
+    fun probeFailureExplainsThereIsNoProtection() {
         setScreen(
             ConnectionStatus.ProtectionFailed(
                 ProtectionVerdict.evaluate(false, true, true) as ProtectionVerdict.Failed,
@@ -64,7 +68,7 @@ class HomeScreenTest {
     }
 
     @Test
-    fun `кнопка зовёт подключение, когда защиты нет`() {
+    fun actionButtonCallsConnectWhenNotProtected() {
         var connected = 0
         var disconnected = 0
         setScreen(ConnectionStatus.Disconnected, onConnect = { connected++ }, onDisconnect = { disconnected++ })
@@ -76,7 +80,7 @@ class HomeScreenTest {
     }
 
     @Test
-    fun `кнопка зовёт отключение только на подтверждённой защите`() {
+    fun actionButtonCallsDisconnectOnlyWhenProtected() {
         var connected = 0
         var disconnected = 0
         setScreen(protected(), onConnect = { connected++ }, onDisconnect = { disconnected++ })
@@ -88,7 +92,7 @@ class HomeScreenTest {
     }
 
     @Test
-    fun `экран отключённого состояния нейтрален`() {
+    fun disconnectedStateIsNeutral() {
         setScreen(ConnectionStatus.Disconnected)
 
         compose.onNodeWithText("Отключено").assertIsDisplayed()
