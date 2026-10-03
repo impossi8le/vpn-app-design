@@ -50,6 +50,22 @@ jobs:
       - name: Unit tests
         run: ./gradlew test --no-daemon
 
+      # Зелёная сборка без единого выполненного теста — худший отказ этого проекта:
+      # инвариант защиты и протокол записи считались бы проверенными, не будучи
+      # запущенными ни разу. JUnit5 при отсутствии движка/лаунчера именно так и
+      # ведёт себя — молча. Поэтому число выполненных тестов проверяется явно.
+      - name: Assert tests actually ran
+        run: |
+          set -euo pipefail
+          total=$(find . -path '*/test-results/*' -name 'TEST-*.xml' -exec \
+            grep -ho 'tests="[0-9]*"' {} + 2>/dev/null \
+            | grep -o '[0-9]*' | awk '{s+=$1} END{print s+0}')
+          echo "Выполнено тестов: ${total:-0}"
+          if [ "${total:-0}" -eq 0 ]; then
+            echo "::error::Ни один тест не выполнился. Сборка зелёная, но ничего не проверено."
+            exit 1
+          fi
+
       - name: Assemble debug
         run: ./gradlew :app:assembleDebug --no-daemon
 
@@ -57,38 +73,52 @@ jobs:
     name: Signed release APK
     runs-on: ubuntu-latest
     needs: test
-    # Пока keystore не создан и секреты не заведены, релиз-джоба не может пройти —
-    # сходить красным она будет на КАЖДОМ пуше в main и прятать реальные ошибки.
-    # Поэтому: нет секрета → джоба пропускается с явным сообщением, а не падает.
-    # Как только ANDROID_KEYSTORE_BASE64 появится, джоба включается сама.
-    if: >-
-      github.ref == 'refs/heads/main' && github.event_name == 'push'
-      && secrets.ANDROID_KEYSTORE_BASE64 != ''
+    # ВАЖНО: `secrets` НЕДОСТУПЕН в job-level `if` — GitHub отвергает такой
+    # workflow целиком (прогон создаётся, но с нулём джобов). Поэтому проверка
+    # наличия секретов вынесена в первый шаг, а остальные шаги гейтятся его
+    # результатом. Нет keystore → джоба проходит шумно, но не краснеет.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     defaults:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v4
+      - name: Check signing secrets
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::notice::ANDROID_KEYSTORE_BASE64 не задан — подписанный релиз пропущен."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Set up JDK 17
+      - if: steps.signing.outputs.ok == 'true'
+        uses: actions/checkout@v4
+
+      - if: steps.signing.outputs.ok == 'true'
+        name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
+      - if: steps.signing.outputs.ok == 'true'
+        name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Set up Gradle cache
+      - if: steps.signing.outputs.ok == 'true'
+        name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
       # versionCode обязан расти, иначе APK не установится поверх предыдущего (§10.3).
-      # Используем номер прогона CI как монотонный счётчик.
-      #
-      # Проверяются ВСЕ четыре секрета, а не только keystore: если keystore задан,
-      # а пароль нет, signingConfig получит null и сборка упадёт в фазе подписи
-      # с невнятной ошибкой вместо явного «секрет не задан».
-      - name: Decode keystore
+      # run_number монотонен в пределах workflow; для релиза нужен ещё и монотонный
+      # рост относительно уже опубликованного APK — см. §14.
+      # Проверяются ВСЕ четыре секрета: keystore без пароля даёт null storePassword
+      # и невнятное падение в фазе подписи вместо явного «секрет не задан».
+      - if: steps.signing.outputs.ok == 'true'
+        name: Decode keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -105,7 +135,8 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
 
-      - name: Build signed release
+      - if: steps.signing.outputs.ok == 'true'
+        name: Build signed release
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -113,23 +144,26 @@ jobs:
           ANDROID_VERSION_CODE: ${{ github.run_number }}
           ANDROID_VERSION_NAME: "1.0.${{ github.run_number }}"
           # Требуем подпись жёстко: без этого assembleRelease молча выпускает
-          # app-release-unsigned.apk, а глоб ниже подхватит его как релиз (§10.3).
+          # app-release-unsigned.apk, а глоб ниже подхватил бы его как релиз (§10.3).
           REQUIRE_SIGNING: "true"
         run: ./gradlew :app:assembleRelease --no-daemon
 
       # Неподписанный APK не должен доехать до артефакта: глоб */*.apk его поймает.
-      - name: Verify APK is signed
+      - if: steps.signing.outputs.ok == 'true'
+        name: Verify APK is signed
         run: |
           set -euo pipefail
           apk=$(ls app/build/outputs/apk/release/*.apk)
           case "$apk" in
             *unsigned*) echo "::error::Собран неподписанный APK: $apk"; exit 1 ;;
           esac
-          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$apk"
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --print-certs "$apk"
 
       # APK публикуется как артефакт прогона; бот забирает его через
       # GitHub Release / artifact API (см. §10.3 архитектуры).
-      - name: Upload APK
+      - if: steps.signing.outputs.ok == 'true'
+        name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: vpn-app-android-${{ github.run_number }}

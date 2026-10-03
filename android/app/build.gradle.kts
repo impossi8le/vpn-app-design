@@ -7,6 +7,12 @@ plugins {
 }
 
 android {
+    // JUnit5 в android-модулях: по умолчанию AGP ищет JUnit4 и на JUnit5
+    // находит НОЛЬ тестов, завершаясь успешно. Это ложная зелень.
+    testOptions {
+        unitTests.all { it.useJUnitPlatform() }
+    }
+
     namespace = "com.impossi8le.vpnapp"
     compileSdk = 35
 
@@ -91,4 +97,5 @@ dependencies {
 
     testImplementation(libs.junit5.api)
     testRuntimeOnly(libs.junit5.engine)
+    testRuntimeOnly(libs.junit5.launcher)
 }

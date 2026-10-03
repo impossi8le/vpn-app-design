@@ -52,6 +52,10 @@ security-crypto = { module = "androidx.security:security-crypto", version.ref = 
 junit5-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit5" }
 junit5-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit5" }
 junit5-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit5" }
+# Лаунчер объявляется явно на каждом модуле. Без него Gradle полагается на то,
+# что движок подтянет его транзитивно; при несовпадении версий это даёт НОЛЬ
+# выполненных тестов при успешно завершённой задаче — ложная зелень.
+junit5-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 core-library-desugaring = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar" }

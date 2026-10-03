@@ -9,10 +9,17 @@
       В приложении лежат сессия и профиль с приватным ключом. Системный автобэкап
       утащил бы их в облако Google, чего для privacy-инструмента допускать нельзя.
       Смена устройства = повторный вход через бота, а не восстановление ключей.
+
+      allowBackup одного НЕДОСТАТОЧНО (аудит 2026-10-03): начиная с Android 12
+      device-to-device перенос управляется отдельно, а часть OEM игнорирует сам
+      флаг. Поэтому дополнительно заданы dataExtractionRules и fullBackupContent —
+      оба запрещают и облако, и прямой перенос на новое устройство.
     -->
     <application
         android:label="@string/app_name"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:supportsRtl="true"
         android:theme="@style/Theme.VpnApp">
 

@@ -15,6 +15,7 @@ dependencies {
     testImplementation(libs.junit5.api)
     testImplementation(libs.coroutines.test)
     testRuntimeOnly(libs.junit5.engine)
+    testRuntimeOnly(libs.junit5.launcher)
 }
 
 tasks.test {
