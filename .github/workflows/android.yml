@@ -119,9 +119,9 @@ jobs:
     # наличия секретов вынесена в первый шаг, а остальные шаги гейтятся его
     # результатом. Нет keystore → джоба проходит шумно, но не краснеет.
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    defaults:
-      run:
-        working-directory: android
+    # working-directory задаётся ПОШАГОВО, а не через defaults: первый шаг
+    # выполняется до checkout, и каталога android ещё не существует — джоба
+    # падает на запуске bash с «No such file or directory».
     steps:
       - name: Check signing secrets
         id: signing
@@ -180,6 +180,7 @@ jobs:
 
       - if: steps.signing.outputs.ok == 'true'
         name: Build signed release
+        working-directory: android
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -194,6 +195,7 @@ jobs:
       # Неподписанный APK не должен доехать до артефакта: глоб */*.apk его поймает.
       - if: steps.signing.outputs.ok == 'true'
         name: Verify APK is signed
+        working-directory: android
         run: |
           set -euo pipefail
           apk=$(ls app/build/outputs/apk/release/*.apk)
