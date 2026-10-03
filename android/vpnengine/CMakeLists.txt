@@ -30,10 +30,17 @@ endif()
 # зависеть от раскладки.
 set(DEP_DIR "${OPENVPN3_DIR}/../deps" CACHE PATH "Dependencies")
 
+# --- зависимости ядра -------------------------------------------------------
+# findcoredeps должен быть подключён ДО любого find_package(asio/lz4/fmt):
+# он добавляет свой модульный путь (cmake/) и через add_core_dependencies
+# цепляет зависимости к цели. Без него CMake ищет asio обычным способом и
+# падает с «Findasio.cmake not provided» — это и была ошибка прогона.
+list(APPEND CMAKE_MODULE_PATH "${OPENVPN3_DIR}/cmake")
+include(${OPENVPN3_DIR}/cmake/findcoredeps.cmake)
+
 # --- Java через SWIG ---------------------------------------------------------
-# findswigdeps подтягивает SWIG и настраивает генерацию. Для Java версию языка
-# задаём здесь: в upstream этого нет, он собирает только Python.
-find_package(SWIG 4.0 REQUIRED COMPONENTS java)
+# Для Java версию языка задаём здесь: в upstream настроен только Python.
+find_package(SWIG 4.0 REQUIRED java)
 include(${SWIG_USE_FILE})
 
 set(CMAKE_SWIG_FLAGS
@@ -65,7 +72,6 @@ set_target_properties(ovpn3 PROPERTIES
 
 # Добавляет все исходники ядра, зависимости (asio, lz4, fmt, openssl/mbedtls)
 # и нужные определяющие макросы к нашей цели.
-include(${OPENVPN3_DIR}/cmake/findcoredeps.cmake)
 add_core_dependencies(ovpn3)
 
 target_compile_options(ovpn3 PRIVATE
