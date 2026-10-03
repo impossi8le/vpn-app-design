@@ -1,0 +1,377 @@
+{
+  "total_count": 3,
+  "jobs": [
+    {
+      "id": 111275299963,
+      "run_id": 37147824643,
+      "workflow_name": "Android",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/impossi8le/vpn-app-design/actions/runs/37147824643",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOU4h9NM8AAAAZ6IZUew",
+      "head_sha": "8fb269c8c387b02352e27c6e6d12476a8fa7ecc9",
+      "url": "https://api.github.com/repos/impossi8le/vpn-app-design/actions/jobs/111275299963",
+      "html_url": "https://github.com/impossi8le/vpn-app-design/actions/runs/37147824643/job/111275299963",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-03T19:25:18Z",
+      "started_at": "2026-10-03T19:25:21Z",
+      "completed_at": "2026-10-03T19:27:18Z",
+      "name": "Build + unit tests",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-03T19:25:22Z",
+          "completed_at": "2026-10-03T19:25:23Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-03T19:25:23Z",
+          "completed_at": "2026-10-03T19:25:24Z"
+        },
+        {
+          "name": "Set up JDK 17",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-03T19:25:24Z",
+          "completed_at": "2026-10-03T19:25:24Z"
+        },
+        {
+          "name": "Point Gradle at the preinstalled Android SDK",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-03T19:25:24Z",
+          "completed_at": "2026-10-03T19:25:24Z"
+        },
+        {
+          "name": "Ensure platform 35 and build-tools",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-03T19:25:24Z",
+          "completed_at": "2026-10-03T19:25:35Z"
+        },
+        {
+          "name": "Set up Gradle cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-03T19:25:35Z",
+          "completed_at": "2026-10-03T19:25:41Z"
+        },
+        {
+          "name": "Unit tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-03T19:25:41Z",
+          "completed_at": "2026-10-03T19:26:36Z"
+        },
+        {
+          "name": "Report test failures",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 8,
+          "started_at": "2026-10-03T19:26:36Z",
+          "completed_at": "2026-10-03T19:26:36Z"
+        },
+        {
+          "name": "Assert tests actually ran",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-03T19:26:36Z",
+          "completed_at": "2026-10-03T19:26:36Z"
+        },
+        {
+          "name": "Assemble debug",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-03T19:26:36Z",
+          "completed_at": "2026-10-03T19:26:51Z"
+        },
+        {
+          "name": "Post Set up Gradle cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-10-03T19:26:51Z",
+          "completed_at": "2026-10-03T19:27:17Z"
+        },
+        {
+          "name": "Post Set up JDK 17",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-10-03T19:27:17Z",
+          "completed_at": "2026-10-03T19:27:17Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 20,
+          "started_at": "2026-10-03T19:27:17Z",
+          "completed_at": "2026-10-03T19:27:17Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-10-03T19:27:17Z",
+          "completed_at": "2026-10-03T19:27:17Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/impossi8le/vpn-app-design/check-runs/111275299963",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000000585,
+      "runner_name": "GitHub Actions 1000000585",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 111275647220,
+      "run_id": 37147824643,
+      "workflow_name": "Android",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/impossi8le/vpn-app-design/actions/runs/37147824643",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOU4h9NM8AAAAZ6Iug9A",
+      "head_sha": "8fb269c8c387b02352e27c6e6d12476a8fa7ecc9",
+      "url": "https://api.github.com/repos/impossi8le/vpn-app-design/actions/jobs/111275647220",
+      "html_url": "https://github.com/impossi8le/vpn-app-design/actions/runs/37147824643/job/111275647220",
+      "status": "in_progress",
+      "conclusion": null,
+      "created_at": "2026-10-03T19:27:19Z",
+      "started_at": "2026-10-03T19:27:21Z",
+      "completed_at": null,
+      "name": "Instrumented (emulator)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-03T19:27:22Z",
+          "completed_at": "2026-10-03T19:27:23Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-03T19:27:23Z",
+          "completed_at": "2026-10-03T19:27:24Z"
+        },
+        {
+          "name": "Set up JDK 17",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-03T19:27:24Z",
+          "completed_at": "2026-10-03T19:27:24Z"
+        },
+        {
+          "name": "Point Gradle at the preinstalled Android SDK",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-03T19:27:24Z",
+          "completed_at": "2026-10-03T19:27:24Z"
+        },
+        {
+          "name": "Set up Gradle cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-03T19:27:24Z",
+          "completed_at": "2026-10-03T19:27:31Z"
+        },
+        {
+          "name": "Enable KVM",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-03T19:27:31Z",
+          "completed_at": "2026-10-03T19:27:31Z"
+        },
+        {
+          "name": "Instrumented tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-03T19:27:31Z",
+          "completed_at": "2026-10-03T19:29:17Z"
+        },
+        {
+          "name": "Report instrumented failures",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 8,
+          "started_at": "2026-10-03T19:29:17Z",
+          "completed_at": "2026-10-03T19:29:17Z"
+        },
+        {
+          "name": "Post Set up Gradle cache",
+          "status": "in_progress",
+          "conclusion": null,
+          "number": 14,
+          "started_at": "2026-10-03T19:29:17Z",
+          "completed_at": null
+        },
+        {
+          "name": "Post Set up JDK 17",
+          "status": "pending",
+          "conclusion": null,
+          "number": 15,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "pending",
+          "conclusion": null,
+          "number": 16,
+          "started_at": null,
+          "completed_at": null
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/impossi8le/vpn-app-design/check-runs/111275647220",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000000587,
+      "runner_name": "GitHub Actions 1000000587",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 111275647269,
+      "run_id": 37147824643,
+      "workflow_name": "Android",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/impossi8le/vpn-app-design/actions/runs/37147824643",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOU4h9NM8AAAAZ6IuhJQ",
+      "head_sha": "8fb269c8c387b02352e27c6e6d12476a8fa7ecc9",
+      "url": "https://api.github.com/repos/impossi8le/vpn-app-design/actions/jobs/111275647269",
+      "html_url": "https://github.com/impossi8le/vpn-app-design/actions/runs/37147824643/job/111275647269",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-03T19:27:19Z",
+      "started_at": "2026-10-03T19:27:21Z",
+      "completed_at": "2026-10-03T19:27:28Z",
+      "name": "Signed release APK",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-03T19:27:22Z",
+          "completed_at": "2026-10-03T19:27:25Z"
+        },
+        {
+          "name": "Check signing secrets",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-03T19:27:25Z",
+          "completed_at": "2026-10-03T19:27:26Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 3,
+          "started_at": "2026-10-03T19:27:26Z",
+          "completed_at": "2026-10-03T19:27:26Z"
+        },
+        {
+          "name": "Set up JDK 17",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 4,
+          "started_at": "2026-10-03T19:27:26Z",
+          "completed_at": "2026-10-03T19:27:26Z"
+        },
+        {
+          "name": "Point Gradle at the preinstalled Android SDK",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-10-03T19:27:26Z",
+          "completed_at": "2026-10-03T19:27:26Z"
+        },
+        {
+          "name": "Set up Gradle cache",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 6,
+          "started_at": "2026-10-03T19:27:26Z",
+          "completed_at": "2026-10-03T19:27:26Z"
+        },
+        {
+          "name": "Decode keystore",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 7,
+          "started_at": "2026-10-03T19:27:26Z",
+          "completed_at": "2026-10-03T19:27:26Z"
+        },
+        {
+          "name": "Build signed release",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 8,
+          "started_at": "2026-10-03T19:27:26Z",
+          "completed_at": "2026-10-03T19:27:26Z"
+        },
+        {
+          "name": "Verify APK is signed",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 9,
+          "started_at": "2026-10-03T19:27:26Z",
+          "completed_at": "2026-10-03T19:27:26Z"
+        },
+        {
+          "name": "Upload APK",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 10,
+          "started_at": "2026-10-03T19:27:26Z",
+          "completed_at": "2026-10-03T19:27:26Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-03T19:27:26Z",
+          "completed_at": "2026-10-03T19:27:26Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/impossi8le/vpn-app-design/check-runs/111275647269",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000000588,
+      "runner_name": "GitHub Actions 1000000588",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  ]
+}
