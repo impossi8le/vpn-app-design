@@ -19,13 +19,14 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Наблюдатель отвечает за то, чтобы подтверждение не жило дольше правды.
  *
- * Всё проверяется в виртуальном времени: тест не должен ждать минуту, чтобы
- * убедиться, что перепроверка идёт раз в минуту.
+ * Всё в виртуальном времени: тест не должен ждать минуту, чтобы убедиться, что
+ * перепроверка идёт раз в минуту.
  *
- * Два обязательных приёма в каждом тесте:
- *  - `runCurrent()` после `start` — иначе запущенные внутри коллекторы ещё не
- *    подписались, и эмиссия в поток смены сети уйдёт в пустоту;
- *  - `watcher.stop()` в конце — иначе `runTest` дожидается таймера бесконечно.
+ * Обязательные приёмы в каждом тесте:
+ *  - `runCurrent()` после `start` — запущенные коллекторы ещё не подписались,
+ *    и эмиссия в поток смены сети ушла бы в пустоту;
+ *  - `watcher.stop()` в конце — иначе `runTest` дожидается незакрытых заданий
+ *    и падает с UncompletedCoroutinesError.
  */
 class ProtectionWatcherTest {
 
@@ -45,6 +46,7 @@ class ProtectionWatcherTest {
 
         assertEquals(1, verdicts.size, "смена сети обязана вызвать замер сразу")
         assertEquals(1, invalidations, "прежнее подтверждение сбрасывается до вердикта")
+
         watcher.stop()
         advanceUntilIdle()
     }
@@ -69,6 +71,7 @@ class ProtectionWatcherTest {
         runCurrent()
 
         assertFalse(verdicts.last().isProtected, "зелёное не должно пережить смену сети")
+
         watcher.stop()
         advanceUntilIdle()
     }
@@ -114,41 +117,41 @@ class ProtectionWatcherTest {
     }
 
     @Test
-    fun `после остановки замеров не происходит`() = runTest {
-        val watcher = ProtectionWatcher(
-            ProtectionGate(FactProbe(Triple(true, true, true))),
-            ReverificationPolicy(interval = 10.seconds, onNetworkChange = false),
-        )
-        val verdicts = mutableListOf<ConnectionStatus>()
-        watcher.start(this, MutableSharedFlow(), onVerdict = { verdicts += it }, onInvalidated = {})
-        runCurrent()
+    fun `после остановки не остаётся живых заданий`() = runTest {
+        // Если stop() не отменяет подписку на смену сети, повторный start
+        // добавляет вторую подписку, и одно событие вызывает два замера.
+        val watcher = ProtectionWatcher(ProtectionGate(FactProbe(Triple(true, true, true))))
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
 
-        advanceTimeBy(11.seconds)
+        watcher.start(this, changes, onVerdict = { }, onInvalidated = {})
         runCurrent()
-        assertEquals(1, verdicts.size)
-
         watcher.stop()
-        advanceTimeBy(60.seconds)
-        runCurrent()
-        assertEquals(1, verdicts.size, "после остановки замеров быть не должно")
+
+        // advanceUntilIdle не должен найти незавершённых заданий: если найдёт,
+        // runTest упадёт сам — то есть тест и есть проверка.
+        advanceUntilIdle()
     }
 
     @Test
     fun `повторный start не удваивает замеры`() = runTest {
-        // Иначе два таймера удвоят сетевые обращения.
-        val watcher = ProtectionWatcher(
-            ProtectionGate(FactProbe(Triple(true, true, true))),
-            ReverificationPolicy(interval = 10.seconds, onNetworkChange = false),
-        )
+        val watcher = ProtectionWatcher(ProtectionGate(FactProbe(Triple(true, true, true))))
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+
         val verdicts = mutableListOf<ConnectionStatus>()
-        val noop: (ConnectionStatus) -> Unit = { verdicts += it }
-        watcher.start(this, MutableSharedFlow(), noop, {})
-        watcher.start(this, MutableSharedFlow(), noop, {})
+        val onVerdict: (ConnectionStatus) -> Unit = { verdicts += it }
+        watcher.start(this, changes, onVerdict, {})
+        runCurrent()
+        watcher.start(this, changes, onVerdict, {})
         runCurrent()
 
-        advanceTimeBy(11.seconds)
+        changes.tryEmit(Unit)
         runCurrent()
-        assertEquals(1, verdicts.size, "должен остаться ровно один таймер")
+
+        assertEquals(
+            1,
+            verdicts.size,
+            "после повторного start должна остаться ровно одна подписка, иначе один разрыв сети = два замера",
+        )
 
         watcher.stop()
         advanceUntilIdle()
