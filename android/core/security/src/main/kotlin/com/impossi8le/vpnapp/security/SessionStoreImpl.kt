@@ -25,15 +25,18 @@ class SessionStoreImpl(
 ) : SessionStore {
 
     override fun load(): Session? {
-        val raw = backend.get(KEY) ?: return null
+        // Чтение внутри try: интерфейс SecureBackend не обязан ловить свои
+        // исключения, а нерасшифровываемый блоб — штатная ситуация. Вынести
+        // get() за try — значит уронить приложение при смене ключа Keystore.
         return try {
+            val raw = backend.get(KEY) ?: return null
             val root = json.parseToJsonElement(raw).jsonObject
             val token = root.str("token") ?: return null
             Session(token = token, expiresAtEpochSeconds = root.epochSeconds("expires_at"))
         } catch (_: Exception) {
             // Повреждённый или нерасшифровываемый блоб — чистим и считаем, что
             // сессии нет. Оставить мусор опаснее: он будет мешать следующей записи.
-            backend.remove(KEY)
+            runCatching { backend.remove(KEY) }
             null
         }
     }
