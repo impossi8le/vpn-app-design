@@ -57,15 +57,33 @@ jobs:
           cmake --version | head -1
           ls "$ANDROID_HOME/ndk" 2>/dev/null || echo "NDK не предустановлен — поставим"
 
-      # asio — header-only, в apt отсутствует, поэтому кладём заголовки туда,
-      # где CMake их ищет. Версия не критична: ядру нужны заголовки, не сборка.
-      - name: Provide asio headers
+      - name: Provide asio and vcpkg
         run: |
           set -euo pipefail
+          # asio — header-only, в apt отсутствует, берём из git.
           git clone --depth 1 --branch asio-1-30-2 \
             https://github.com/chriskohlhoff/asio.git "$RUNNER_TEMP/asio"
           echo "ASIO_INCLUDE_DIR=$RUNNER_TEMP/asio/asio/include" >> "$GITHUB_ENV"
-          ls "$RUNNER_TEMP/asio/asio/include/asio.hpp"
+
+          # vcpkg — правильный путь для КРОСС-компиляции. Первые прогоны показали,
+          # что apt-библиотеки бесполезны: они собраны под x86_64 хоста, а нужны
+          # под arm64 Android (`Could NOT find lz4` при установленном liblz4-dev).
+          # У vcpkg есть встроенные триплеты `arm64-android`, и он собирает
+          # зависимости из исходников сразу под целевую архитектуру.
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/vcpkg/vcpkg" version
+
+      - name: Install native deps for arm64-android
+        run: |
+          set -euo pipefail
+          # Именно эти шесть названы в cmake/findcoredeps.cmake, и именно их
+          # нельзя взять из apt при кросс-компиляции.
+          "$VCPKG_ROOT/vcpkg" install \
+            --triplet arm64-android \
+            --overlay-triplets="$VCPKG_ROOT/triplets/community" \
+            openssl lz4 lzo fmt jsoncpp mbedtls
 
       - name: Ensure NDK
         run: |
@@ -108,10 +126,12 @@ jobs:
           set(CMAKE_CXX_STANDARD 23)
           EOF
           cmake -S . -B build-android \
-            -DCMAKE_TOOLCHAIN_FILE=/tmp/android-toolchain.cmake \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DVCPKG_OVERLAY_TRIPLETS="$VCPKG_ROOT/triplets/community" \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$ASIO_INCLUDE_DIR/.." \
             -DASIO_INCLUDE_DIR="$ASIO_INCLUDE_DIR" \
+            -DOPENSSL_ROOT_DIR="$VCPKG_ROOT/installed/arm64-android" \
             -DENABLE_PROGRAMS=OFF \
             -DENABLE_TESTING=OFF \
             2>&1 | tail -40
