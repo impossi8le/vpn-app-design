@@ -1,0 +1,527 @@
+# Архитектура: Android VPN-клиент (Kotlin, Jetpack Compose, test-first)
+
+Дата: 2026-10-03
+Статус: на ревью
+Область: Android-клиент целиком. Бэкенд — вне области, контракт общий с iOS (`2026-10-02-api-contract.md`).
+Базовые документы: `docs/superpowers/specs/2026-09-30-vpn-app-design.md`, `docs/design/mockup.html`
+Родственный документ: `2026-10-02-vpn-app-architecture.md` (iOS-клиент)
+
+## 0. Решения, принятые до проектирования
+
+| Вопрос | Решение | Почему |
+|---|---|---|
+| VPN-движок | **ics-openvpn** (Arne Schwabe), GPLv2, вендорится submodule | Настоящее C-ядро OpenVPN 2.x — парсит реальный продакшен-`.ovpn` нативно; готовые VpnService-слой и killswitch |
+| Лицензия всего приложения | **GPLv2** | Следствие выбора движка. Наш репозиторий уже публичный, iOS-стек — TunnelKit под GPLv3 с исключением. Обязательство открыть исходники не стоит ничего |
+| UI | Jetpack Compose | Нативный эквивалент SwiftUI; макет `mockup.html` воспроизводится токенами |
+| minSdk | **26 (Android 8.0)** | Покрытие ~98%; Compose и VpnService работают |
+| HTTP | OkHttp + kotlinx.serialization | Стандарт; совпадает с транспортом под Retrofit |
+| Хранение сессии | EncryptedSharedPreferences (androidx.security.crypto) | Обёртка над Keystore, minSdk 23 |
+| Разделение с iOS | Полное, общего рантайм-кода нет | Домен и модели пишутся дважды; общий — только документ контракта |
+| Канал доставки | **APK, раздача через Telegram-бот** | Google Play закрыт (см. §11), RuStore блокирует VPN-обходчики |
+
+## 1. Принципы
+
+1. **Тестируемость через границы, а не через моки фреймворков.** Каждая системная зависимость (Keystore, VpnService, сеть, файлы) скрыта за интерфейсом в `core:domain`. Тест подставляет fake — устройство не нужно.
+2. **Граф зависимостей направлен вниз.** `core:domain` не зависит ни от чего, кроме stdlib и корутин.
+3. **Логика туннеля — в foreground-сервисе, не в UI.** Активность может быть уничтожена системой в любой момент.
+4. **Никаких обещаний защиты без замера.** Зелёный статус выводится только из подтверждения трафика через туннель, не из `VpnService`-состояния и не из системного флага. Инвариант, не деталь UI (§6).
+5. **Атомарность записи конфига.** Битый `.ovpn` ломает подключение до ручного вмешательства.
+
+## 2. Целевая конфигурация
+
+| Параметр | Значение |
+|---|---|
+| Язык | Kotlin 2.x, coroutines + Flow |
+| UI | Jetpack Compose, Material 3 (тема — своя, из токенов) |
+| Минимальная версия | API 26 (Android 8.0) |
+| targetSdk | 35 (Android 15) |
+| Сборка | Gradle (Kotlin DSL), version catalog |
+| VPN-движок | ics-openvpn (submodule), нативный `libopenvpn.so` |
+| Точка входа туннеля | `VpnService` + foreground-сервис |
+| Разрешение | `VpnService.prepare()` — системный диалог, один раз |
+| Хранилище секретов | EncryptedSharedPreferences + Keystore |
+| Хранилище профиля | Личная папка приложения + согласованная запись |
+| Тесты | JUnit5 + Robolectric (JVM), Compose UI Test |
+
+## 3. Граф модулей
+
+```
+┌─────────────────────────────────────────┐
+│  :app  (composition root, DI)           │
+└──────────────┬──────────────────────────┘
+               │
+     ┌─────────┼─────────┬──────────────┐
+     ▼         ▼         ▼              ▼
+┌─────────┐┌─────────┐┌──────────┐┌────────────┐
+│:feature ││:feature ││:feature  ││:feature    │
+│ :auth   ││ :home   ││:configs  ││ :account   │
+└────┬────┘└────┬────┘└────┬─────┘└─────┬──────┘
+     └──────────┴──────────┴────────────┘
+                │
+        ┌───────┴────────┐
+        ▼                ▼
+  ┌───────────┐   ┌──────────────┐
+  │ :core:ui  │   │ :core:domain │ ← 0 зависимостей
+  │ токены    │   │ модели + API │
+  └───────────┘   └──────┬───────┘
+                         │
+   ┌────────┬────────┬───┴─────┬────────────┐
+   ▼        ▼        ▼         ▼            ▼
+┌────────┐┌────────┐┌────────┐┌──────────┐┌──────────┐
+│:core   ││:core   ││:core   ││:core     ││:core     │
+│:network││:config ││:security││:tunnel  ││:protection│
+│ API    ││ .ovpn  ││ Keystore││VpnService││ проба    │
+└────────┘└────────┘└────────┘└────┬─────┘└──────────┘
+                                   │
+                    ┌──────────────┴───────────────┐
+                    ▼                              ▼
+            ┌──────────────┐              ┌─────────────────┐
+            │ :vpnservice  │              │:vendor:ics-openvpn│
+            │ VpnService + │─── JNI ─────▶│ libopenvpn.so    │
+            │ foreground   │              │ (GPLv2)          │
+            └──────────────┘              └─────────────────┘
+
+:test-support (fakes + фикстуры) ── только тест-таргеты
+```
+
+**Правило:** стрелка = «зависит от». Ни один модуль не зависит от того, что выше него. `core:domain` зависит только от stdlib и `kotlinx-coroutines-core` — поэтому весь домен тестируется на JVM без Android-устройства, эмулятора и Robolectric.
+
+## 4. Модули и их ответственность
+
+### 4.1 `core:domain` (без зависимостей)
+
+**Что:** модели предметной области и интерфейсы границ. Ни байта ввода-вывода.
+**Как:** зависит от него всё.
+**Модели:** `AuthLink`, `AuthOperation`, `Session`, `Connection`, `ConnectionStatus`, `Profile`, `ProtectionVerdict`.
+**Интерфейсы:** §5.
+
+`ConnectionStatus` — **наша** модель, а не `VpnService`-состояние и не строка статуса из ics-openvpn. Системное состояние отображается в неё явным маппингом в адаптере и в домен не протекает.
+
+### 4.2 `core:network`
+
+**Что:** клиент API по контракту `2026-10-02-api-contract.md`. Собирает запросы OkHttp, разбирает ответы kotlinx.serialization, маппит ошибки в типизированные.
+**Как:** реализует `AuthService` и `ConfigService`.
+**Зависит:** `core:domain`.
+**Тестируется:** без сети — через `MockWebServer`; фикстуры JSON из `:test-support`. Платформенное поле запроса — `"android"` (§1 контракта).
+
+### 4.3 `core:config`
+
+**Что:** хранение `.ovpn` по протоколу согласованной записи (§7).
+**Как:** реализует `ProfileStore`.
+**Зависит:** `core:domain` (только `File`-абстракция, без Android-типов).
+**Тестируется:** на временной директории — temp+rename, откат, обрыв на середине записи. **Полностью на JVM**, без Robolectric.
+
+### 4.4 `core:security`
+
+**Что:** хранение сессии в EncryptedSharedPreferences, генерация секрета операции входа, очистка при выходе.
+**Как:** реализует `SessionStore`.
+**Зависит:** `core:domain`.
+**Тестируется:** с fake-обёрткой над хранилищем (интерфейс `SecureBackend`) — как на iOS с `KeychainBackend`.
+
+### 4.5 `core:tunnel` — обёртка над VpnService
+
+**Что:** app-side управление туннелем: `VpnService.prepare()`, запуск/остановка foreground-сервиса, наблюдение состояния, оформление `Intent` для `:vpnservice`.
+**Как:** реализует `TunnelControlling`.
+**Зависит:** `core:domain`.
+**Тестируется:** с fake-адаптером; реальный VpnService — инструментальным тестом на эмуляторе.
+
+**Разделение как на iOS:** `core:tunnel` — только app-side (не поднимает туннель сам), `:vpnservice` — процесс, где живёт `VpnService` и JNI-мост к ics-openvpn. Парсинг `.ovpn` не дублируется — он внутри ics-openvpn.
+
+Маппинг «состояние VpnService → `ConnectionStatus`» живёт в `core:tunnel` и **никогда не возвращает `.protected`** (§6).
+
+### 4.6 `core:protection` — проба защиты
+
+**Что:** реализация `ProtectionProbe` на Android-примитивах.
+**Зависит:** `core:domain`.
+**Что читает:** таблицу маршрутов активного `Network` через `ConnectivityManager.getLinkProperties()` — признак 1; наличие IPv6-маршрута по умолчанию вне туннеля — признак 2; конфигурацию DNS активного линка — признак 3.
+**Не делает:** не ходит на внешний сервис за реальным IP.
+
+**Честная оговорка.** `core:protection` **компилируется только под Android** (нужны `ConnectivityManager`, `LinkProperties`). Логика вычисления вердикта — в `core:domain` и тестируется на JVM; сбор фактов — здесь и проверяется инструментально. Это то же разделение, что на iOS между `ProtectionGate` и провайдером пробы.
+
+### 4.7 `vendor:ics-openvpn` (GPLv2, submodule)
+
+**Что:** нативное C-ядро OpenVPN 2.x (`libopenvpn.so`) и слой управления профилем.
+**Как:** линкуется в `:vpnservice`; наружу торчит узкий JNI-мост, объявленный нами.
+**Почему submodule, а не форк с копией:** обновления вносятся одной командой; при этом патчи (если понадобятся) остаются видимыми.
+**Ограничение лицензии:** GPLv2 распространяется на всё приложение. Файл `LICENSE` в корне репозитория должен это отражать, а в интерфейсе — быть упоминание об открытом исходном коде.
+
+### 4.8 `:vpnservice`
+
+**Что:** `VpnService`-реализация, foreground-сервис, обязательная нотификация, JNI-мост.
+**Зависит:** `core:config` (чтение профиля), `vendor:ics-openvpn`.
+**Ответственность:** поднять интерфейс через `Builder`, передать профиль в ядро, держать foreground, корректно остановиться.
+
+**Требования платформы (Android 14+, обязательно):**
+
+```xml
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+<service
+    android:name=".VpnTunnelService"
+    android:permission="android.permission.BIND_VPN_SERVICE"
+    android:foregroundServiceType="specialUse"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="android.net.VpnService" />
+    </intent-filter>
+    <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="Поддержание VPN-туннеля и статистика соединения" />
+</service>
+```
+
+**`dataSync` использовать нельзя** — Android 14 обрывает его через 6 часов, а Android 15 ограничивает перезапуски. Это документированный отказ, не гипотеза.
+
+**Ключи `Builder`:** заблокированные приложения → пусто; `setBlocking(true)`; полный перехват IPv4 (адрес + маршрут по умолчанию); **IPv6 закрывается маршрутом `::/0`, а не отсутствием настройки**; DNS из профиля, не системный.
+
+### 4.9 `core:ui`
+
+**Что:** токены дизайна, Compose-тема, базовые компоненты. Только представление.
+**Зависит:** Compose, ничего из домена.
+
+### 4.10 `feature:*`
+
+`feature:auth`, `feature:home`, `feature:configs`, `feature:account` — по одному на группу экранов макета. Каждый содержит ViewModel и Compose-экраны. ViewModel зависит **только** от интерфейсов `core:domain` — состояния экранов тестируются без UI.
+
+### 4.11 `:app`
+
+Composition root: DI, сборка модулей, стартовая навигация. Логики не содержит.
+
+## 5. Интерфейсы границ (Kotlin)
+
+Ключевой артефакт: интерфейсы объявляются **до** реализаций, чтобы потоки не блокировали друг друга. Версия: `WA0-v1`.
+
+```kotlin
+// core:domain — Auth
+
+sealed interface PollOutcome {
+    /** Не ошибка: пользователь ещё подтверждает в боте. */
+    data class Pending(val retryAfterMillis: Int?) : PollOutcome
+    data class Confirmed(val session: Session) : PollOutcome
+    data object Expired : PollOutcome
+    data object Denied : PollOutcome
+    data object AttemptLimitExceeded : PollOutcome
+}
+
+interface AuthService {
+    suspend fun requestLink(): AuthLink
+    /**
+     * Предъявляет СЕКРЕТ (сгенерирован приложением) И deviceNonce (ввёл пользователь,
+     * прочитав в боте). Без nonce подтверждение не привязано к этому устройству — login-CSRF.
+     */
+    suspend fun pollSession(operation: AuthOperation, deviceNonce: String): PollOutcome
+    suspend fun logout()
+}
+
+interface SessionStore {
+    fun save(session: Session)
+    fun load(): Session?
+    fun clear()
+}
+
+/** Для тестов: развязывает хранение от EncryptedSharedPreferences. */
+interface SecureBackend {
+    fun put(key: String, value: ByteArray)
+    fun get(key: String): ByteArray?
+    fun remove(key: String)
+}
+```
+
+```kotlin
+// core:domain — Config
+
+interface ConfigService {
+    suspend fun fetchConnections(): List<Connection>      // /me
+    suspend fun fetchProfile(id: Connection.Id): ByteArray // /config/{id}, сырой .ovpn
+}
+
+interface ProfileStore {
+    fun load(): Profile?
+    fun stage(raw: ByteArray): StagedProfile   // во временный файл + валидация
+    fun commit(staged: StagedProfile)          // атомарная замена, старая → backup
+    fun rollback()                             // вернуть последнюю рабочую
+}
+```
+
+```kotlin
+// core:domain — Tunnel
+
+interface TunnelControlling {
+    suspend fun connect(profile: Profile)
+    suspend fun disconnect()
+    /** Текущее состояние — для поздно подписавшихся и для возврата из фона. */
+    val current: ConnectionStatus
+    /** Мультиподписчичная лента. Новый подписчик получает current первым событием. */
+    fun statusStream(): Flow<ConnectionStatus>
+}
+
+// ВАЖНО: TunnelControlling НЕ эмитит .Protected.
+// Он эмитит Connecting / VerifyingProtection / Disconnected / Failed.
+// Зелёное добавляет ProtectionGate.
+```
+
+```kotlin
+// core:domain — Protection
+
+fun interface ProtectionProbe {
+    suspend fun verify(): ProtectionVerdict
+}
+
+/**
+ * Доказательство защиты. Конструктор `internal` — собрать можно только внутри core:domain.
+ * Внешние модули не могут сконструировать evidence руками.
+ */
+class ProtectionEvidence internal constructor(
+    val ipv4InTunnel: Boolean,
+    val ipv6Closed: Boolean,
+    val dnsInside: Boolean,
+)
+
+sealed interface ProtectionVerdict {
+    data class Confirmed(val evidence: ProtectionEvidence) : ProtectionVerdict
+    data class Failed(val failure: ProtectionFailure) : ProtectionVerdict
+
+    companion object {
+        /**
+         * ЕДИНСТВЕННЫЙ конструктор зелёного. Все три условия обязаны быть истинны,
+         * иначе — Failed(Inconclusive). Проверка на входе, а не на выводе.
+         */
+        fun evaluate(ipv4InTunnel: Boolean, ipv6Closed: Boolean, dnsInside: Boolean): ProtectionVerdict =
+            if (ipv4InTunnel && ipv6Closed && dnsInside) {
+                Confirmed(ProtectionEvidence(true, true, true))
+            } else {
+                Failed(ProtectionFailure.Inconclusive)
+            }
+    }
+}
+
+val ProtectionVerdict.isConfirmed: Boolean
+    get() = this is ProtectionVerdict.Confirmed
+
+/** Единственный владелец перехода в .Protected. Никакой другой код не конструирует зелёное. */
+class ProtectionGate(private val probe: ProtectionProbe) {
+    suspend fun evaluate(): ConnectionStatus = try {
+        when (val verdict = probe.verify()) {
+            is ProtectionVerdict.Confirmed -> ConnectionStatus.Protected(verdict.evidence)
+            is ProtectionVerdict.Failed -> ConnectionStatus.ProtectionFailed(verdict)
+        }
+    } catch (e: Exception) {
+        ConnectionStatus.ProtectionFailed(ProtectionFailure.ProbeUnavailable)
+    }
+}
+```
+
+**Инвариант домена (честная формулировка).** Из системного состояния «подключено» зелёное получить нельзя: маппинг в `core:tunnel` возвращает `VerifyingProtection`. Зелёное конструируется только через `ProtectionGate.evaluate()` и только при `ProtectionEvidence`, все три поля которого истинны. `ProtectionEvidence` имеет `internal constructor` — собрать его из чужого модуля нельзя.
+
+**Чего это НЕ гарантирует:** честности самой пробы. Если `ProtectionProbe` реализован с ошибкой и всегда возвращает подтверждение, тип этого не поймает. Проверяется инструментальным тестом пробы на эмуляторе, а не типом.
+
+## 6. Критический инвариант: защита подтверждается замером
+
+Из `feedback_vpn_false_security`: ложная уверенность в защите хуже отсутствия защиты. На Android это правило **важнее**, чем на iOS: `VpnService` может быть поднят, но трафик уходить мимо — при ошибке в маршрутах или при том, что приложение исключено из перехвата.
+
+Обязательное поведение:
+
+1. Системное состояние «туннель поднят» маппится в `.VerifyingProtection`, **никогда** в `.Protected`.
+2. `.Protected` выставляется только после `ProtectionProbe.verify()`.
+3. До замера UI показывает «не проверено», а не «защищено».
+4. Провал замера — отдельный третий исход (`ProtectionFailed`), а не вечное «проверяем» и не ложный зелёный.
+5. Замер **не** ходит на внешний сервис за реальным IP: внешний сервис сам видит реальный адрес. Проверка строится на локально наблюдаемых признаках через `ConnectivityManager`.
+
+**Три признака на Android:**
+
+| Признак | Как получаем | Ложное срабатывание, если не проверять |
+|---|---|---|
+| IPv4 идёт в туннель | `LinkProperties.routes` активного линка | `addDisallowedApplication` исключил само приложение из перехвата |
+| IPv6 закрыт | Отсутствие маршрута `::/0` вне туннеля | Настроили только IPv4 → весь IPv6 уходит мимо туннеля |
+| DNS внутри | `LinkProperties.dnsServers` совпадает с профилем | Системный DNS продолжает отвечать в обход |
+
+**Закрепление типами:** (а) маппинг физически не возвращает `.Protected`; (б) единственный вход в зелёное — `ProtectionGate.evaluate()`; (в) `ProtectionEvidence` нельзя собрать вне `core:domain`; (г) `ProtectionVerdict.evaluate(...)` при любой `false` возвращает `Failed`.
+
+Тесты: `StatusMappingTest` (нет `.Protected` ни из одного системного состояния), `ProtectionGateTest` (все три `false` → не зелёное; успешная проба → `.Protected`).
+
+## 7. Протокол согласованной записи конфига
+
+**Отличие от iOS:** поскольку туннель живёт **в том же процессе**, что и UI, App Group не нужен — файл в личной папке приложения. Но протокол **сохраняется**: битый `.ovpn` по-прежнему ломает подключение, а читающая сторона (ядро) может открыть файл в момент записи.
+
+```
+1. stage(raw):     запись в profile.ovpn.tmp → валидация парсером → StagedProfile
+2. commit(staged): profile.ovpn → profile.ovpn.bak (rename)
+                   profile.ovpn.tmp → profile.ovpn (rename, атомарно)
+3. rollback():     profile.ovpn.bak → profile.ovpn
+```
+
+Требования:
+- Валидация до применения. Невалидный конфиг не доходит до `commit`.
+- `rename` в пределах одной ФС атомарен.
+- Предыдущая рабочая версия сохраняется для отката.
+- Ядро читает только `profile.ovpn`, никогда `.tmp`.
+- При выходе из аккаунта профиль и `.bak` удаляются вместе с сессией — иначе следующая сессия подхватит профиль предыдущего пользователя.
+
+Дополнительно на Android: **перед `commit` туннель должен быть остановлен.** Перезапись профиля под работающим туннелем даёт неопределённое поведение ядра.
+
+## 8. Поток данных
+
+### 8.1 Подключение
+
+```
+Пользователь: «Подключить»
+  → feature:home (ViewModel) → TunnelControlling.connect(profile)
+     → core:tunnel: VpnService.prepare() (диалог, если разрешение ещё не дано)
+     → startForegroundService(:vpnservice) с путём к профилю
+  → :vpnservice поднимает интерфейс через Builder + JNI в libopenvpn
+  → statusStream: Connecting
+  → statusStream: VerifyingProtection        ← НЕ Protected
+  → ProtectionProbe.verify()
+       ├─ Confirmed → statusStream: Protected(evidence)
+       └─ Failed    → statusStream: ProtectionFailed(verdict)
+  → feature:home рендерит ЗЕЛЁНЫЙ только на .Protected
+```
+
+### 8.2 Вход
+
+Поток идентичен iOS (`2026-10-02-api-contract.md` §2.1): `requestLink` → deep link в Telegram → пользователь читает `device_nonce` в боте → вводит в приложении → `pollSession(operation, deviceNonce)` → сессия.
+
+Два независимых разделения сохраняются:
+
+1. **Код против секрета.** `publicCode` виден в ссылке и чате; секрет генерируется приложением и через Telegram не проходит.
+2. **Nonce против ссылки.** `device_nonce` бот показывает только в чате инициировавшей стороны и не возвращает в `/auth/link`.
+
+**Отличие от iOS:** Android не усыпляет приложение в фоне так агрессивно при активном foreground-сервисе, но при отсутствии туннеля поведение то же — незавершённая операция персистится, опрос возобновляется по `ProcessLifecycleOwner` при возврате в foreground.
+
+**Восстановление после потерянного ответа** — как на iOS: `409 already_consumed` не блокирует навсегда, приложение предлагает войти заново.
+
+## 9. Отличия от iOS-архитектуры (сводка)
+
+| Аспект | iOS | Android |
+|---|---|---|
+| Процесс туннеля | Отдельное расширение (`NEPacketTunnelProvider`) | **Тот же процесс** (`VpnService` + foreground) |
+| Обмен конфигом | App Group + файловый протокол | Личная папка; протокол записи сохраняется |
+| Разрешение | Энтайтлмент `packet-tunnel-provider` | `VpnService.prepare()` — диалог, один раз |
+| Фоновый режим | Автоматически | **Foreground-сервис + нотификация обязательны** |
+| Движок | TunnelKit (Swift, GPLv3) | ics-openvpn (C, GPLv2) |
+| Эмулятор поднимает туннель | **Нет** (симулятор туннели не умеет) | **Да** — гейт «реальный туннель» проверяется без устройства |
+| Сборка на этой машине | Работает (Swift 6.4 локально) | **Не работает** — нет JDK/Android SDK (см. §10) |
+
+## 10. Инфраструктура разработки
+
+### 10.1 Состояние рабочей машины
+
+Проверено 2026-10-03: **Java, Gradle, Android SDK и Kotlin на `D:\VPN_app` отсутствуют.** В отличие от Swift (который здесь работает), Android локально не соберётся.
+
+**Решение (2026-10-03): сборка и тесты идут ТОЛЬКО через GitHub Actions. Локальный тулчейн не ставится.**
+
+Следствия, которые нужно учитывать при работе:
+
+1. **Локально нельзя ни собрать, ни запустить тесты.** Ни один код не считается проверенным, пока не прошёл CI. «У меня компилируется» здесь не существует.
+2. **Gradle wrapper генерируется в CI, а не локально** — командой `gradle wrapper` на раннере. В репозиторий коммитится уже сгенерированный wrapper, после чего CI переходит на `./gradlew` (§10.2).
+3. **Эмулятора нет.** Инструментальные тесты — поднятие туннеля и честность пробы защиты (§6) — остаются непроверяемыми до появления эмулятора в CI (например, `reactivecircus/android-emulator-runner`). Это открытый риск, а не решённый вопрос: инвариант §6 закреплён типами, но проба как таковая на Android пока не проверена ни разу.
+4. **Цикл правок медленнее**: коммит → прогон CI → чтение логов. Это цена нулевой настройки.
+
+### 10.2 CI
+
+Новый workflow `.github/workflows/android.yml`, раннер `ubuntu-latest`. Android-минуты на публичном репозитории бесплатны и без лимита, в отличие от macOS.
+
+```
+1. actions/setup-java (Temurin 17)
+2. android-actions/setup-android (SDK)
+3. gradle test                  ← тесты: и JVM-модулей, и Android-модулей одной задачей
+4. gradle :app:assembleDebug    ← сборка
+5. (release) gradle :app:assembleRelease + подпись → APK в артефакты
+```
+
+**Почему `test`, а не `testDebugUnitTest`.** Задача `testDebugUnitTest` существует только в Android-модулях. `core:domain`, `core:config`, `core:network` — чистый Kotlin/JVM, их задача называется `test`. С `testDebugUnitTest` тесты домена, инварианта защиты и протокола записи конфига **не запускались бы вообще**, а сборка при этом выглядела бы зелёной. Задача `test` покрывает оба вида модулей.
+
+**Почему `gradle` пока без wrapper.** Проверить нельзя, но и wrapper сгенерировать негде — на машине нет Gradle. Workflow использует `gradle/actions/setup-gradle@v4` с явно зафиксированной версией `8.11.1` (AGP 8.7 требует Gradle 8.9+). Первым шагом после того, как CI заработает, добавить `gradle wrapper --gradle-version 8.11.1` и перейти на `./gradlew`.
+
+**Версии в `libs.versions.toml` не проверены прогоном.** Набор AGP 8.7.3 / Kotlin 2.1.0 / Compose BOM 2024.12.01 подобран как заведомо совместимый, а не как самый свежий. Поднимать — отдельным коммитом, после того как CI подтвердит текущий.
+
+Известные грабли, уже учтённые в каркасе:
+
+- **Плагин `org.jetbrains.kotlin.plugin.compose` обязателен** на каждом модуле с `buildFeatures.compose = true`. С Kotlin 2.0 компилятор Compose больше не приходит из AGP, а `composeOptions.kotlinCompilerExtensionVersion` удалён. Без плагина модуль с Compose не собирается.
+- **`AndroidManifest.xml`** в `app` ссылается на тему `Theme.VpnApp` — она объявлена в `res/values/themes.xml`; ресурсы добавлены вместе с каркасом, иначе сборка падает на этапе ресурсов.
+
+Существующий `ios.yml` не трогается: он ищет `Packages/*/Package.swift` и `Apps/VpnApp`, которые остаются на месте.
+
+### 10.3 Подпись и доставка APK через бота
+
+```mermaid
+flowchart LR
+    A[Коммит в main] --> B[CI: сборка + тесты]
+    B --> C[assembleRelease]
+    C --> D[Подпись release-keystore<br/>из GitHub Secrets]
+    D --> E[GitHub Release<br/>тег + APK]
+    E --> F[Бот: GET /app/latest?platform=android]
+    F --> G[Пользователь скачивает APK]
+```
+
+Что требуется:
+
+1. **Собственный keystore.** Генерируется один раз (`keytool`), приватный ключ — в GitHub Secrets. **Потеря keystore = невозможность обновить установленное приложение** (Android откажется ставить APK с другой подписью). Хранить резервную копию.
+2. **Версионирование.** `versionCode` инкрементируется в CI; иначе обновление не установится поверх.
+3. **Проверка обновления в приложении.** Без неё APK-раздача превращается в «переустанавливай вручную». Приложение обращается к боту за последней версией и предлагает обновиться.
+4. **Публикация.** Тег `android-v<version>` + APK в GitHub Release; ссылка выдаётся ботом.
+
+**Ограничение, которое надо знать.** С 30 сентября 2026 Google ввёл обязательную верификацию разработчиков для участвующих магазинов (Google Play, Galaxy Store, GetApps и др.) в Бразилии, Индонезии, Сингапуре и Таиланде, с глобальным расширением **в 2027 году**. Прямой сайдлоад и ADB пока не затронуты, но в 2027 APK вне реестра может перестать ставиться в один тап на устройствах с Google-сервисами. Это риск всей схемы доставки, а не деталь реализации (§11).
+
+## 11. Что сознательно не делается
+
+- **Не публикуемся в Google Play.** Причины: обязательная верификация разработчика (РФ не в списке исключений), политика VpnService (приложение обязано быть VPN «как основной функцией» + видео-декларация), санкционные ограничения на аккаунт и платежи.
+- **Не публикуемся в RuStore.** RuStore обязан блокировать VPN-сервисы, дающие доступ к заблокированным в РФ ресурсам, — это прямая противоположность функции продукта.
+- Нет абстракции «профиль подключения» поверх `.ovpn`.
+- Нет своего OpenVPN-движка и нет своего парсера — они в ics-openvpn.
+- Нет живой пробы реального IP через внешний сервис (§6).
+- Нет поддержки Android < 8.
+- Нет KMP-ядра: домен дублируется на Kotlin, общий — только контракт API.
+
+## 12. Стратегия тестов
+
+Тесты — основа, код — следствие. Каждый поток начинается с падающего теста.
+
+| Слой | Что проверяет | Инструмент | Устройство |
+|---|---|---|---|
+| Юнит (JVM) | Домен, ViewModel, `ProfileStore`, маппинг ошибок | JUnit5 + fakes | нет |
+| Интеграция (JVM) | Вход, истечение, отзыв — против mock-бэкенда | JUnit5 + MockWebServer | нет |
+| Платформенный | `sessionStore` с fake-`SecureBackend`, чтение маршрутов | Robolectric | нет |
+| Инструментальный | Поднятие туннеля, **честность пробы защиты** | AndroidX Test | эмулятор |
+| UI | Состояния из макета | Compose UI Test | эмулятор |
+
+**Ключевое преимущество перед iOS:** эмулятор Android **поднимает реальный VPN-туннель**, поэтому гейт «работает ли туннель на самом деле» и «не врёт ли проба защиты» проверяются без физического устройства. На iOS это возможно только на реальном iPhone.
+
+**Обязательные тест-кейсы по рискам:**
+
+- Системное состояние «подключено» **не** даёт `.Protected`.
+- Провал пробы даёт `.ProtectionFailed`, а не вечное «проверяем».
+- IPv6-маршрут закрыт: тест на построенном `Builder`-конфиге.
+- Битая запись `.ovpn`: `stage` отклоняет, `rollback` возвращает рабочую версию.
+- Обрыв на середине `commit`: `.ovpn` валиден (старый или новый), никогда не полузаписан.
+- Выход из аккаунта: профиль, `.bak` и сессия удалены.
+- Перезапись профиля при работающем туннеле: сначала остановка.
+- Обрыв туннеля → `.Disconnected`, кнопка возвращается в «Подключить».
+- Отказ в разрешении VPN: не тупик, есть инструкция.
+- Отсутствие Telegram на устройстве.
+- Один конфиг истёк — остальные работают, экран не блокируется.
+- Пустой список конфигов — состояние «подписок нет», не ошибка.
+
+## 13. Риски
+
+| Риск | Тяжесть | Митигация |
+|---|---|---|
+| **2027: глобальная верификация Google** — APK перестаёт ставиться в один тап | высокая | Следить за требованиями; держать advanced flow как инструкцию; при необходимости добавить подпись в реестре |
+| **GPLv2 обязывает открыть весь код** | низкая | Репозиторий уже публичный; обязательство не стоит ничего |
+| **Вендоринг ics-openvpn** — проект сопровождается одним автором | средняя | Pin на коммите; свой узкий JNI-мост; ядро OpenVPN 2.x стабильно |
+| Нет JDK/SDK локально — нет цикла правок | средняя | Осознанная цена: сборка только в CI (§10.1). Медленнее, но нулевая настройка |
+| **Ни строчки Android-кода не проверено ни разу** | **высокая** | Каркас ни разу не собирался — нет ни JDK, ни SDK. Первый прогон CI может вскрыть ошибки в build-файлах и версиях. Пока CI не зелёный, каркас считается непроверенным |
+| **Инвариант защиты §6 не проверен на Android** | **высокая** | Типы закрепляют переход в зелёное, но честность самой пробы — нет. Нужен эмулятор в CI (поток WA6); до этого §6 — контракт, а не факт |
+| Ошибка в маршрутах → трафик мимо туннеля | **высокая** | Три признака пробы (§6); тест на построенном конфиге; проверка на эмуляторе |
+| Потеря keystore → невозможность обновления | средняя | Резервная копия вне CI; документировать в README |
+| RuStore/РКН-блокировка канала | средняя | Раздача через бота, который уже вне магазинов |
+
+## 14. Открытые вопросы
+
+1. **Лимит устройств** (перенесён из iOS §12): один профиль на пользователя или на устройство. Влияет на контракт `/me` и общий для обеих платформ.
+2. **`status` при истечении** (перенесён из iOS §12): `expired` или `revoked`.
+3. **Актуальная политика Google на 2027** — что именно потребуется для установки APK на GMS-устройства. Требует перепроверки ближе к дате.
+4. **Эмулятор в CI.** Решено (2026-10-03): локальный тулчейн не ставится, сборка только через CI. Из этого следует, что эмулятор нужен *в CI* — иначе инвариант §6 (честность пробы защиты) и поднятие туннеля остаются непроверяемыми в принципе. Когда добавлять: к потоку WA6.
+5. **Общая процедура обновления для двух платформ** — iOS через TestFlight, Android через APK из бота. Стоит ли унифицировать сообщение пользователю.
+6. **Заводить ли `ios/`.** Исходная формулировка задачи предполагала две папки — `ios/` и `android/`. При выборе структуры решено iOS-код не перемещать: он лежит в `Packages/` и `Apps/`, и перенос сломал бы пути в `.github/workflows/ios.yml`. Если симметрия важна — это отдельный шаг с правкой CI.

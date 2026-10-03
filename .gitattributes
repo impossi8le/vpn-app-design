@@ -1,0 +1,13 @@
+# Нормализация переводов строк: в репозитории — LF, иначе скрипты ломаются на Linux-раннере.
+* text=auto eol=lf
+
+# Windows-скрипты остаются CRLF, иначе cmd.exe их не съест.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Бинарное: не трогать.
+*.jar binary
+*.keystore binary
+*.jks binary
+*.png binary
+*.pdf binary

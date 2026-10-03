@@ -1,0 +1,68 @@
+# Version catalog для Android-проекта.
+#
+# ВНИМАНИЕ: версии зафиксированы по состоянию на 2026-10-03 и НЕ проверены сборкой —
+# на рабочей машине нет JDK и Android SDK (см. docs/architecture/2026-10-03-android-architecture.md §10.1).
+# Первый прогон CI или локальная сборка обязаны подтвердить совместимость.
+
+[versions]
+# Версии подобраны как заведомо совместимый набор (AGP 8.7 / Kotlin 2.1 / BOM 2024.12),
+# а не как самые свежие: проверить прогоном на машине нельзя, JDK и Android SDK
+# отсутствуют (см. docs/architecture/2026-10-03-android-architecture.md §10.1).
+# Поднимать версии — отдельным коммитом, после того как CI подтвердит текущий набор.
+agp = "8.7.3"
+kotlin = "2.1.0"
+coroutines = "1.9.0"
+serialization = "1.7.3"
+okhttp = "4.12.0"
+composeBom = "2024.12.01"
+activityCompose = "1.9.3"
+lifecycle = "2.8.7"
+securityCrypto = "1.1.0-alpha06"
+junit5 = "5.11.3"
+robolectric = "4.14.1"
+mockwebserver = "4.12.0"
+turbine = "1.2.0"
+desugar = "2.1.3"
+
+[libraries]
+# --- Корутины ---
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+
+# --- Сериализация ---
+serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+
+# --- Сеть ---
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "mockwebserver" }
+
+# --- AndroidX / Compose ---
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "lifecycle" }
+security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
+
+# --- Тесты ---
+junit5-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit5" }
+junit5-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit5" }
+junit5-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit5" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+core-library-desugaring = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+# ОБЯЗАТЕЛЕН с Kotlin 2.0 для каждого модуля с `buildFeatures.compose = true`.
+# Раньше компилятор Compose приходил из AGP через composeOptions.kotlinCompilerExtensionVersion —
+# это удалено, и без плагина модуль с Compose не собирается вовсе.
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

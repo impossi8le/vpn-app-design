@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Базовая тема для манифеста. Настоящая визуальная система — токены в :core:ui
+  (Compose-тема), она воспроизводит docs/design/mockup.html.
+
+  Тёмная тема здесь единственная и намеренная: светлая отклонена на этапе
+  UX-ревью (см. память feedback_vpn_false_security). Не добавлять светлую
+  как «улучшение» без новой причины.
+
+  Окно чёрное, без системного ActionBar — весь интерфейс рисует Compose.
+-->
+<resources>
+    <style name="Theme.VpnApp" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/surface_base</item>
+        <item name="android:statusBarColor">@color/surface_base</item>
+        <item name="android:navigationBarColor">@color/surface_base</item>
+    </style>
+</resources>

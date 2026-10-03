@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Требования платформы, зафиксированные в §4.8 архитектуры.
+
+  foregroundServiceType="specialUse", а НЕ dataSync:
+  Android 14 обрывает dataSync-сервис через 6 часов (документированный случай
+  Brave/WireGuard), а Android 15 ограничивает его перезапуски. Для VPN это неприемлемо.
+  specialUse таймаута не имеет, но требует объяснения в свойстве ниже.
+
+  exported="false" + permission BIND_VPN_SERVICE: систему пускаем, сторонние — нет.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Android 13+: обязательная нотификация foreground-сервиса. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <service
+            android:name=".VpnTunnelService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Поддержание VPN-туннеля и статистика соединения" />
+        </service>
+    </application>
+
+</manifest>

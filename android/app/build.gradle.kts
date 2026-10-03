@@ -1,0 +1,94 @@
+// Composition root: DI, навигация, точка входа.
+// Логики не содержит — только сборка модулей (§4.11).
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.compose.compiler)
+}
+
+android {
+    namespace = "com.impossi8le.vpnapp"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "com.impossi8le.vpnapp"
+        minSdk = 26
+        targetSdk = 35
+        // versionCode инкрементируется в CI, иначе обновление APK не установится
+        // поверх предыдущего (§10.3). Значение подставляется из CI.
+        versionCode = (System.getenv("ANDROID_VERSION_CODE")?.toIntOrNull()) ?: 1
+        versionName = System.getenv("ANDROID_VERSION_NAME") ?: "0.1.0"
+    }
+
+    buildFeatures { compose = true }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+
+    // Подпись release-сборки приходит из GitHub Secrets (§10.3): keystore, alias и
+    // пароли — переменными окружения. Локально release не подписывается: это осознанно,
+    // чтобы нельзя было случайно выпустить сборку чужим ключом.
+    //
+    // Потеря keystore = невозможность обновить установленное приложение.
+    signingConfigs {
+        System.getenv("ANDROID_KEYSTORE_PATH")?.let { keystorePath ->
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
+        }
+    }
+
+    // При REQUIRE_SIGNING=true релиз без настроенной подписи должен падать, а не
+    // молча выпускать app-release-unsigned.apk: иначе артефакт релиза окажется
+    // неподписанным и не установится ни у кого (§10.3).
+    if (System.getenv("REQUIRE_SIGNING") == "true") {
+        tasks.matching { it.name == "assembleRelease" }.configureEach {
+            doFirst {
+                check(signingConfigs.findByName("release") != null) {
+                    "REQUIRE_SIGNING=true, но подпись release не настроена: " +
+                        "нет ANDROID_KEYSTORE_PATH и паролей. Прерываю до сборки."
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation(project(":core:domain"))
+    implementation(project(":core:network"))
+    implementation(project(":core:config"))
+    implementation(project(":core:security"))
+    implementation(project(":core:tunnel"))
+    implementation(project(":core:protection"))
+    implementation(project(":core:ui"))
+    implementation(project(":feature:auth"))
+    implementation(project(":feature:home"))
+    implementation(project(":feature:configs"))
+    implementation(project(":feature:account"))
+    implementation(project(":vpnservice"))
+
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.material3)
+    implementation(libs.activity.compose)
+    implementation(libs.lifecycle.runtime.ktx)
+    implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.lifecycle.process)
+    implementation(libs.coroutines.core)
+
+    testImplementation(libs.junit5.api)
+    testRuntimeOnly(libs.junit5.engine)
+}

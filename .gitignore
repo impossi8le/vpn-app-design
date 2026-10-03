@@ -19,3 +19,18 @@ xcuserdata/
 # В репозиторий не попадают никогда. Тестовые фикстуры — только анонимизированные.
 *.ovpn
 *.conf
+
+# Android / Gradle
+.gradle/
+android/.gradle/
+android/local.properties
+android/build/
+android/**/build/
+android/.idea/
+android/captures/
+.kotlin/
+# Ключ подписи release-APK. Его потеря = невозможность обновить установленное
+# приложение, поэтому он хранится в GitHub Secrets и в бэкапе, но не в репозитории.
+*.jks
+*.keystore
+android/app/release/
