@@ -30,6 +30,8 @@ dependencies {
     implementation(libs.coroutines.core)
 
     testImplementation(libs.junit5.api)
+    // Нужен для @ParameterizedTest / @CsvSource / @EnumSource.
+    testImplementation(libs.junit5.params)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.turbine)
     testRuntimeOnly(libs.junit5.engine)

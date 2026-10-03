@@ -33,6 +33,8 @@ dependencies {
     // implementation(project(":vendor:ics-openvpn"))
 
     testImplementation(libs.junit5.api)
+    // Нужен для @ParameterizedTest / @CsvSource / @EnumSource.
+    testImplementation(libs.junit5.params)
     testRuntimeOnly(libs.junit5.engine)
     testRuntimeOnly(libs.junit5.launcher)
 }
