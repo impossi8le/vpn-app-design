@@ -78,7 +78,16 @@ jobs:
           ./gradlew test --no-daemon 2>&1 | tee gradle-test.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            echo "::error title=Gradle test failed::$(grep -E 'e: |error:|FAILED|Execution failed|Could not|Caused by|> ' gradle-test.log | head -40 | tr '\n' '|')"
+            # Отбрасываем строки о задачах ("> Task ..."), иначе они вытесняют
+            # настоящую ошибку из-под лимита аннотации.
+            grep -vE '^> Task ' gradle-test.log \
+              | grep -E 'e: |error:|FAILED|Execution failed|Could not|Caused by|Caused|expected|Unresolved|What went wrong|symbol|internal' \
+              | head -25 > err.txt
+            if [ ! -s err.txt ]; then
+              grep -vE '^> Task ' gradle-test.log | tail -25 > err.txt
+            fi
+            msg=$(sed 's/"/\x27/g' err.txt | tr '\n' '|' | cut -c1-4000)
+            echo "::error title=Gradle test failed::$msg"
           fi
           exit "$status"
 
