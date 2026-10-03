@@ -6,50 +6,66 @@ import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
 import com.impossi8le.vpnapp.domain.tunnel.TunnelControlling
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 
 /**
  * Состояние главного экрана.
  *
- * Единственный путь к зелёному состоянию — через [ProtectionGate]. Зависимость
- * на `ProtectionGate` (а не на пробу напрямую) не даёт этому классу собрать
- * `Protected` руками: он не может произвести `ProtectionEvidence`.
+ * Экран держит ДВА независимых источника и не смешивает их в одном поле:
  *
- * Требуется ViewModel из androidx, поэтому модуль — Android-библиотека; юнит-тесты
- * всё равно идут на JVM, потому что вне Composable-ов ViewModel работает как
- * обычный класс.
+ *  - [system] — что говорит туннель (поднят, соединяется, отключён);
+ *  - [measured] — что показал последний замер защиты.
+ *
+ * Раньше здесь было одно поле, в которое писали оба источника, и они гонялись:
+ * отложенный эмит туннеля мог затереть вердикт гейта, и зелёное мигало.
+ *
+ * Ключевое свойство: **любое новое состояние туннеля обнуляет замер.** Замер
+ * описывал прежнее состояние сети; после смены он недействителен, и зелёное не
+ * должно его пережить. Это не оптимизация, а требование §6.
+ *
+ * Зависимость на [ProtectionGate], а не на пробу, не даёт этому классу собрать
+ * `Protected` руками: `ProtectionEvidence` вне `core:domain` не конструируется.
  */
 class HomeViewModel(
     private val tunnel: TunnelControlling,
     private val gate: ProtectionGate,
 ) : ViewModel() {
 
-    private val _status = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
-    val status: StateFlow<ConnectionStatus> = _status.asStateFlow()
+    private val system = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
+
+    /** Результат последнего замера. `null` — замера для текущего состояния нет. */
+    private val measured = MutableStateFlow<ConnectionStatus?>(null)
+
+    val status: StateFlow<ConnectionStatus> =
+        combine(system, measured) { sys, verdict -> resolve(sys, verdict) }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, ConnectionStatus.Disconnected)
 
     init {
         viewModelScope.launch {
-            tunnel.status.collect { _status.value = it }
+            tunnel.status.collect { incoming ->
+                // Замер обесценивается ДО применения состояния: он относился к
+                // прежней сети, а не к этой.
+                measured.value = null
+                system.value = incoming
+            }
         }
     }
 
     /**
      * Подключиться и подтвердить защиту.
      *
-     * Замер идёт ПОСЛЕ ожидания, пока туннель сообщит о себе: иначе вердикт
-     * гейта может быть затёрт отложенным «поднято» от коллектора — зелёное
-     * мигнёт и пропадёт, а на медленном устройстве это выглядит как мерцание.
-     *
-     * Результат замера имеет приоритет: он и только он решает, зелёное ли.
+     * `yield` даёт коллектору обработать эмит туннеля раньше, чем будет записан
+     * вердикт, — иначе порядок записей не определён.
      */
     suspend fun connect() {
         tunnel.connect()
-        // Ждём, пока коллектор отработает эмит туннеля, и только потом оцениваем.
         yield()
-        _status.value = gate.evaluate()
+        measured.value = gate.evaluate()
     }
 
     suspend fun disconnect() {
@@ -58,7 +74,19 @@ class HomeViewModel(
 
     /** Перепроверка при смене сети: зелёное не сохраняется, а подтверждается заново. */
     suspend fun reverify() {
-        _status.value = gate.evaluate()
+        measured.value = gate.evaluate()
         tunnel.reverifyProtection()
     }
+
+    /**
+     * Системное состояние имеет приоритет, когда оно означает «туннеля нет»:
+     * старое зелёное не должно пережить отключение или сбой ни при каких
+     * обстоятельствах, даже если замер почему-то не обнулился.
+     */
+    private fun resolve(system: ConnectionStatus, measured: ConnectionStatus?): ConnectionStatus =
+        when {
+            system is ConnectionStatus.Disconnected || system is ConnectionStatus.Failed -> system
+            measured != null -> measured
+            else -> system
+        }
 }
