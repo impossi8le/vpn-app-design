@@ -47,6 +47,17 @@ class HomeViewModel(
     /** Результат последнего замера. `null` — замера для текущего состояния нет. */
     private val measured = MutableStateFlow<ConnectionStatus?>(null)
 
+    /**
+     * Поколение состояния туннеля.
+     *
+     * Замер описывает сеть, в которой он сделан. Растёт при каждом эмите
+     * туннеля; замер запоминает, на каком поколении он снят, и признаётся
+     * действительным, только пока поколение не сменилось. Это выражает
+     * «замер устарел» напрямую, вместо неявных правил приоритета.
+     */
+    private var generation = 0
+    private var measuredGeneration = -1
+
     private val _status = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
     val status: StateFlow<ConnectionStatus> = _status.asStateFlow()
 
@@ -65,9 +76,10 @@ class HomeViewModel(
 
         statusJob = viewModelScope.launch {
             tunnel.status.collect { incoming ->
-                // Замер обесценивается ДО применения состояния: он относился к
-                // прежней сети, а не к этой.
+                // Новая сеть: всё, что было измерено раньше, к ней не относится.
+                generation++
                 measured.value = null
+                measuredGeneration = -1
                 system.value = incoming
                 recompute()
             }
@@ -76,8 +88,8 @@ class HomeViewModel(
         watcher.start(
             scope = viewModelScope,
             networkChanges = tunnel.networkChanges,
-            onVerdict = { measured.value = it; recompute() },
-            onInvalidated = { measured.value = null; recompute() },
+            onVerdict = { recordMeasurement(it) },
+            onInvalidated = { invalidateMeasurement() },
         )
     }
 
@@ -97,8 +109,7 @@ class HomeViewModel(
     suspend fun connect() {
         tunnel.connect()
         yield()
-        measured.value = gate.evaluate()
-        recompute()
+        recordMeasurement(gate.evaluate())
     }
 
     suspend fun disconnect() {
@@ -107,8 +118,7 @@ class HomeViewModel(
 
     /** Перепроверка по требованию, например с кнопки «проверить снова». */
     suspend fun reverify() {
-        measured.value = gate.evaluate()
-        recompute()
+        recordMeasurement(gate.evaluate())
         tunnel.reverifyProtection()
     }
 
@@ -117,19 +127,45 @@ class HomeViewModel(
         super.onCleared()
     }
 
+    /** Записать свежий вердикт: он относится к текущему поколению сети. */
+    private fun recordMeasurement(verdict: ConnectionStatus) {
+        measured.value = verdict
+        measuredGeneration = generation
+        recompute()
+    }
+
+    /** Смена сети: прежний замер больше не описывает действительность. */
+    private fun invalidateMeasurement() {
+        measured.value = null
+        measuredGeneration = -1
+        recompute()
+    }
+
     private fun recompute() {
-        _status.value = resolve(system.value, measured.value)
+        _status.value = resolve(system.value, measured.value, measuredGeneration == generation)
     }
 
     /**
-     * Системное состояние имеет приоритет, когда оно означает «туннеля нет»:
-     * старое зелёное не должно пережить отключение или сбой ни при каких
-     * обстоятельствах, даже если замер почему-то не обнулился.
+     * Что показать.
+     *
+     * Порядок правил:
+     *  1. туннеля нет или он сломался — показываем это, каким бы ни был замер:
+     *     старое зелёное не должно пережить отключение;
+     *  2. замер, снятый на текущем поколении сети, — он и решает (и именно он
+     *     может дать зелёное);
+     *  3. иначе — состояние туннеля; зелёным оно быть не может по типу.
+     *
+     * Замер, снятый на прошлом поколении, сюда не доходит: свежий зелёный,
+     * полученный уже ПОСЛЕ эмита туннеля, обязан показываться, иначе индикатор
+     * залипал бы в «не проверено» при исправной сети.
      */
-    private fun resolve(system: ConnectionStatus, measured: ConnectionStatus?): ConnectionStatus =
-        when {
-            system is ConnectionStatus.Disconnected || system is ConnectionStatus.Failed -> system
-            measured != null -> measured
-            else -> system
-        }
+    private fun resolve(
+        system: ConnectionStatus,
+        measured: ConnectionStatus?,
+        measuredIsFresh: Boolean,
+    ): ConnectionStatus = when {
+        system is ConnectionStatus.Disconnected || system is ConnectionStatus.Failed -> system
+        measured != null && measuredIsFresh -> measured
+        else -> system
+    }
 }
