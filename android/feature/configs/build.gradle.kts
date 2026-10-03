@@ -14,7 +14,10 @@ android {
 
     namespace = "com.impossi8le.vpnapp.feature.configs"
     compileSdk = 35
-    defaultConfig { minSdk = 26 }
+    defaultConfig {
+        minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -40,4 +43,11 @@ dependencies {
     testImplementation(libs.coroutines.test)
     testRuntimeOnly(libs.junit5.engine)
     testRuntimeOnly(libs.junit5.launcher)
+
+    // Тесты рендеринга списка: проверяют то, чего на JVM не видно.
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }
