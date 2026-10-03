@@ -3,6 +3,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -28,6 +29,8 @@ dependencies {
     implementation(project(":core:domain"))
     implementation(libs.coroutines.core)
     implementation(libs.security.crypto)
+    // Сессия хранится как JSON-строка в зашифрованном блобе.
+    implementation(libs.serialization.json)
 
     testImplementation(libs.junit5.api)
     // Нужен для @ParameterizedTest / @CsvSource / @EnumSource.
