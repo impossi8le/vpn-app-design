@@ -1,7 +1,7 @@
 package com.impossi8le.vpnapp.feature.home
 
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.test.TestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -10,16 +10,20 @@ import org.junit.jupiter.api.extension.BeforeEachCallback
 import org.junit.jupiter.api.extension.ExtensionContext
 
 /**
- * Подменяет главный диспетчер.
+ * Подменяет главный диспетчер и ОТДАЁТ свой планировщик тесту.
  *
- * `viewModelScope` в ViewModel привязан к `Dispatchers.Main`, которого в обычном
- * JVM-тесте нет вовсе — без подмены тест падает не на логике, а на отсутствии
- * Android-лупера. `UnconfinedTestDispatcher` выполняет корутины сразу, поэтому
- * установка `init`-коллектора успевает произойти до вызова connect().
+ * `viewModelScope` привязан к `Dispatchers.Main`, которого в обычном JVM-тесте
+ * нет — без подмены тест падает не на логике, а на отсутствии Android-лупера.
+ *
+ * Планировщик обязательно общий с `runTest`: если у диспетчера и у теста разные
+ * планировщики, корутина-коллектор внутри ViewModel никогда не возобновляется —
+ * состояние «застревает» на первом значении, и тест начинает проверять не то,
+ * что задумано. Поэтому тест обязан писать `runTest(rule.scheduler)`.
  */
-class MainDispatcherRule(
-    private val dispatcher: TestDispatcher = UnconfinedTestDispatcher(),
-) : BeforeEachCallback, AfterEachCallback {
+class MainDispatcherRule : BeforeEachCallback, AfterEachCallback {
+
+    val scheduler = TestCoroutineScheduler()
+    val dispatcher = UnconfinedTestDispatcher(scheduler)
 
     override fun beforeEach(context: ExtensionContext) {
         Dispatchers.setMain(dispatcher)
