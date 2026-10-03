@@ -9,6 +9,13 @@ import com.impossi8le.vpnapp.domain.protection.ProtectionVerdict
  * в core:tunnel и в домен не протекает.
  */
 sealed interface ConnectionStatus {
+    /**
+     * Член интерфейса, а не extension-свойство: extension нужно импортировать в
+     * каждый файл, и забытый импорт ломает сборку у потребителя. Здесь оно есть
+     * везде, где есть сам тип.
+     */
+    val isProtected: Boolean get() = this is Protected
+
     data object Disconnected : ConnectionStatus
 
     data object Connecting : ConnectionStatus
@@ -38,6 +45,3 @@ sealed interface ConnectionStatus {
     /** Туннель не поднялся по причине, не связанной с пробой. */
     data class Failed(val reason: String) : ConnectionStatus
 }
-
-val ConnectionStatus.isProtected: Boolean
-    get() = this is ConnectionStatus.Protected
