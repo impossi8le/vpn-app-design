@@ -13,9 +13,28 @@ class Profile(val raw: ByteArray) {
 
     override fun hashCode(): Int = raw.contentHashCode()
 
-    // Специально НЕ переопределяем toString: он печатает содержимое профиля,
-    // в котором лежит приватный ключ. Дефолтный toString печатает только хеш.
+    // toString намеренно не переопределён: он печатал бы содержимое профиля,
+    // в котором лежит приватный ключ.
 }
+
+/** Состояние подписки на подключение. У каждого подключения своё. */
+enum class SubscriptionStatus { ACTIVE, EXPIRED, REVOKED, PENDING }
+
+/**
+ * Подключение в списке (контракт §3). Единица списка — конфиг, не страна:
+ * на одну страну может быть несколько подключений.
+ */
+data class ConfigSummary(
+    val id: String,
+    val name: String,
+    val countryCode: String,
+    val city: String,
+    val startDateEpochSeconds: Long,
+    val endDateEpochSeconds: Long,
+    val status: SubscriptionStatus,
+)
+
+data class ConfigList(val chatId: Long, val configs: List<ConfigSummary>)
 
 /** Результат `stage`: прошёл валидацию, но ещё не применён. */
 interface StagedProfile
@@ -31,16 +50,14 @@ fun interface ProfileValidator {
 /**
  * Хранилище профиля. Реализация живёт в core:config (чистый JVM) и обязана
  * обеспечивать согласованность записи: обрыв в любой точке не оставляет систему
- * без рабочего профиля (см. §7 архитектуры).
+ * без рабочего профиля (§7).
  */
 interface ProfileStore {
-    /** Текущий профиль или `null`, если его нет. */
     fun load(): Profile?
 
     /** Подготовить без применения. Бросает, если конфиг не прошёл валидацию. */
     fun stage(raw: ByteArray): StagedProfile
 
-    /** Применить подготовленный профиль. */
     fun commit(staged: StagedProfile)
 
     /** Вернуть предыдущую рабочую версию. */
@@ -50,8 +67,26 @@ interface ProfileStore {
     fun clear()
 }
 
-/** Получение профиля с сервера. */
+/**
+ * Получение конфигов с сервера (контракт §3–4).
+ *
+ * `fetchConfig` отдаёт сырые байты и версию с сервера: версия нужна, чтобы
+ * пропустить запись, если у клиента она уже есть.
+ */
 interface ConfigService {
-    /** Скачать `.ovpn` по публичному коду. Бросает типизированную ошибку. */
-    suspend fun fetch(publicCode: String): ByteArray
+    suspend fun listConfigs(): Result<ConfigList>
+
+    suspend fun fetchConfig(configId: String): Result<FetchedConfig>
+}
+
+data class FetchedConfig(
+    val raw: ByteArray,
+    val version: String,
+    val hash: String,
+) {
+    override fun equals(other: Any?): Boolean =
+        other is FetchedConfig && raw.contentEquals(other.raw) &&
+            version == other.version && hash == other.hash
+
+    override fun hashCode(): Int = (raw.contentHashCode() * 31 + version.hashCode()) * 31 + hash.hashCode()
 }
