@@ -50,3 +50,7 @@ android/app/release/
 /instrumented.log
 /failures.txt
 /*.log
+
+# Временные каталоги для проверки артефактов и разбора CI. В репозитории им не место.
+/.apkcheck/
+/.scratch/
