@@ -164,15 +164,41 @@ jobs:
       - name: Build
         run: |
           set -euo pipefail
-          cd "$RUNNER_TEMP/engine/openvpn3"
-          cmake --build build-android --target ovpncli -j"$(nproc)" 2>&1 | tail -60
+          ndk_toolchain="$NDK_PATH/build/cmake/android.toolchain.cmake"
+
+          # Собираем НЕ дерево upstream целиком, а свою библиотечную цель.
+          # Причина: у upstream ядро не выделено в библиотеку, а SWIG настроен
+          # только на Python. Плюс `test/ovpncli` там собирается безусловно —
+          # не гейтится BUILD_TESTING, — и именно он падал, потому что это
+          # эталонная CLI-программа, а не библиотека.
+          #
+          # android/vpnengine/CMakeLists.txt заводит цель `ovpn3`: ядро 3.x плюс
+          # Java-биндинг через SWIG с -DOPENVPN_PLATFORM_ANDROID.
+          cmake -S "$GITHUB_WORKSPACE/android/vpnengine" -B "$RUNNER_TEMP/enginebuild" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ndk_toolchain" \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DVCPKG_OVERLAY_TRIPLETS="$VCPKG_ROOT/triplets/community" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-26 \
+            -DANDROID_STL=c++_static \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOPENVPN3_DIR="$RUNNER_TEMP/engine/openvpn3" \
+            -DASIO_INCLUDE_DIR="$ASIO_INCLUDE_DIR" \
+            -DBUILD_TESTING=OFF \
+            2>&1 | tail -50
+
+          cmake --build "$RUNNER_TEMP/enginebuild" -j"$(nproc)" 2>&1 | tail -60
 
       - name: Report artefacts
         if: always()
         run: |
           set -euo pipefail
-          cd "$RUNNER_TEMP/engine/openvpn3" 2>/dev/null || exit 0
-          echo "=== собранные библиотеки ==="
-          find build-android -name '*.so' -o -name '*.a' 2>/dev/null | head -20
-          echo "=== есть ли ядро? ==="
-          find build-android -name 'libovpncli*' -o -name '*ovpncli*' 2>/dev/null | head -10
+          cd "$RUNNER_TEMP/enginebuild" 2>/dev/null || exit 0
+          echo "=== собранное ==="
+          find . -name '*.so' 2>/dev/null | head -20
+          echo "=== Java-классы биндинга ==="
+          find . -name '*.java' 2>/dev/null | head -20
+          echo "=== архитектура библиотеки (должна быть aarch64) ==="
+          so=$(find . -name 'ovpn3.so' | head -1)
+          [ -n "$so" ] && "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h "$so" | grep -i machine || true
