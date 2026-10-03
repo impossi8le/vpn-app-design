@@ -6,6 +6,8 @@ import com.impossi8le.vpnapp.domain.protection.ReverificationPolicy
 import com.impossi8le.vpnapp.testsupport.FactProbe
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -17,119 +19,139 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Наблюдатель отвечает за то, чтобы подтверждение не жило дольше правды.
  *
- * Проверяется в виртуальном времени: тест не должен ждать минуту, чтобы убедиться,
- * что перепроверка происходит раз в минуту.
+ * Всё проверяется в виртуальном времени: тест не должен ждать минуту, чтобы
+ * убедиться, что перепроверка идёт раз в минуту.
+ *
+ * Два обязательных приёма в каждом тесте:
+ *  - `runCurrent()` после `start` — иначе запущенные внутри коллекторы ещё не
+ *    подписались, и эмиссия в поток смены сети уйдёт в пустоту;
+ *  - `watcher.stop()` в конце — иначе `runTest` дожидается таймера бесконечно.
  */
 class ProtectionWatcherTest {
 
     @Test
-    fun `смена сети вызывает немедленную перепроверку`() = runTest {
+    fun `смена сети вызывает немедленную перепроверку и сбрасывает прежнее подтверждение`() = runTest {
         val probe = FactProbe(Triple(true, true, true))
         val watcher = ProtectionWatcher(ProtectionGate(probe))
         val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
 
         val verdicts = mutableListOf<ConnectionStatus>()
         var invalidations = 0
-
         watcher.start(this, changes, onVerdict = { verdicts += it }, onInvalidated = { invalidations++ })
-        advanceTimeBy(0)
+        runCurrent()
 
         changes.tryEmit(Unit)
-        advanceTimeBy(0)
+        runCurrent()
 
         assertEquals(1, verdicts.size, "смена сети обязана вызвать замер сразу")
         assertEquals(1, invalidations, "прежнее подтверждение сбрасывается до вердикта")
+        watcher.stop()
+        advanceUntilIdle()
     }
 
     @Test
-    fun `замер после смены сети отменяет прежнее подтверждение`() = runTest {
+    fun `после смены сети и провалившегося замера зелёное недопустимо`() = runTest {
         val probe = FactProbe(Triple(true, true, true))
         val watcher = ProtectionWatcher(ProtectionGate(probe))
         val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
 
         val verdicts = mutableListOf<ConnectionStatus>()
         watcher.start(this, changes, onVerdict = { verdicts += it }, onInvalidated = {})
-        advanceTimeBy(0)
+        runCurrent()
 
         changes.tryEmit(Unit)
-        advanceTimeBy(0)
+        runCurrent()
         assertTrue(verdicts.last().isProtected)
 
         // Сеть уехала: маршруты больше не закрывают IPv6.
         probe.withFacts(ipv4 = true, ipv6 = false, dns = true)
         changes.tryEmit(Unit)
-        advanceTimeBy(0)
+        runCurrent()
 
-        assertFalse(
-            verdicts.last().isProtected,
-            "после смены сети и провалившегося замера зелёное недопустимо",
-        )
+        assertFalse(verdicts.last().isProtected, "зелёное не должно пережить смену сети")
+        watcher.stop()
+        advanceUntilIdle()
     }
 
     @Test
-    fun `перепроверка происходит по таймеру`() = runTest {
-        val probe = FactProbe(Triple(true, true, true))
+    fun `перепроверка повторяется по таймеру`() = runTest {
         val watcher = ProtectionWatcher(
-            ProtectionGate(probe),
+            ProtectionGate(FactProbe(Triple(true, true, true))),
             ReverificationPolicy(interval = 30.seconds, onNetworkChange = false),
         )
-        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
-
         val verdicts = mutableListOf<ConnectionStatus>()
-        watcher.start(this, changes, onVerdict = { verdicts += it }, onInvalidated = {})
+        watcher.start(this, MutableSharedFlow(), onVerdict = { verdicts += it }, onInvalidated = {})
+        runCurrent()
 
         advanceTimeBy(31.seconds)
+        runCurrent()
         assertEquals(1, verdicts.size, "через интервал замер обязан состояться")
 
         advanceTimeBy(30.seconds)
+        runCurrent()
         assertEquals(2, verdicts.size, "и повторяться")
+
+        watcher.stop()
+        advanceUntilIdle()
     }
 
     @Test
     fun `до истечения интервала замер не делается`() = runTest {
-        val probe = FactProbe(Triple(true, true, true))
         val watcher = ProtectionWatcher(
-            ProtectionGate(probe),
+            ProtectionGate(FactProbe(Triple(true, true, true))),
             ReverificationPolicy(interval = 60.seconds, onNetworkChange = false),
         )
-
         val verdicts = mutableListOf<ConnectionStatus>()
         watcher.start(this, MutableSharedFlow(), onVerdict = { verdicts += it }, onInvalidated = {})
+        runCurrent()
 
         advanceTimeBy(50.seconds)
+        runCurrent()
         assertTrue(verdicts.isEmpty(), "замер не должен идти раньше срока")
+
+        watcher.stop()
+        advanceUntilIdle()
     }
 
     @Test
-    fun `таймер останавливается`() = runTest {
+    fun `после остановки замеров не происходит`() = runTest {
         val watcher = ProtectionWatcher(
             ProtectionGate(FactProbe(Triple(true, true, true))),
             ReverificationPolicy(interval = 10.seconds, onNetworkChange = false),
         )
         val verdicts = mutableListOf<ConnectionStatus>()
         watcher.start(this, MutableSharedFlow(), onVerdict = { verdicts += it }, onInvalidated = {})
+        runCurrent()
 
         advanceTimeBy(11.seconds)
+        runCurrent()
         assertEquals(1, verdicts.size)
 
         watcher.stop()
         advanceTimeBy(60.seconds)
+        runCurrent()
         assertEquals(1, verdicts.size, "после остановки замеров быть не должно")
     }
 
     @Test
     fun `повторный start не удваивает замеры`() = runTest {
+        // Иначе два таймера удвоят сетевые обращения.
         val watcher = ProtectionWatcher(
             ProtectionGate(FactProbe(Triple(true, true, true))),
             ReverificationPolicy(interval = 10.seconds, onNetworkChange = false),
         )
         val verdicts = mutableListOf<ConnectionStatus>()
-        // Иначе два таймера удвоят сетевые обращения и счётчики.
-        watcher.start(this, MutableSharedFlow(), onVerdict = { verdicts += it }, onInvalidated = {})
-        watcher.start(this, MutableSharedFlow(), onVerdict = { verdicts += it }, onInvalidated = {})
+        val noop: (ConnectionStatus) -> Unit = { verdicts += it }
+        watcher.start(this, MutableSharedFlow(), noop, {})
+        watcher.start(this, MutableSharedFlow(), noop, {})
+        runCurrent()
 
         advanceTimeBy(11.seconds)
+        runCurrent()
         assertEquals(1, verdicts.size, "должен остаться ровно один таймер")
+
+        watcher.stop()
+        advanceUntilIdle()
     }
 
     @Test
