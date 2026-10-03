@@ -5,7 +5,6 @@ import com.impossi8le.vpnapp.domain.protection.ProtectionGate
 import com.impossi8le.vpnapp.domain.protection.ReverificationPolicy
 import com.impossi8le.vpnapp.testsupport.FactProbe
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -23,10 +22,8 @@ import kotlin.time.Duration.Companion.seconds
  */
 class ProtectionWatcherTest {
 
-    private val scheduler = TestCoroutineScheduler()
-
     @Test
-    fun `смена сети вызывает немедленную перепроверку`() = runTest(scheduler) {
+    fun `смена сети вызывает немедленную перепроверку`() = runTest {
         val probe = FactProbe(Triple(true, true, true))
         val watcher = ProtectionWatcher(ProtectionGate(probe))
         val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
@@ -45,7 +42,7 @@ class ProtectionWatcherTest {
     }
 
     @Test
-    fun `замер после смены сети отменяет прежнее подтверждение`() = runTest(scheduler) {
+    fun `замер после смены сети отменяет прежнее подтверждение`() = runTest {
         val probe = FactProbe(Triple(true, true, true))
         val watcher = ProtectionWatcher(ProtectionGate(probe))
         val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
@@ -70,7 +67,7 @@ class ProtectionWatcherTest {
     }
 
     @Test
-    fun `перепроверка происходит по таймеру`() = runTest(scheduler) {
+    fun `перепроверка происходит по таймеру`() = runTest {
         val probe = FactProbe(Triple(true, true, true))
         val watcher = ProtectionWatcher(
             ProtectionGate(probe),
@@ -89,7 +86,7 @@ class ProtectionWatcherTest {
     }
 
     @Test
-    fun `до истечения интервала замер не делается`() = runTest(scheduler) {
+    fun `до истечения интервала замер не делается`() = runTest {
         val probe = FactProbe(Triple(true, true, true))
         val watcher = ProtectionWatcher(
             ProtectionGate(probe),
@@ -104,7 +101,7 @@ class ProtectionWatcherTest {
     }
 
     @Test
-    fun `таймер останавливается`() = runTest(scheduler) {
+    fun `таймер останавливается`() = runTest {
         val watcher = ProtectionWatcher(
             ProtectionGate(FactProbe(Triple(true, true, true))),
             ReverificationPolicy(interval = 10.seconds, onNetworkChange = false),
@@ -121,7 +118,7 @@ class ProtectionWatcherTest {
     }
 
     @Test
-    fun `повторный start не удваивает замеры`() = runTest(scheduler) {
+    fun `повторный start не удваивает замеры`() = runTest {
         val watcher = ProtectionWatcher(
             ProtectionGate(FactProbe(Triple(true, true, true))),
             ReverificationPolicy(interval = 10.seconds, onNetworkChange = false),
