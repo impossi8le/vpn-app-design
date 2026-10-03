@@ -34,8 +34,30 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # android-actions/setup-android НЕ нужен и убран: на ubuntu-latest Android
+      # SDK уже предустановлен, а этот action падает на чистом раннере (проверено
+      # прогоном 37136421873). Переменные окружения для SDK выставляются вручную
+      # из каталога, который GitHub держит на образе.
+      - name: Point Gradle at the preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}/platforms" || true
+
+      # compileSdk 35 должен быть установлен, и лицензии приняты — иначе AGP
+      # останавливается с просьбой принять их вручную, чего на раннере сделать
+      # некому. Ставим только отсутствующее, чтобы не тратить минуты впустую.
+      - name: Ensure platform 35 and build-tools
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          if [ ! -d "$sdk/platforms/android-35" ]; then
+            "$sdk/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35"
+          fi
+          if ! ls "$sdk"/build-tools/35.* >/dev/null 2>&1; then
+            "$sdk/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0"
+          fi
+          yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
 
       # Wrapper закоммичен в репозиторий и сам себе версия — отдельный пин Gradle
       # больше не нужен. Он же снимает зависимость от того, что оказалось на раннере.
@@ -105,8 +127,10 @@ jobs:
           java-version: '17'
 
       - if: steps.signing.outputs.ok == 'true'
-        name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        name: Point Gradle at the preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
 
       - if: steps.signing.outputs.ok == 'true'
         name: Set up Gradle cache
