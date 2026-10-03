@@ -183,18 +183,26 @@ jobs:
           target: default
           arch: x86_64
           working-directory: android
-          # Запускаются ВСЕ инструментальные тесты проекта, а не только :app:
-          # экраны живут в feature-модулях, и `:app:connectedDebugAndroidTest`
-          # их бы не запустил — то есть тест рендеринга молча не выполнялся бы.
-          # --console=plain убирает прогресс-строки, tee сохраняет вывод для разбора.
-          script: ./gradlew connectedDebugAndroidTest --no-daemon --console=plain 2>&1 | tee instrumented.log
+          # ВАЖНО, и это уже стоило ложной зелени: падение компиляции
+          # инструментальных тестов однажды отчиталось успехом, потому что вывод
+          # шёл через `| tee`, а код возврата конвейера — это код tee, не Gradle.
+          #
+          # Никакого конвейера: пишем в файл и возвращаем именно код Gradle.
+          # ${PIPESTATUS} и `set -o pipefail` здесь не годятся — скрипт выполняет
+          # `sh`, а не bash, и там их нет.
+          script: |
+            ./gradlew connectedDebugAndroidTest --no-daemon --console=plain > instrumented.log 2>&1
+            status=$?
+            cat instrumented.log
+            exit $status
 
       # Аннотация с причиной падения: логи джобы требуют прав администратора,
       # а без разбора причина «instrumented tests failed» ничего не объясняет.
       - name: Report instrumented failures
         if: failure()
         run: |
-          cd android 2>/dev/null || true
+          # Лог пишется относительно рабочего каталога джобы (android/),
+          # поэтому никаких переходов: файл рядом.
           if [ -f instrumented.log ]; then
             grep -vE '^> Task |^Download|^Starting|^Welcome|^$' instrumented.log \
               | grep -iE 'error|fail|exception|unable|no devices|adb|instrumentation|runner|assert|Caused' \
@@ -202,8 +210,8 @@ jobs:
             if [ -s inst.txt ]; then
               echo "::error title=Instrumented tests failed::$(sed 's/"/\x27/g' inst.txt | tr '\n' '|' | cut -c1-4000)"
             else
-              tail -30 instrumented.log > /tmp/t.txt
-              echo "::error title=Instrumented tests failed (tail)::$(sed 's/"/\x27/g' /tmp/t.txt | tr '\n' '|' | cut -c1-4000)"
+              tail -30 instrumented.log > tail.txt
+              echo "::error title=Instrumented tests failed (tail)::$(sed 's/"/\x27/g' tail.txt | tr '\n' '|' | cut -c1-4000)"
             fi
           else
             echo "::error title=Instrumented tests failed::лог не создан — эмулятор не запустился или сломался раньше тестов"
