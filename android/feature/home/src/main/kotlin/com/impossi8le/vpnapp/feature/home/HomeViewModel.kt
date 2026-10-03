@@ -6,6 +6,7 @@ import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
 import com.impossi8le.vpnapp.domain.protection.ReverificationPolicy
 import com.impossi8le.vpnapp.domain.tunnel.TunnelControlling
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -53,8 +54,20 @@ class HomeViewModel(
         combine(system, measured) { sys, verdict -> resolve(sys, verdict) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, ConnectionStatus.Disconnected)
 
-    init {
-        viewModelScope.launch {
+    private var statusJob: Job? = null
+
+    /**
+     * Начать наблюдение за туннелем и защитой.
+     *
+     * Вызывается экраном при появлении, а НЕ из конструктора. Причина не только
+     * в тестируемости: таймер перепроверки делает сетевые обращения, и запускать
+     * его до того, как экран показан, значит опрашивать сеть в фоне без причины.
+     * Останавливается в [stop] при уходе с экрана.
+     */
+    fun start() {
+        if (statusJob?.isActive == true) return
+
+        statusJob = viewModelScope.launch {
             tunnel.status.collect { incoming ->
                 // Замер обесценивается ДО применения состояния: он относился к
                 // прежней сети, а не к этой.
@@ -69,6 +82,13 @@ class HomeViewModel(
             onVerdict = { measured.value = it },
             onInvalidated = { measured.value = null },
         )
+    }
+
+    /** Остановить наблюдение: экран ушёл, опрашивать сеть незачем. */
+    fun stop() {
+        statusJob?.cancel()
+        statusJob = null
+        watcher.stop()
     }
 
     /**
@@ -94,7 +114,7 @@ class HomeViewModel(
     }
 
     override fun onCleared() {
-        watcher.stop()
+        stop()
         super.onCleared()
     }
 

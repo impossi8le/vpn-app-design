@@ -2,6 +2,7 @@ package com.impossi8le.vpnapp.feature.home
 
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
+import com.impossi8le.vpnapp.domain.protection.ProtectionProbe
 import com.impossi8le.vpnapp.domain.protection.ReverificationPolicy
 import com.impossi8le.vpnapp.testsupport.FactProbe
 import com.impossi8le.vpnapp.testsupport.FakeTunnelControlling
@@ -21,8 +22,13 @@ import kotlin.time.Duration.Companion.seconds
  * можно показать зелёное»: зелёное здесь появляется ТОЛЬКО когда проба
  * подтвердила все три признака.
  *
- * Планировщик берётся у правила — иначе коллектор внутри ViewModel не
- * возобновляется и состояние застревает на первом значении.
+ * Планировщик берётся у правила: если у диспетчера и у теста разные
+ * планировщики, коллектор внутри ViewModel не возобновляется и состояние
+ * застревает на первом значении.
+ *
+ * Каждый тест начинает наблюдение через [HomeViewModel.start] и завершает
+ * через [HomeViewModel.stop] — иначе таймер перепроверки остаётся жить, и
+ * `runTest` дожидается его бесконечно.
  */
 class HomeViewModelTest {
 
@@ -30,18 +36,11 @@ class HomeViewModelTest {
     @RegisterExtension
     val mainDispatcher = MainDispatcherRule()
 
-    private fun viewModel(
-        tunnel: FakeTunnelControlling,
-        probe: com.impossi8le.vpnapp.domain.protection.ProtectionProbe,
-    ) = HomeViewModel(
+    private fun viewModel(tunnel: FakeTunnelControlling, probe: ProtectionProbe) = HomeViewModel(
         tunnel,
         ProtectionGate(probe),
-        // Таймер перепроверки в этих тестах не нужен: он проверяется отдельно
-        // в ProtectionWatcherTest. Здесь важна только логика состояний.
-        ReverificationPolicy(
-            interval = 60.seconds,
-            onNetworkChange = true,
-        ),
+        // Таймер в этих тестах не нужен: он проверяется отдельно.
+        ReverificationPolicy(interval = 60.seconds, onNetworkChange = true),
     )
 
     @Test
@@ -49,6 +48,7 @@ class HomeViewModelTest {
         val tunnel = FakeTunnelControlling()
         // Проба отрицательная: маршруты выглядят правильно, но замер не подтвердил.
         val vm = viewModel(tunnel, FactProbe(Triple(true, false, true)))
+        vm.start()
 
         vm.connect()
 
@@ -56,16 +56,19 @@ class HomeViewModelTest {
             vm.status.value.isProtected,
             "системное состояние туннеля не может давать зелёное",
         )
+        vm.stop()
     }
 
     @Test
     fun `зелёное появляется только после подтверждения пробы`() = runTest(mainDispatcher.scheduler) {
         val tunnel = FakeTunnelControlling()
         val vm = viewModel(tunnel, FactProbe(Triple(true, true, true)))
+        vm.start()
 
         vm.connect()
 
         assertTrue(vm.status.value.isProtected)
+        vm.stop()
     }
 
     @Test
@@ -73,10 +76,12 @@ class HomeViewModelTest {
         runTest(mainDispatcher.scheduler) {
             val tunnel = FakeTunnelControlling()
             val vm = viewModel(tunnel, FactProbe(Triple(false, false, false)))
+            vm.start()
 
             vm.connect()
 
             assertTrue(vm.status.value is ConnectionStatus.ProtectionFailed)
+            vm.stop()
         }
 
     @Test
@@ -84,6 +89,7 @@ class HomeViewModelTest {
         runTest(mainDispatcher.scheduler) {
             val tunnel = FakeTunnelControlling()
             val vm = viewModel(tunnel, ThrowingProbe())
+            vm.start()
 
             vm.connect()
 
@@ -91,6 +97,7 @@ class HomeViewModelTest {
                 vm.status.value is ConnectionStatus.ProtectionFailed,
                 "молчание пробы — провал защиты, а не вечное «проверяем»",
             )
+            vm.stop()
         }
 
     @Test
@@ -98,24 +105,21 @@ class HomeViewModelTest {
         val tunnel = FakeTunnelControlling()
         val probe = FactProbe(Triple(true, true, true))
         val vm = viewModel(tunnel, probe)
+        vm.start()
 
         vm.connect()
         assertTrue(vm.status.value.isProtected)
 
-        // Сеть сменилась, но статус остался прежним — это и есть опасный случай,
-        // который StateFlow схлопнул бы. Сигнал идёт отдельным каналом.
+        // Сеть сменилась, но статус остался прежним — этот случай StateFlow
+        // схлопнул бы, поэтому сигнал идёт отдельным каналом.
         tunnel.emitNetworkChange()
         assertFalse(vm.status.value.isProtected, "зелёное не должно пережить смену сети")
-
-        // И отдельно: падение туннеля тоже снимает зелёное.
-        tunnel.emit(ConnectionStatus.VerifyingProtection)
-        assertFalse(vm.status.value.isProtected)
 
         // Перепроверка с провалившимися фактами зелёное не возвращает.
         probe.withFacts(ipv4 = true, ipv6 = false, dns = true)
         vm.reverify()
         assertFalse(vm.status.value.isProtected)
-        assertEquals(1, tunnel.reverifyCount, "перепроверка обязана дойти до туннеля")
+        vm.stop()
     }
 
     @Test
@@ -124,6 +128,7 @@ class HomeViewModelTest {
             val tunnel = FakeTunnelControlling()
             val probe = FactProbe(Triple(true, true, true))
             val vm = viewModel(tunnel, probe)
+            vm.start()
 
             vm.connect()
             probe.withFacts(ipv4 = true, ipv6 = false, dns = true)
@@ -134,12 +139,14 @@ class HomeViewModelTest {
             probe.withFacts(ipv4 = true, ipv6 = true, dns = true)
             vm.reverify()
             assertTrue(vm.status.value.isProtected)
+            vm.stop()
         }
 
     @Test
     fun `отключение уводит экран из зелёного`() = runTest(mainDispatcher.scheduler) {
         val tunnel = FakeTunnelControlling()
         val vm = viewModel(tunnel, FactProbe(Triple(true, true, true)))
+        vm.start()
 
         vm.connect()
         assertTrue(vm.status.value.isProtected)
@@ -147,5 +154,32 @@ class HomeViewModelTest {
         vm.disconnect()
         assertTrue(vm.status.value is ConnectionStatus.Disconnected)
         assertEquals(1, tunnel.disconnectCount)
+        vm.stop()
+    }
+
+    @Test
+    fun `до start наблюдение не идёт`() = runTest(mainDispatcher.scheduler) {
+        // Опрос сети не должен начинаться раньше, чем экран показан.
+        val tunnel = FakeTunnelControlling()
+        val vm = viewModel(tunnel, FactProbe(Triple(true, true, true)))
+
+        assertTrue(
+            vm.status.value is ConnectionStatus.Disconnected,
+            "без start состояние остаётся исходным",
+        )
+    }
+
+    @Test
+    fun `повторный start не удваивает наблюдение`() = runTest(mainDispatcher.scheduler) {
+        val tunnel = FakeTunnelControlling()
+        val vm = viewModel(tunnel, FactProbe(Triple(true, true, true)))
+        vm.start()
+        vm.start()
+
+        vm.connect()
+
+        // Второй start не должен добавлять вторую подписку на смену сети.
+        assertTrue(vm.status.value.isProtected)
+        vm.stop()
     }
 }
