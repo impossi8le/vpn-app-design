@@ -43,6 +43,11 @@ include(${OPENVPN3_DIR}/cmake/findcoredeps.cmake)
 find_package(SWIG 4.0 REQUIRED java)
 include(${SWIG_USE_FILE})
 
+# Куда положить сгенерированные .java. Без этого SWIG их создаёт рядом с .i
+# внутри чекаута ядра, и они теряются среди чужих файлов.
+set(CMAKE_SWIG_OUTDIR "${CMAKE_BINARY_DIR}/java")
+file(MAKE_DIRECTORY ${CMAKE_SWIG_OUTDIR})
+
 set(CMAKE_SWIG_FLAGS
     "-c++"
     "-java"
@@ -62,12 +67,28 @@ set(SWIG_SOURCES
     ${OPENVPN3_DIR}/client/ovpncli.i
 )
 
-add_library(ovpn3 SHARED ${SWIG_SOURCES})
+# CPLUSPLUS ON обязателен: без него SWIG генерирует C-обёртку, которая не
+# соберётся с C++ ядром.
+set_property(SOURCE ${OPENVPN3_DIR}/client/ovpncli.i PROPERTY CPLUSPLUS ON)
+set_property(SOURCE ${OPENVPN3_DIR}/client/ovpncli.i
+    PROPERTY SWIG_COMPILE_OPTIONS -Wno-deprecated-declarations -Wno-unused-function)
+
+# swig_add_library, а НЕ add_library: только он получает LANGUAGE java и
+# порождает сами Java-классы. С простым add_library SWIG запускается, .so
+# собирается, но .java не создаются — это и было в прошлом прогоне, где
+# «Java-классы биндинга» оказались пустыми.
+swig_add_library(ovpn3
+    TYPE SHARED
+    LANGUAGE java
+    SOURCES ${SWIG_SOURCES}
+)
 
 set_target_properties(ovpn3 PROPERTIES
     # Имя без префикса: так .so подхватывается как обычная JNI-библиотека.
     PREFIX ""
     OUTPUT_NAME "ovpn3"
+    # Java-классы рядом с библиотекой, чтобы забрать их одним артефактом.
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/jniLibs/arm64-v8a"
 )
 
 # На Android pthread — часть libc, отдельной `libpthread.so` в NDK нет.

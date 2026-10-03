@@ -209,4 +209,11 @@ jobs:
           find . -name '*.java' 2>/dev/null | head -20
           echo "=== архитектура библиотеки (должна быть aarch64) ==="
           so=$(find . -name 'ovpn3.so' | head -1)
-          [ -n "$so" ] && "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h "$so" | grep -i machine || true
+          if [ -n "$so" ]; then
+            readelf="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+            [ -x "$readelf" ] && "$readelf" -h "$so" | grep -i machine || true
+          fi
+          echo "=== сколько Java-классов сгенерировано ==="
+          find . -name '*.java' | wc -l
+          echo "=== ключевые классы ClientAPI ==="
+          find . -name 'OpenVPNClient.java' -o -name 'ClientAPI.java' | head -5
