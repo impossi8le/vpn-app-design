@@ -16,6 +16,10 @@ on:
   push:
     paths:
       - '.github/workflows/openvpn3-spike.yml'
+      # Рецепт сборки живёт здесь, и прогон обязан перезапускаться при его
+      # правке. Иначе исправление в CMakeLists не проверяется: триггер следил
+      # только за самим workflow, и один фикс остался непроверенным.
+      - 'android/vpnengine/**'
 
 jobs:
   build-core:
