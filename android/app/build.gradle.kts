@@ -24,6 +24,12 @@ android {
         // поверх предыдущего (§10.3). Значение подставляется из CI.
         versionCode = (System.getenv("ANDROID_VERSION_CODE")?.toIntOrNull()) ?: 1
         versionName = System.getenv("ANDROID_VERSION_NAME") ?: "0.1.0"
+
+        // Без этого connectedAndroidTest не запускается вовсе: инструментам
+        // нечем стартовать тесты. AndroidJUnitRunner работает на JUnit4 —
+        // JUnit5 там не поддерживается, поэтому у инструментальных тестов
+        // собственный контур (см. TunnelPlanInstrumentedTest).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures { compose = true }
