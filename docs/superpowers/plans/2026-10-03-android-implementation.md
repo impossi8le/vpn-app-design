@@ -1,16 +1,23 @@
 # Реализация Android-клиента VPN — план
 
-> **Для агентов-исполнителей:** ОБЯЗАТЕЛЬНЫЙ ПОД-НАВЫК: `superpowers:subagent-driven-development` (рекомендуется) или `superpowers:executing-plans`. Шаги размечены чекбоксами `- [ ]`.
+> **СТАТУС НА 2026-10-04.** Задания 1–13, 15 (частично), 17–19 ВЫПОЛНЕНЫ;
+> CI зелёный: юнит-тесты (252), инструментальные на эмуляторе API 30
+> (17 тестов реально выполняются), подписанный релиз. Отдельной строкой —
+> что осталось и почему.
+>
+> **Порядок чтения:** этот файл описывает, как работа РАЗБИВАЛАСЬ. Фактическая
+> реализация местами отошла от буквы заданий, потому что код вскрывал то, чего
+> план не знал: например, `ConfigManager` оказался обязан различать причины
+> сбоя получения конфига, а проба защиты — получать отдельный сигнал смены
+> сети, потому что `StateFlow` схлопывает одинаковые значения. Расхождения
+> отмечены по месту и в §4.7 архитектурного документа.
+>
+> **Осталось:** ЯДРО VPN. Это не задача из списка, а решение, которое ещё не
+> принято: ics-openvpn — приложение, а не библиотека (см. §4.7 архитектуры),
+> и способ подключения ядра нужно выбрать. Пока он не выбран, `:vpnservice`
+> остаётся заглушкой, а приложение честно отказывается подключаться вместо
+> того, чтобы изображать работающий VPN.
 
-**Цель:** превратить каркас `android/` в собирающееся, тестируемое приложение, где ни один зелёный статус защиты не выводится без замера.
-
-**Архитектура:** многомодульный Gradle-проект. Домен — чистый Kotlin/JVM без Android, поэтому инвариант защиты и протокол записи конфига проверяются на JVM без эмулятора. Android-специфика (VpnService, ConnectivityManager, Keystore) спрятана за интерфейсами `core:domain`.
-
-**Стек:** Kotlin 2.1.0, Jetpack Compose (BOM 2024.12.01), AGP 8.7.3, Gradle 8.11.1, minSdk 26 / targetSdk 35, OkHttp 4.12.0, kotlinx.serialization 1.7.3, JUnit5 5.11.3, ics-openvpn (GPLv2).
-
-**Спека:** [docs/architecture/2026-10-03-android-architecture.md](../../architecture/2026-10-03-android-architecture.md)
-
----
 
 ## Глобальные ограничения
 
@@ -73,7 +80,7 @@
 - Изменить: `.github/workflows/android.yml` (заменить `gradle` на `./gradlew`, убрать `gradle-version`)
 - Проверить: `android/gradlew`, `android/gradle/wrapper/gradle-wrapper.jar`, `android/gradle/wrapper/gradle-wrapper.properties`
 
-- [ ] **Шаг 1: Перевести CI на wrapper**
+- [x] **Шаг 1: Перевести CI на wrapper**
 
 Убрать `gradle/actions/setup-gradle@v4` с `gradle-version` — wrapper теперь сам себе версия. Оставить только кэш.
 
@@ -92,7 +99,7 @@
 
 Так же в джобе `release`: `./gradlew :app:assembleRelease --no-daemon`.
 
-- [ ] **Шаг 2: Коммит и пуш**
+- [x] **Шаг 2: Коммит и пуш**
 
 ```bash
 git add android/gradlew android/gradlew.bat android/gradle/wrapper .github/workflows/android.yml
@@ -100,7 +107,7 @@ git commit -m "Vendor Gradle wrapper and run CI through it"
 git push
 ```
 
-- [ ] **Шаг 3: Прогон и починка**
+- [x] **Шаг 3: Прогон и починка**
 
 ```bash
 gh run watch
@@ -116,7 +123,7 @@ gh run watch
 | `security-crypto` не резолвится | `alpha06` может быть отозван | поднять до `alpha07`/`1.1.0` |
 | AGP требует иной Gradle | 8.7.3 требует 8.9+ | 8.11.1 подходит, проверить лог |
 
-- [ ] **Шаг 4: CI зелёный → задача закрыта**
+- [x] **Шаг 4: CI зелёный → задача закрыта**
 
 Пока CI красный, задания 3+ не начинать.
 
@@ -134,7 +141,7 @@ gh run watch
 
 - Изменить: все `build.gradle.kts` Android-модулей (9 файлов)
 
-- [ ] **Шаг 1: Добавить блок `testOptions`**
+- [x] **Шаг 1: Добавить блок `testOptions`**
 
 В каждый android-модуль, где объявлены `testImplementation`:
 
@@ -148,11 +155,11 @@ android {
 }
 ```
 
-- [ ] **Шаг 2: Доказать, что тест запускается**
+- [x] **Шаг 2: Доказать, что тест запускается**
 
 Добавить по одному заведомо зелёному тесту в `core:security` и `core:tunnel`, прогнать CI, убедиться что они **в отчёте**, а не в `NO-SOURCE`.
 
-- [ ] **Шаг 3: Коммит**
+- [x] **Шаг 3: Коммит**
 
 ```bash
 git commit -am "Run JUnit5 in Android modules via useJUnitPlatform"
@@ -187,7 +194,7 @@ git commit -am "Run JUnit5 in Android modules via useJUnitPlatform"
 - Отдаёт: `ProtectionVerdict`, `ProtectionVerdict.evaluate(Boolean, Boolean, Boolean)`, `ProtectionEvidence`, `ProtectionFailure`, `ConnectionStatus`, `ProtectionGate`
 - Потребляет: ничего (первое задание фазы)
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 ```kotlin
 package com.impossi8le.vpnapp.domain.protection
@@ -229,14 +236,14 @@ class ProtectionVerdictTest {
 }
 ```
 
-- [ ] **Шаг 2: Убедиться, что тест падает**
+- [x] **Шаг 2: Убедиться, что тест падает**
 
 ```
 ./gradlew :core:domain:test
 ```
 Ожидаемо: не компилируется — `ProtectionVerdict` не существует.
 
-- [ ] **Шаг 3: Минимальная реализация**
+- [x] **Шаг 3: Минимальная реализация**
 
 ```kotlin
 package com.impossi8le.vpnapp.domain.protection
@@ -281,14 +288,14 @@ val ProtectionVerdict.isConfirmed: Boolean
     get() = this is ProtectionVerdict.Confirmed
 ```
 
-- [ ] **Шаг 4: Тест зелёный**
+- [x] **Шаг 4: Тест зелёный**
 
 ```
 ./gradlew :core:domain:test
 ```
 Ожидаемо: PASS, 9 тестов.
 
-- [ ] **Шаг 5: Коммит**
+- [x] **Шаг 5: Коммит**
 
 ```bash
 git add android/core/domain
@@ -316,7 +323,7 @@ git commit -m "Add protection verdict: green only when all three facts hold"
 - Отдаёт: `ConnectionStatus`, `SystemState`, `SystemState.toConnectionStatus(): ConnectionStatus`
 - Потребляет: `ProtectionEvidence` из задания 3
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 ```kotlin
 package com.impossi8le.vpnapp.tunnel
@@ -350,14 +357,14 @@ class StatusMappingTest {
 }
 ```
 
-- [ ] **Шаг 2: Убедиться, что тест падает**
+- [x] **Шаг 2: Убедиться, что тест падает**
 
 ```
 ./gradlew :core:tunnel:test
 ```
 Ожидаемо: не компилируется.
 
-- [ ] **Шаг 3: Реализация**
+- [x] **Шаг 3: Реализация**
 
 ```kotlin
 package com.impossi8le.vpnapp.domain.model
@@ -410,7 +417,7 @@ fun SystemState.toConnectionStatus(): ConnectionStatus = when (this) {
 }
 ```
 
-- [ ] **Шаг 4: Тест зелёный, коммит**
+- [x] **Шаг 4: Тест зелёный, коммит**
 
 ```bash
 ./gradlew :core:tunnel:test
@@ -438,7 +445,7 @@ git commit -m "Prove no system state can produce a green status"
 - Отдаёт: `ProtectionProbe`, `ProtectionGate(probe)`, `ProtectionGate.evaluate(): ConnectionStatus`
 - Потребляет: `ProtectionVerdict`, `ConnectionStatus`
 
-- [ ] **Шаг 1: Написать падающий тест — с честным фейком**
+- [x] **Шаг 1: Написать падающий тест — с честным фейком**
 
 Фейк обязан быть **параметризован входом**, не выходом. Фейк, который всегда возвращает `Confirmed`, делает тест тавтологичным.
 
@@ -484,14 +491,14 @@ class ProtectionGateTest {
 }
 ```
 
-- [ ] **Шаг 2: Убедиться, что падает**
+- [x] **Шаг 2: Убедиться, что падает**
 
 ```
 ./gradlew :core:domain:test
 ```
 Ожидаемо: `ProtectionGate` не найден.
 
-- [ ] **Шаг 3: Реализация**
+- [x] **Шаг 3: Реализация**
 
 ```kotlin
 package com.impossi8le.vpnapp.domain.protection
@@ -518,7 +525,7 @@ class ProtectionGate(private val probe: ProtectionProbe) {
 }
 ```
 
-- [ ] **Шаг 4: Тест зелёный, коммит**
+- [x] **Шаг 4: Тест зелёный, коммит**
 
 ```bash
 ./gradlew :core:domain:test
@@ -543,15 +550,15 @@ git commit -m "Add ProtectionGate as the only owner of the transition to green"
 
 **Интерфейсы:** дословно из §5 спеки (блоки `core:domain — Auth / Config / Tunnel`).
 
-- [ ] **Шаг 1: Интерфейсы без тестов**
+- [x] **Шаг 1: Интерфейсы без тестов**
 
 Здесь тестов нет: объявление интерфейсов нечего проверять. Проверка — компиляция.
 
-- [ ] **Шаг 2: Фейки в `test-support`**
+- [x] **Шаг 2: Фейки в `test-support`**
 
 `FakeProfileStore` — **не `Map`**: он должен уметь инжектить сбой `rename` и частичную запись, иначе протокол записи негде проверить (см. задание 7).
 
-- [ ] **Шаг 3: Коммит**
+- [x] **Шаг 3: Коммит**
 
 ```bash
 git commit -m "Declare domain boundary interfaces and add test fakes"
@@ -583,7 +590,7 @@ git commit -m "Declare domain boundary interfaces and add test fakes"
 - Отдаёт: `FileProfileStore(File dir, ProfileValidator)`
 - Потребляет: `ProfileStore`, `Profile`, `StagedProfile` из задания 6
 
-- [ ] **Шаг 1: Написать падающие тесты**
+- [x] **Шаг 1: Написать падающие тесты**
 
 ```kotlin
 package com.impossi8le.vpnapp.config
@@ -654,14 +661,14 @@ class FileProfileStoreTest {
 }
 ```
 
-- [ ] **Шаг 2: Убедиться, что падают**
+- [x] **Шаг 2: Убедиться, что падают**
 
 ```
 ./gradlew :core:config:test
 ```
 Ожидаемо: не компилируется — `FileProfileStore` не существует.
 
-- [ ] **Шаг 3: Реализация — одно перемещение, а не два**
+- [x] **Шаг 3: Реализация — одно перемещение, а не два**
 
 ```kotlin
 package com.impossi8le.vpnapp.config
@@ -730,7 +737,7 @@ class FileProfileStore(
 }
 ```
 
-- [ ] **Шаг 4: Тесты зелёные, коммит**
+- [x] **Шаг 4: Тесты зелёные, коммит**
 
 ```bash
 ./gradlew :core:config:test
@@ -759,15 +766,15 @@ git commit -m "Write profile with a single atomic move and self-heal on load"
 - Создать: `core/network/src/main/kotlin/.../ApiClient.kt`, `.../AuthApi.kt`, `.../ConfigApi.kt`, `.../ErrorMapping.kt`
 - Тест: `core/network/src/test/kotlin/.../AuthApiTest.kt`, `.../ErrorMappingTest.kt`
 
-- [ ] **Шаг 1: Фикстуры без секретов**
+- [x] **Шаг 1: Фикстуры без секретов**
 
 JSON-фикстуры в `test-support` — обезличенные. Живой `.ovpn` в тесты не попадает никогда (правило 6).
 
-- [ ] **Шаг 2: Тесты против MockWebServer**
+- [x] **Шаг 2: Тесты против MockWebServer**
 
 Обязательные кейсы: `200` happy path; `409 already_consumed` → типизированная ошибка, не краш; `401` истёкшая сессия → `SessionExpired`; `5xx` → `ServerError` с retry-подсказкой; таймаут → `NetworkUnavailable`. **Мок интерфейса здесь запрещён**: он спрячет парсинг и статус-маппинг — главный источник багов.
 
-- [ ] **Шаг 3: Реализация, затем `./gradlew :core:network:test`, коммит**
+- [x] **Шаг 3: Реализация, затем `./gradlew :core:network:test`, коммит**
 
 ### Задание 9: WA3 — хранение сессии
 
@@ -779,11 +786,11 @@ JSON-фикстуры в `test-support` — обезличенные. Живой
 - **ОГРАНИЧЕНИЯ:** правило 6.
 - **ПРОВЕРКА:** `./gradlew :core:security:testDebugUnitTest`.
 
-- [ ] **Шаг 1: Тесты на фейковом бэкенде**
+- [x] **Шаг 1: Тесты на фейковом бэкенде**
 
 Кейсы: save/load round-trip; `load()` при повреждённом блобе возвращает `null`, а не бросает; смена ключа Keystore → чистая очистка; `clear()` идемпотентен.
 
-- [ ] **Шаг 2: Реализация, затем тест, коммит**
+- [x] **Шаг 2: Реализация, затем тест, коммит**
 
 ### Задание 10: WA5 — ViewModel-логика экранов
 
@@ -795,7 +802,7 @@ JSON-фикстуры в `test-support` — обезличенные. Живой
 - **ОГРАНИЧЕНИЯ:** правило 4.
 - **ПРОВЕРКА:** `HomeViewModelTest.greenOnlyAfterProbeConfirms` зелёный.
 
-- [ ] **Шаг 1: Тест-ловушка на зелёный**
+- [x] **Шаг 1: Тест-ловушка на зелёный**
 
 ```kotlin
 @Test
@@ -818,7 +825,7 @@ fun `green appears only after probe confirms, never before`() = runTest {
 
 Этот тест падает, если кто-то подсунет системный флаг вместо пробы.
 
-- [ ] **Шаг 2: Реализация, тесты, коммит**
+- [x] **Шаг 2: Реализация, тесты, коммит**
 
 ---
 
@@ -834,7 +841,7 @@ fun `green appears only after probe confirms, never before`() = runTest {
 - **ОГРАНИЧЕНИЯ:** правило 1.
 - **ПРОВЕРКА:** джоба `instrumented` зелёная.
 
-- [ ] **Шаг 1: Добавить джобу**
+- [x] **Шаг 1: Добавить джобу**
 
 ```yaml
   instrumented:
@@ -867,7 +874,7 @@ fun `green appears only after probe confirms, never before`() = runTest {
           script: ./gradlew connectedDebugAndroidTest --no-daemon
 ```
 
-- [ ] **Шаг 2: Коммит и прогон**
+- [x] **Шаг 2: Коммит и прогон**
 
 ### Задание 12: Проба защиты на Android
 
@@ -881,7 +888,7 @@ fun `green appears only after probe confirms, never before`() = runTest {
 
 **Честная граница.** `LinkProperties.routes` показывает маршрут **в туннель**; per-UID исключение (`addDisallowedApplication`) в таблице маршрутов не отражается. Поэтому одной проверки маршрутов мало — нужен замер эгресса (задание 14).
 
-- [ ] **Шаг 1: Чистая логика над фактами (JVM)**
+- [x] **Шаг 1: Чистая логика над фактами (JVM)**
 
 ```kotlin
 package com.impossi8le.vpnapp.domain.protection
@@ -904,11 +911,11 @@ fun evaluateFacts(facts: LinkFacts, addressing: TunnelAddressing): ProtectionVer
     )
 ```
 
-- [ ] **Шаг 2: Тесты на JVM — 8 комбинаций**
+- [x] **Шаг 2: Тесты на JVM — 8 комбинаций**
 
 Кейсы: IPv6-маршрут `::/0` появился → не зелёное; DNS подменился на системный → не зелёное; IPv4 не в туннеле → не зелёное.
 
-- [ ] **Шаг 3: Android-адаптер (заполнитель)**
+- [x] **Шаг 3: Android-адаптер (заполнитель)**
 
 ```kotlin
 package com.impossi8le.vpnapp.core.protection
@@ -942,11 +949,11 @@ class AndroidProtectionProbe(
 }
 ```
 
-- [ ] **Шаг 4: Инструментальный тест на эмуляторе**
+- [x] **Шаг 4: Инструментальный тест на эмуляторе**
 
 На эмуляторе поднять туннель и проверить, что проба выдаёт зелёное; затем исключить приложение из перехвата и убедиться, что маршруты **всё ещё** выглядят правильно (документируя, что эту дыру закрывает только задание 14).
 
-- [ ] **Шаг 5: Коммит**
+- [x] **Шаг 5: Коммит**
 
 ### Задание 13: Конфигурация Builder и запреты
 
@@ -1074,11 +1081,11 @@ window.setFlags(
 - **ОГРАНИЧЕНИЯ:** правило 4.
 - **ПРОВЕРКА:** Compose UI Test на эмуляторе + сверка с макетом.
 
-- [ ] **Шаг 1: Токены**
+- [x] **Шаг 1: Токены**
 
 Цвета и типографика из макета — в `core/ui`. Светлую тему не добавлять.
 
-- [ ] **Шаг 2: Экраны, затем UI-тесты, коммит**
+- [x] **Шаг 2: Экраны, затем UI-тесты, коммит**
 
 ---
 
@@ -1111,9 +1118,9 @@ window.setFlags(
 | §10.2 | «wrapper генерируется в CI» | Уже сгенерирован и закоммичен | Обновить §10.2 |
 | §12 | «эмулятор API 30» | Не сказано | Уточнить |
 
-- [ ] **Шаг 1: Внести правки**
+- [x] **Шаг 1: Внести правки**
 
-- [ ] **Шаг 2: Коммит**
+- [x] **Шаг 2: Коммит**
 
 ```bash
 git commit -am "Correct architecture doc: honest guarantees after adversarial audit"
@@ -1121,13 +1128,13 @@ git commit -am "Correct architecture doc: honest guarantees after adversarial au
 
 ### Задание 19: Обновить README и память
 
-- [ ] **Шаг 1: `android/README.md`** — статус wrapper (сгенерирован), таблица состояния.
+- [x] **Шаг 1: `android/README.md`** — статус wrapper (сгенерирован), таблица состояния.
 
-- [ ] **Шаг 2: Файлы памяти** — `.claude/projects/D--VPN-app/memory/`.
+- [x] **Шаг 2: Файлы памяти** — `.claude/projects/D--VPN-app/memory/`.
   - Обновить `project_android_architecture.md`: wrapper закоммичен; `useJUnitPlatform` обязателен в Android-модулях; эмулятор добавлен в CI.
   - Новый `feedback_multiagent_orchestration.md`: протокол делегирования, почему шапка из пяти полей, почему дебаты только на высоких ставках.
 
-- [ ] **Шаг 3: Коммит**
+- [x] **Шаг 3: Коммит**
 
 ---
 
@@ -1152,12 +1159,12 @@ git commit -am "Correct architecture doc: honest guarantees after adversarial au
 
 ## Чек-лист готовности
 
-- [ ] CI зелёный: `test`, `assembleDebug`, `instrumented`.
-- [ ] `StatusMappingTest` доказывает: ни одно системное состояние не даёт `.Protected`.
-- [ ] `ProtectionGateTest` доказывает: только три истины дают зелёное; исключение в пробе → `ProbeUnavailable`.
-- [ ] `FileProfileStoreTest` доказывает: обрыв не оставляет систему без профиля; `load()` самовосстанавливается.
-- [ ] Тест на смену сети: зелёное сбрасывается.
-- [ ] `verb ≤ 1` закреплён тестом.
-- [ ] Секреты в четырёх переменных валидируются до подписи; неподписанный APK не публикуется.
-- [ ] Архитектурный документ не обещает killswitch и атомарность, которых нет.
-- [ ] README и память обновлены.
+- [x] CI зелёный: `test`, `assembleDebug`, `instrumented`.
+- [x] `StatusMappingTest` доказывает: ни одно системное состояние не даёт `.Protected`.
+- [x] `ProtectionGateTest` доказывает: только три истины дают зелёное; исключение в пробе → `ProbeUnavailable`.
+- [x] `FileProfileStoreTest` доказывает: обрыв не оставляет систему без профиля; `load()` самовосстанавливается.
+- [x] Тест на смену сети: зелёное сбрасывается.
+- [x] `verb ≤ 1` закреплён тестом.
+- [x] Секреты в четырёх переменных валидируются до подписи; неподписанный APK не публикуется.
+- [x] Архитектурный документ не обещает killswitch и атомарность, которых нет.
+- [x] README и память обновлены.
