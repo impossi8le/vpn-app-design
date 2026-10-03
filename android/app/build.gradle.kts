@@ -100,4 +100,10 @@ dependencies {
     testImplementation(libs.junit5.params)
     testRuntimeOnly(libs.junit5.engine)
     testRuntimeOnly(libs.junit5.launcher)
+
+    // Инструментальные тесты идут под JUnit4: AndroidJUnitRunner не умеет JUnit5,
+    // поэтому это отдельный контур и отдельная задача (connectedAndroidTest),
+    // а не продолжение юнит-тестов.
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }
