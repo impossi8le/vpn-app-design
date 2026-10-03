@@ -29,7 +29,7 @@ class SessionStoreImpl(
         return try {
             val root = json.parseToJsonElement(raw).jsonObject
             val token = root.str("token") ?: return null
-            Session(token = token, expiresAtEpochSeconds = root.long("expires_at"))
+            Session(token = token, expiresAtEpochSeconds = root.epochSeconds("expires_at"))
         } catch (_: Exception) {
             // Повреждённый или нерасшифровываемый блоб — чистим и считаем, что
             // сессии нет. Оставить мусор опаснее: он будет мешать следующей записи.
@@ -56,3 +56,5 @@ class SessionStoreImpl(
 }
 
 private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.content
+
+private fun JsonObject.epochSeconds(key: String): Long = this[key]?.jsonPrimitive?.long ?: 0L
