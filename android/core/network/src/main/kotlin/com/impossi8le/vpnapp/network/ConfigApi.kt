@@ -11,6 +11,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import okhttp3.Request
+import java.io.IOException
 
 /**
  * Контракт §3–4.
@@ -25,7 +26,7 @@ class ConfigApi(
 ) : ConfigService {
 
     override suspend fun listConfigs(): Result<ConfigList> = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             val request = Request.Builder()
                 .url("${client.baseUrl}/me")
                 .applyAuth()
@@ -35,35 +36,43 @@ class ConfigApi(
             client.http.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    return@runCatching Result.failure(ApiException(ErrorMapping.fromStatus(response.code, body)))
+                    return@withContext Result.failure(
+                        ApiException(ErrorMapping.fromStatus(response.code, body)),
+                    )
                 }
 
                 val root = json.parseToJsonElement(body).jsonObject
-                ConfigList(
-                    chatId = root.long("chat_id") ?: 0L,
-                    configs = root["configs"]?.jsonArray.orEmpty().map { element ->
-                        val item = element.jsonObject
-                        val location = item["location"]?.jsonObject
-                        ConfigSummary(
-                            id = item.str("id").orEmpty(),
-                            name = item.str("name").orEmpty(),
-                            countryCode = location?.str("country_code").orEmpty(),
-                            city = location?.str("city").orEmpty(),
-                            startDateEpochSeconds = item.instant("start_date"),
-                            endDateEpochSeconds = item.instant("end_date"),
-                            status = parseStatus(item.str("status")),
-                        )
-                    },
+                Result.success(
+                    ConfigList(
+                        chatId = root.long("chat_id") ?: 0L,
+                        configs = root["configs"]?.jsonArray.orEmpty().map { element ->
+                            val item = element.jsonObject
+                            val location = item["location"]?.jsonObject
+                            ConfigSummary(
+                                id = item.str("id").orEmpty(),
+                                name = item.str("name").orEmpty(),
+                                countryCode = location?.str("country_code").orEmpty(),
+                                city = location?.str("city").orEmpty(),
+                                startDateEpochSeconds = item.instant("start_date"),
+                                endDateEpochSeconds = item.instant("end_date"),
+                                status = parseStatus(item.str("status")),
+                            )
+                        },
+                    ),
                 )
             }
-        }.fold(
-            onSuccess = { Result.success(it) },
-            onFailure = { Result.failure(if (it is ApiException) it else ApiException(ApiError.Network(it.message ?: "сеть недоступна"))) },
-        )
+        } catch (e: ApiException) {
+            Result.failure(e)
+        } catch (e: IOException) {
+            Result.failure(ApiException(ApiError.Network(e.message ?: "сеть недоступна")))
+        } catch (e: Exception) {
+            // Битое тело ответа: не падаем, а сообщаем понятную причину.
+            Result.failure(ApiException(ApiError.Network(e.message ?: "неожиданный сбой")))
+        }
     }
 
     override suspend fun fetchConfig(configId: String): Result<FetchedConfig> = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             val request = Request.Builder()
                 .url("${client.baseUrl}/config/$configId")
                 .applyAuth()
@@ -73,22 +82,31 @@ class ConfigApi(
             client.http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     val body = response.body?.string().orEmpty()
-                    return@runCatching Result.failure(ApiException(ErrorMapping.fromStatus(response.code, body)))
+                    return@withContext Result.failure(
+                        ApiException(ErrorMapping.fromStatus(response.code, body)),
+                    )
                 }
 
                 val bytes = response.body?.bytes()
-                    ?: return@runCatching Result.failure(ApiException(ApiError.Unexpected(response.code, "пустое тело")))
+                    ?: return@withContext Result.failure(
+                        ApiException(ApiError.Unexpected(response.code, "пустое тело")),
+                    )
 
-                FetchedConfig(
-                    raw = bytes,
-                    version = response.header("X-Config-Version").orEmpty(),
-                    hash = response.header("X-Config-Hash").orEmpty(),
+                Result.success(
+                    FetchedConfig(
+                        raw = bytes,
+                        version = response.header("X-Config-Version").orEmpty(),
+                        hash = response.header("X-Config-Hash").orEmpty(),
+                    ),
                 )
             }
-        }.fold(
-            onSuccess = { Result.success(it) },
-            onFailure = { Result.failure(if (it is ApiException) it else ApiException(ApiError.Network(it.message ?: "сеть недоступна"))) },
-        )
+        } catch (e: ApiException) {
+            Result.failure(e)
+        } catch (e: IOException) {
+            Result.failure(ApiException(ApiError.Network(e.message ?: "сеть недоступна")))
+        } catch (e: Exception) {
+            Result.failure(ApiException(ApiError.Network(e.message ?: "неожиданный сбой")))
+        }
     }
 
     private fun Request.Builder.applyAuth(): Request.Builder {

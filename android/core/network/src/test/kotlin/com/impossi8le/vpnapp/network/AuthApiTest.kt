@@ -78,7 +78,7 @@ class AuthApiTest {
         )
 
         val outcome = api.pollSession("a7f3c9d2e1b4", "secret", "4821").getOrThrow()
-        assertEquals(PollOutcome.Pending(2000), outcome)
+        assertEquals(PollOutcome.Pending(2000L), outcome)
     }
 
     @Test
