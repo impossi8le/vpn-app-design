@@ -1,0 +1,114 @@
+# СПАЙК: собирается ли ядро OpenVPN 3 под Android arm64.
+#
+# Отдельный workflow, а не шаг основного CI, и намеренно так:
+#  - основной CI должен оставаться быстрым и зелёным, пока движок не проверен;
+#  - спайк отвечает на ОДИН вопрос — «собирается ли», — и его результат нужен
+#    один раз, чтобы принять решение, а не на каждый коммит;
+#  - если сборка окажется слишком долгой или хрупкой, это надо узнать до того,
+#    как она войдёт в основной путь.
+#
+# Запускается вручную (workflow_dispatch) ИЛИ вместе с основным CI, пока идёт
+# проверка. После ответа на вопрос его можно удалить — он не часть продукта.
+name: OpenVPN3 spike
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/openvpn3-spike.yml'
+
+jobs:
+  build-core:
+    name: Build OpenVPN 3 core for arm64
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Point at the preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          # swig нужен для генерации JNI-биндинга — ровно то, что делает CMakeLists
+          # ics-openvpn: SWIG_EXECUTABLE -c++ -java -package net.openvpn.ovpn3 \
+          #   -DOPENVPN_PLATFORM_ANDROID ... client/ovpncli.i
+          sudo apt-get install -y --no-install-recommends \
+            swig cmake ninja-build build-essential \
+            libmbedtls-dev liblzo2-dev python3-dev
+          swig -version | head -3
+          cmake --version | head -1
+          ls "$ANDROID_HOME/ndk" 2>/dev/null || echo "NDK не предустановлен — поставим"
+
+      - name: Ensure NDK
+        run: |
+          set -euo pipefail
+          if [ ! -d "$ANDROID_HOME/ndk" ] || [ -z "$(ls -A "$ANDROID_HOME/ndk" 2>/dev/null)" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.0.12077973" >/dev/null
+          fi
+          ndk=$(ls -d "$ANDROID_HOME"/ndk/*/ | head -1)
+          echo "NDK_PATH=$ndk" >> "$GITHUB_ENV"
+          echo "Используется NDK: $ndk"
+
+      # Ядро кладём рядом с проектом, а не внутрь: это внешний код, ему не место
+      # в нашем дереве, пока решение не принято.
+      - name: Fetch OpenVPN 3 upstream
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/engine" && cd "$RUNNER_TEMP/engine"
+          # Официальный upstream (MPL 2.0), НЕ форк schwabe: Android-поддержка
+          # (OPENVPN_PLATFORM_ANDROID) есть в самом upstream — проверено по коду.
+          git clone --depth 1 https://github.com/OpenVPN/openvpn3.git
+          cd openvpn3
+          echo "HEAD: $(git rev-parse --short HEAD)"
+          echo "--- android-специфика в ядре ---"
+          grep -rl "OPENVPN_PLATFORM_ANDROID" --include=*.hpp --include=*.cpp . | head -10
+          echo "--- есть ли ovpncli.i для SWIG ---"
+          ls -la client/ovpncli.i
+
+      # Пробуем собрать через CMake-пресет проекта, с android-toolchain NDK.
+      # Если пресет не подойдёт — это и есть ответ «путь тяжелее, чем казалось».
+      - name: Configure for Android arm64
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/engine/openvpn3"
+          cat > /tmp/android-toolchain.cmake <<'EOF'
+          set(CMAKE_SYSTEM_NAME Android)
+          set(CMAKE_SYSTEM_VERSION 26)
+          set(CMAKE_ANDROID_ARCH_ABI arm64-v8a)
+          set(CMAKE_ANDROID_NDK $ENV{NDK_PATH})
+          set(CMAKE_ANDROID_STL_TYPE c++_static)
+          set(CMAKE_CXX_STANDARD 23)
+          EOF
+          cmake -S . -B build-android \
+            -DCMAKE_TOOLCHAIN_FILE=/tmp/android-toolchain.cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_PROGRAMS=OFF \
+            -DENABLE_TESTING=OFF \
+            2>&1 | tail -40
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/engine/openvpn3"
+          cmake --build build-android --target ovpncli -j"$(nproc)" 2>&1 | tail -60
+
+      - name: Report artefacts
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/engine/openvpn3" 2>/dev/null || exit 0
+          echo "=== собранные библиотеки ==="
+          find build-android -name '*.so' -o -name '*.a' 2>/dev/null | head -20
+          echo "=== есть ли ядро? ==="
+          find build-android -name 'libovpncli*' -o -name '*ovpncli*' 2>/dev/null | head -10
