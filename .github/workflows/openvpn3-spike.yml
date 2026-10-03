@@ -217,3 +217,16 @@ jobs:
           find . -name '*.java' | wc -l
           echo "=== ключевые классы ClientAPI ==="
           find . -name 'OpenVPNClient.java' -o -name 'ClientAPI.java' | head -5
+
+      # Без выгрузки результат спайка виден только в логе, и подключить ядро к
+      # :vpnservice нечем: библиотеку надо куда-то положить.
+      - name: Upload engine
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ovpn3-engine-arm64
+          path: |
+            ${{ runner.temp }}/enginebuild/jniLibs/**/*.so
+            ${{ runner.temp }}/enginebuild/java/**/*.java
+          retention-days: 30
+          if-no-files-found: error
