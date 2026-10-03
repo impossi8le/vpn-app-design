@@ -57,6 +57,18 @@ jobs:
           cmake --version | head -1
           ls "$ANDROID_HOME/ndk" 2>/dev/null || echo "NDK не предустановлен — поставим"
 
+      # Кэш vcpkg обязателен: без него каждая итерация заново компилирует
+      # OpenSSL и mbedTLS под arm64 — это минуты на каждом прогоне, а итераций
+      # по сборке ядра будет много.
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/vcpkg-installed
+            ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-arm64-android-${{ hashFiles('.github/workflows/openvpn3-spike.yml') }}
+          restore-keys: vcpkg-arm64-android-
+
       - name: Provide asio and vcpkg
         run: |
           set -euo pipefail
@@ -74,6 +86,12 @@ jobs:
           "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/vcpkg/vcpkg" version
+
+          # Двоичный кэш + отдельный каталог установки: переживают прогоны,
+          # поэтому OpenSSL пересобирается только при смене этого workflow.
+          echo "VCPKG_BINARY_SOURCES=clear;files,$RUNNER_TEMP/vcpkg-cache,readwrite" >> "$GITHUB_ENV"
+          echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg-installed" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/vcpkg-cache"
 
       - name: Install native deps for arm64-android
         run: |
