@@ -70,6 +70,16 @@ set_target_properties(ovpn3 PROPERTIES
     OUTPUT_NAME "ovpn3"
 )
 
+# На Android pthread — часть libc, отдельной `libpthread.so` в NDK нет.
+# Ядро в своей Linux-ветке безусловно делает
+# `target_link_libraries(${target} pthread)`, и линковка падает с
+# «ld.lld: error: unable to find library -lpthread».
+#
+# Подменяем имя пустым INTERFACE-таргетом: CMake перестаёт искать системную
+# библиотеку, а символы pthread всё равно приходят из libc. Это должно стоять
+# ДО add_core_dependencies, иначе имя уже уйдёт в линковку как системное.
+add_library(pthread INTERFACE)
+
 # Добавляет все исходники ядра, зависимости (asio, lz4, fmt, openssl/mbedtls)
 # и нужные определяющие макросы к нашей цели.
 add_core_dependencies(ovpn3)
