@@ -43,12 +43,29 @@ jobs:
           # swig нужен для генерации JNI-биндинга — ровно то, что делает CMakeLists
           # ics-openvpn: SWIG_EXECUTABLE -c++ -java -package net.openvpn.ovpn3 \
           #   -DOPENVPN_PLATFORM_ANDROID ... client/ovpncli.i
+          #
+          # Остальное — по списку из cmake/findcoredeps.cmake: mbedTLS, OpenSSL,
+          # lzo, lz4, jsoncpp, fmt, аio. Первый прогон спайка упал именно на том,
+          # что asio не находится: `Could NOT find asio (missing: ASIO_INCLUDE_DIR)`.
+          # asio в apt нет — он header-only и берётся из git.
           sudo apt-get install -y --no-install-recommends \
             swig cmake ninja-build build-essential \
-            libmbedtls-dev liblzo2-dev python3-dev
+            libmbedtls-dev liblzo2-dev python3-dev \
+            libssl-dev liblz4-dev libjsoncpp-dev libfmt-dev \
+            pkg-config git
           swig -version | head -3
           cmake --version | head -1
           ls "$ANDROID_HOME/ndk" 2>/dev/null || echo "NDK не предустановлен — поставим"
+
+      # asio — header-only, в apt отсутствует, поэтому кладём заголовки туда,
+      # где CMake их ищет. Версия не критична: ядру нужны заголовки, не сборка.
+      - name: Provide asio headers
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch asio-1-30-2 \
+            https://github.com/chriskohlhoff/asio.git "$RUNNER_TEMP/asio"
+          echo "ASIO_INCLUDE_DIR=$RUNNER_TEMP/asio/asio/include" >> "$GITHUB_ENV"
+          ls "$RUNNER_TEMP/asio/asio/include/asio.hpp"
 
       - name: Ensure NDK
         run: |
@@ -93,6 +110,8 @@ jobs:
           cmake -S . -B build-android \
             -DCMAKE_TOOLCHAIN_FILE=/tmp/android-toolchain.cmake \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$ASIO_INCLUDE_DIR/.." \
+            -DASIO_INCLUDE_DIR="$ASIO_INCLUDE_DIR" \
             -DENABLE_PROGRAMS=OFF \
             -DENABLE_TESTING=OFF \
             2>&1 | tail -40
