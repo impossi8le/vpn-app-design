@@ -47,7 +47,7 @@ class ConfigManagerTest {
     @Test
     fun `валидный конфиг применяется`() {
         val fetched = FetchedConfig(raw = valid, version = "v1", hash = sha256(valid))
-        assertEquals(ApplyResult.Applied, runBlockingApply(manager(fetched), "v0"))
+        expectApply(manager(fetched), "v0", ApplyResult.Applied)
         assertNotNull(store().load())
     }
 
@@ -55,7 +55,7 @@ class ConfigManagerTest {
     fun `та же версия пропускается без записи`() {
         val fetched = FetchedConfig(raw = valid, version = "v1", hash = sha256(valid))
         // Версия совпала — писать нечего, даже если бы конфиг отличался.
-        assertEquals(ApplyResult.AlreadyCurrent, runBlockingApply(manager(fetched), "v1"))
+        expectApply(manager(fetched), "v1", ApplyResult.AlreadyCurrent)
     }
 
     @Test
@@ -68,7 +68,7 @@ class ConfigManagerTest {
         val fetched = FetchedConfig(raw = garbage, version = "v2", hash = sha256(garbage))
         val manager = ConfigManager(FakeConfigService(fetched), s)
 
-        assertEquals(ApplyResult.Rejected, runBlockingApply(manager, "v1"))
+        expectApply(manager, "v1", ApplyResult.Rejected)
         assertEquals(String(valid), String(store().load()!!.raw), "старая версия обязана остаться рабочей")
     }
 
@@ -78,7 +78,7 @@ class ConfigManagerTest {
         s.commit(s.stage(valid))
 
         val manager = ConfigManager(FakeConfigService(failure = IllegalStateException("сеть")), s)
-        assertEquals(ApplyResult.Rejected, runBlockingApply(manager, null))
+        expectApply(manager, null, ApplyResult.Rejected)
         assertEquals(String(valid), String(store().load()!!.raw))
     }
 
@@ -87,7 +87,7 @@ class ConfigManagerTest {
         val fetched = FetchedConfig(raw = valid, version = "v1", hash = "sha256:deadbeef")
         val manager = manager(fetched)
 
-        assertEquals(ApplyResult.HashMismatch, runBlockingApply(manager, null))
+        expectApply(manager, null, ApplyResult.HashMismatch)
         assertTrue(
             store().load() == null,
             "подозрительный конфиг не должен остаться на диске",
@@ -98,15 +98,24 @@ class ConfigManagerTest {
     fun `отсутствие заголовка хеша не считается ошибкой`() {
         // Сверять нечего — это не повод считать конфиг испорченным.
         val fetched = FetchedConfig(raw = valid, version = "v1", hash = "")
-        assertEquals(ApplyResult.Applied, runBlockingApply(manager(fetched), null))
+        expectApply(manager(fetched), null, ApplyResult.Applied)
     }
 
     @Test
     fun `хеш сравнивается без учёта регистра`() {
         val fetched = FetchedConfig(raw = valid, version = "v1", hash = sha256(valid).uppercase())
-        assertEquals(ApplyResult.Applied, runBlockingApply(manager(fetched), null))
+        expectApply(manager(fetched), null, ApplyResult.Applied)
     }
 
-    private fun runBlockingApply(manager: ConfigManager, currentVersion: String?): ApplyResult =
-        runTest { manager.apply("nl-ams-1", currentVersion) }
+    /**
+     * Запускает применение и сверяет результат.
+     *
+     * `runTest` возвращает Unit, поэтому проверка идёт внутри него, а не через
+     * возврат значения наружу.
+     */
+    private fun expectApply(
+        manager: ConfigManager,
+        currentVersion: String?,
+        expected: ApplyResult,
+    ) = runTest { assertEquals(expected, manager.apply("nl-ams-1", currentVersion)) }
 }
