@@ -35,17 +35,24 @@ object ErrorMapping {
         else -> ApiError.Unexpected(statusCode, body)
     }
 
-    fun parseErrorBody(body: String): ApiErrorBody? = try {
-        val root = json.parseToJsonElement(body).jsonObject
-        val error = root["error"]?.jsonObject ?: return null
-        ApiErrorBody(
-            code = error["code"]?.jsonPrimitive?.content ?: return null,
-            message = error["message"]?.jsonPrimitive?.content,
-            retryable = error["retryable"]?.jsonPrimitive?.booleanOrNull,
-        )
-    } catch (_: Exception) {
-        // Тело может быть пустым или не JSON — это не повод падать.
-        null
+    fun parseErrorBody(body: String): ApiErrorBody? {
+        return try {
+            val root = json.parseToJsonElement(body).jsonObject
+            val error = root["error"]?.jsonObject
+            val code = error?.get("code")?.jsonPrimitive?.content
+            if (code == null) {
+                null
+            } else {
+                ApiErrorBody(
+                    code = code,
+                    message = error["message"]?.jsonPrimitive?.content,
+                    retryable = error["retryable"]?.jsonPrimitive?.booleanOrNull,
+                )
+            }
+        } catch (_: Exception) {
+            // Тело может быть пустым или не JSON — это не повод падать.
+            null
+        }
     }
 
     private fun parseCode(body: String): String? = parseErrorBody(body)?.code
