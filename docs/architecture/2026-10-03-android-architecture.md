@@ -211,6 +211,49 @@
 - **Размер.** Ядро + OpenSSL в .so — это ~15–20 МБ на архитектуру. Для APK,
   раздаваемого через Telegram, приемлемо, но стоит помнить.
 
+**ГОТОВЫЙ РЕЦЕПТ СБОРКИ — найден 2026-10-04 (главное снижение риска пути B).**
+
+ics-openvpn **уже решил ровно эту задачу**: собирает JNI-мост к ядру OpenVPN 3
+под Android. Его `main/src/main/cpp/CMakeLists.txt` — рабочий проверенный рецепт,
+и его можно взять как основу вместо изобретения своего. Что там в действительности:
+
+1. **JNI-мост генерируется SWIG'ом из `ovpncli.i`:**
+   ```
+   FIND_PACKAGE(SWIG 3.0 REQUIRED)
+   ${SWIG_EXECUTABLE} -outdir <out> -c++ -java -package net.openvpn.ovpn3 \
+       -outcurrentdir -DOPENVPN_PLATFORM_ANDROID \
+       -Iopenvpn3/client -Iopenvpn3 openvpn3/client/ovpncli.i
+   ```
+   То есть `-DOPENVPN_PLATFORM_ANDROID` включает Android-режим ядра, а Java-классы
+   ложатся в пакет `net.openvpn.ovpn3`. **Это не гипотеза — это работающий код.**
+
+2. **Наши `openvpn3` и `openvpn` — ФОРКИ, а не upstream.** В `.gitmodules`
+   источники указаны как `../../schwabe/openvpn3.git` и `../../schwabe/openvpn.git`
+   — то есть у автора свои копии. При использовании рецепта нужно смотреть, какие
+   именно патчи он наложил: возможно, они и есть недостающая часть Android-сборки,
+   которой нет в официальном `OpenVPN/openvpn3` (у которого, как проверено выше,
+   **нет ни android-триплета vcpkg, ни Android-CI, ни упоминания Android в README**).
+
+3. **Зависимости — 7 публичных репозиториев через git submodule, без vcpkg:**
+   `schwabe/openvpn`, `schwabe/platform_external_openssl`, `ARMmbed/mbedtls`,
+   `schwabe/openvpn3`, `chriskohlhoff/asio`, `lz4/lz4`, `fmtlib/fmt`.
+   Это принципиально: **vcpkg не нужен** — его android-триплетов у OpenVPN 3 всё
+   равно нет. Зато нужны 7 подмодулей и NDK.
+
+4. **Опции сборки:** `-DOPENVPN3OSSL=ON` (OpenVPN 3 c OpenSSL),
+   `SSLLIBTYPE=STATIC`, `CMAKE_CXX_STANDARD 23`, `ENABLE_PROGRAMS=OFF`,
+   `ENABLE_TESTING=OFF`.
+
+5. **Что получится на выходе:** `libovpn3.so` (SWIG-биндинг + ядро),
+   `libovpnutil.so`, `libosslutil.so`, плюс `libovpnexec.so` и
+   `pie_openvpn.<ABI>` — PIE-исполняемые для запуска OpenVPN 2.x из assets.
+
+**Важное следствие для решения.** Путь B («свой JNI-мост») оказался не «писать
+мост с нуля», а «собрать ядро 3.x по чужому проверенному рецепту и заменить
+верхний Java-слой своим». Это меняет и трудозатраты, и риск — но **не отменяет
+проверок ниже**: наш `.ovpn`, наш `:vpnservice` и наш Kotlin-API всё равно
+проверяются первыми.
+
 **Порядок проверки перед кодом (не пропускать):**
 1. `openvpn3` собирается под Android arm64 с NDK на `ubuntu-latest` — прогнать
    сборку в отдельной ветке CI, без интеграции в `:vpnservice`.
