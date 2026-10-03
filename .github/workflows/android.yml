@@ -183,9 +183,11 @@ jobs:
           target: default
           arch: x86_64
           working-directory: android
-          # --console=plain убирает прогресс-строки, а tee сохраняет вывод для
-          # разбора ниже: без этого падение эмулятора необъяснимо снаружи.
-          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --console=plain 2>&1 | tee instrumented.log
+          # Запускаются ВСЕ инструментальные тесты проекта, а не только :app:
+          # экраны живут в feature-модулях, и `:app:connectedDebugAndroidTest`
+          # их бы не запустил — то есть тест рендеринга молча не выполнялся бы.
+          # --console=plain убирает прогресс-строки, tee сохраняет вывод для разбора.
+          script: ./gradlew connectedDebugAndroidTest --no-daemon --console=plain 2>&1 | tee instrumented.log
 
       # Аннотация с причиной падения: логи джобы требуют прав администратора,
       # а без разбора причина «instrumented tests failed» ничего не объясняет.

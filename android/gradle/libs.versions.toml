@@ -15,6 +15,7 @@ coroutines = "1.9.0"
 serialization = "1.7.3"
 okhttp = "4.12.0"
 composeBom = "2024.12.01"
+composeUiTest = "1.7.6"
 activityCompose = "1.9.3"
 lifecycle = "2.8.7"
 securityCrypto = "1.1.0-alpha06"
@@ -68,6 +69,12 @@ robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectr
 # поддерживается. Запускается задачей connectedAndroidTest, не `test`.
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestJunit" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
+# Тесты рендеринга Compose. Версия задана явно, а не взята из BOM: у записи
+# каталога без версии аксессор требует .withoutVersion(), а забыть его — значит
+# получить ошибку резолва (та же грабля, что была с junit-platform-launcher).
+# 1.7.6 — версия, которую подставляет Compose BOM 2024.12.01.
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4", version.ref = "composeUiTest" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest", version.ref = "composeUiTest" }
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 core-library-desugaring = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar" }
 

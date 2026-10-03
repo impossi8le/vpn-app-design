@@ -14,7 +14,11 @@ android {
 
     namespace = "com.impossi8le.vpnapp.feature.home"
     compileSdk = 35
-    defaultConfig { minSdk = 26 }
+    defaultConfig {
+        minSdk = 26
+        // Инструментальный контур: Compose-тесты рендеринга требуют устройства.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -41,4 +45,13 @@ dependencies {
     testImplementation(libs.turbine)
     testRuntimeOnly(libs.junit5.engine)
     testRuntimeOnly(libs.junit5.launcher)
+
+    // Тесты рендеринга: проверяют то, что НЕЛЬЗЯ проверить на JVM — что
+    // presentation() доходит до экрана и зелёное не появляется без замера.
+    // Идут на эмуляторе, отдельной задачей.
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }
