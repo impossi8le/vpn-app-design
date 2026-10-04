@@ -246,11 +246,21 @@ private class EngineClient(private val tun: TunBridge) : ClientAPI_OpenVPNClient
         val servers = dns?.getServers() ?: return true
 
         var ok = true
-        for (entry in servers.entrySet()) {
-            val server: DnsServer = entry.value ?: continue
+        // Обходим КАРТУ ПО ИНДЕКСУ, а не через `entrySet()`.
+        //
+        // `entrySet()` недоступен из Kotlin: SWIG-класс объявляет собственные
+        // вложенные `Iterator` и `Entry`, которые затеняют `java.util`, и
+        // компилятор видит неоднозначный `iterator()`. Индексный доступ
+        // проблему снимает: у карты есть `size` и `get(key)`, а ключи — это
+        // последовательные номера DNS-серверов, что для нашего случая и нужно.
+        //
+        // `size` — СВОЙСТВО, а не функция: Kotlin превращает Java-метод `size()`
+        // без аргументов в свойство, и вызов `size()` не компилируется.
+        for (i in 0 until servers.size) {
+            val server: DnsServer = servers.get(i) ?: continue
             val addresses = server.getAddresses() ?: continue
-            for (i in 0 until addresses.size()) {
-                val address = runCatching { addresses.get(i)?.getAddress() }.getOrNull()
+            for (j in 0 until addresses.size) {
+                val address = runCatching { addresses.get(j)?.getAddress() }.getOrNull()
                 if (!address.isNullOrBlank()) ok = tun.addDns(address) && ok
             }
         }

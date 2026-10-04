@@ -52,8 +52,15 @@ android {
 }
 
 dependencies {
-    // Движок не зависит от домена: наоборот, обёртка в :vpnservice переводит
-    // его типы в наши. Так `net.openvpn.ovpn3` не протекает в UI и тесты.
+    // Зависимость на домен — ради ДВУХ чистых типов: CoreConfig (уровень
+    // логирования) и ProfileSanitizer (правка verb в тексте профиля).
+    // Оба обязаны применяться до передачи профиля ядру, иначе `verb 3` из
+    // боевого профиля печатает тела PEM, то есть приватный ключ, в logcat.
+    //
+    // Обратной зависимости нет: `core:domain` про этот модуль не знает. А
+    // `net.openvpn.ovpn3` наружу не торчит — типы ядра остаются внутри.
+    implementation(project(":core:domain"))
+
     testImplementation(libs.junit5.api)
     testImplementation(libs.junit5.params)
     testRuntimeOnly(libs.junit5.engine)
