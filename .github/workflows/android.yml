@@ -19,9 +19,141 @@ concurrency:
 # Android-минуты на публичном репозитории бесплатны и без лимита (в отличие от macOS).
 # Это основной способ проверки кода, пока на рабочей машине нет JDK и Android SDK.
 jobs:
+  # Движок собирается отдельной джобой и кладёт результат в дерево модуля.
+  #
+  # Почему не внутри сборки APK: сборка тянет NDK, CMake и vcpkg, который компилирует
+  # OpenSSL, mbedTLS, lzo, lz4, fmt и jsoncpp ИЗ ИСХОДНИКОВ под каждую архитектуру.
+  # Это ~10 минут на холодном кэше. Держать это в сборке каждого APK значит сделать
+  # каждую итерацию на десять минут медленнее.
+  #
+  # Почему обе архитектуры в одной джобе, а не матрицей: результат нужен СРАЗУ
+  # вместе — APK с одной архитектурой либо не встанет на телефон, либо не запустится
+  # на эмуляторе. Раздельные артефакты пришлось бы склеивать вручную.
+  engine:
+    name: Build engine (arm64 + x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Point at the preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          # swig генерирует JNI-биндинг, остальное — зависимости ядра из
+          # cmake/findcoredeps.cmake. asio в apt нет: он header-only, берём из git.
+          sudo apt-get install -y --no-install-recommends \
+            swig cmake ninja-build build-essential pkg-config git
+
+      - name: Provide asio and vcpkg
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch asio-1-30-2 \
+            https://github.com/chriskohlhoff/asio.git "$RUNNER_TEMP/asio"
+          echo "ASIO_INCLUDE_DIR=$RUNNER_TEMP/asio/asio/include" >> "$GITHUB_ENV"
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_BINARY_SOURCES=clear;files,$RUNNER_TEMP/vcpkg-cache,readwrite" >> "$GITHUB_ENV"
+          echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg-installed" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/vcpkg-cache"
+
+      - name: Ensure NDK
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          if [ -z "$(ls -A "$sdk/ndk" 2>/dev/null)" ]; then
+            yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" >/dev/null
+          fi
+          ndk=$(ls -d "$sdk"/ndk/*/ | head -1)
+          echo "NDK_PATH=$ndk" >> "$GITHUB_ENV"
+
+      # Кэш на каждую архитектуру отдельно: наборы зависимостей разные.
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/vcpkg-installed
+            ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-ndk27-ossl3-lz4-lzo-fmt-jsoncpp-mbedtls-v1
+          restore-keys: vcpkg-ndk27-
+
+      - name: Fetch OpenVPN 3 upstream
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/engine" && cd "$RUNNER_TEMP/engine"
+          git clone --depth 1 https://github.com/OpenVPN/openvpn3.git
+          cd openvpn3 && echo "HEAD: $(git rev-parse --short HEAD)"
+
+      # Ключевой шаг: результат сразу в дерево модуля, чтобы сборка APK
+      # подхватила его без ручной склейки артефактов.
+      - name: Build for both ABIs into the module tree
+        run: |
+          set -euo pipefail
+          ndk_toolchain="$NDK_PATH/build/cmake/android.toolchain.cmake"
+
+          for pair in "arm64-v8a:arm64-android" "x86_64:x64-android"; do
+            abi="${pair%%:*}"; triplet="${pair##*:}"
+            echo "=== $abi ($triplet) ==="
+
+            "$VCPKG_ROOT/vcpkg" install --triplet "$triplet" \
+              openssl lz4 lzo fmt jsoncpp mbedtls >/dev/null
+
+            build="$RUNNER_TEMP/build-$abi"
+            cmake -S android/vpnengine -B "$build" \
+              -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+              -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ndk_toolchain" \
+              -DVCPKG_TARGET_TRIPLET="$triplet" \
+              -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+              -DANDROID_ABI="$abi" \
+              -DANDROID_PLATFORM=android-26 \
+              -DANDROID_STL=c++_static \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DOPENVPN3_DIR="$RUNNER_TEMP/engine/openvpn3" \
+              -DASIO_INCLUDE_DIR="$ASIO_INCLUDE_DIR" \
+              -DBUILD_TESTING=OFF
+            cmake --build "$build" -j"$(nproc)"
+
+            # Библиотека — в jniLibs, чтобы Gradle упаковала её в APK.
+            mkdir -p "android/vpnengine/src/main/jniLibs/$abi"
+            find "$build" -name 'ovpn3.so' -exec cp {} "android/vpnengine/src/main/jniLibs/$abi/" \;
+            # Java-классы биндинга одинаковы для всех архитектур: копируем один раз.
+            if [ ! -d android/vpnengine/src/main/java/net ]; then
+              mkdir -p android/vpnengine/src/main/java
+              find "$build/java" -name '*.java' -exec cp {} android/vpnengine/src/main/java/ \;
+            fi
+          done
+
+          echo "=== что получилось ==="
+          find android/vpnengine/src/main/jniLibs -name '*.so' -exec ls -la {} \;
+          echo "Java-классов: $(find android/vpnengine/src/main/java -name '*.java' | wc -l)"
+
+      # Движок не коммитится: он собирается заново на каждом прогоне. Артефакт
+      # нужен, чтобы посмотреть результат и при желании разложить локально.
+      - name: Upload engine
+        uses: actions/upload-artifact@v4
+        with:
+          name: ovpn3-engine
+          path: |
+            android/vpnengine/src/main/jniLibs/**/*.so
+            android/vpnengine/src/main/java/**/*.java
+          retention-days: 30
+          if-no-files-found: error
+
   test:
     name: Build + unit tests
     runs-on: ubuntu-latest
+    needs: engine
     defaults:
       run:
         working-directory: android
@@ -33,6 +165,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      # Движок приходит артефактом от джобы engine и раскладывается в дерево
+      # модуля: здесь он уже собран, локально его собирать не нужно.
+      - name: Download engine
+        uses: actions/download-artifact@v4
+        with:
+          name: ovpn3-engine
+          path: android/vpnengine/src/main
 
       # android-actions/setup-android НЕ нужен и убран: на ubuntu-latest Android
       # SDK уже предустановлен, а этот action падает на чистом раннере (проверено
@@ -157,12 +297,19 @@ jobs:
   instrumented:
     name: Instrumented (emulator)
     runs-on: ubuntu-latest
-    needs: test
+    needs: [engine, test]
     defaults:
       run:
         working-directory: android
     steps:
       - uses: actions/checkout@v4
+
+      # Движок приходит артефактом: в этих джобах он нужен для APK.
+      - name: Download engine
+        uses: actions/download-artifact@v4
+        with:
+          name: ovpn3-engine
+          path: android/vpnengine/src/main
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -256,6 +403,16 @@ jobs:
 
       - if: steps.signing.outputs.ok == 'true'
         uses: actions/checkout@v4
+
+      # Движок нужен и релизу: без него APK соберётся, но при запуске упадёт
+      # на System.loadLibrary, а это хуже отказа — пользователь увидит закрытие
+      # приложения вместо честного сообщения.
+      - if: steps.signing.outputs.ok == 'true'
+        name: Download engine
+        uses: actions/download-artifact@v4
+        with:
+          name: ovpn3-engine
+          path: android/vpnengine/src/main
 
       - if: steps.signing.outputs.ok == 'true'
         name: Set up JDK 17

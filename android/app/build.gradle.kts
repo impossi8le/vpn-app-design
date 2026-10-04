@@ -91,6 +91,7 @@ dependencies {
     implementation(project(":feature:configs"))
     implementation(project(":feature:account"))
     implementation(project(":vpnservice"))
+    implementation(project(":vpnengine"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

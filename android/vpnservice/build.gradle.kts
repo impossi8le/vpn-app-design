@@ -29,8 +29,10 @@ android {
 dependencies {
     implementation(project(":core:domain"))
     implementation(project(":core:config"))
+    // Ядро OpenVPN 3: нативная библиотека и Java-биндинг. Модуль только
+    // упаковывает то, что собрала джоба `engine` в CI (§4.7).
+    implementation(project(":vpnengine"))
     implementation(libs.coroutines.core)
-    // implementation(project(":vendor:ics-openvpn"))
 
     testImplementation(libs.junit5.api)
     // Нужен для @ParameterizedTest / @CsvSource / @EnumSource.

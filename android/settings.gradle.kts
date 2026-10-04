@@ -40,6 +40,7 @@ include(":feature:configs")
 include(":feature:account")
 
 // --- Точки входа ---
+include(":vpnengine")
 include(":vpnservice")
 include(":app")
 
