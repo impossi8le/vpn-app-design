@@ -21,6 +21,20 @@ interface TunBridge {
     /** Начать настройку: сбросить прошлое состояние. */
     fun new(): Boolean
 
+    /**
+     * Адрес удалённой стороны туннеля.
+     *
+     * На Android это НЕ нужно: `VpnService.Builder` не принимает адрес сервера —
+     * маршрутизацией занимается система. Но метод обязан возвращать `true`, и
+     * вот почему: его базовая реализация отдаёт `false`, а ядро считает `false`
+     * отказом и рвёт установку туннеля с `tun_builder_set_remote_address failed`.
+     *
+     * Именно на этом падал наш туннель: сервер уже был найден, TLS-рукопожатие
+     * прошло, сессия стала активной — и всё обрывалось на создании интерфейса
+     * из-за непереопределённого метода, который на Android не делает ничего.
+     */
+    fun setRemoteAddress(address: String, ipv6: Boolean): Boolean
+
     fun setMtu(mtu: Int): Boolean
 
     fun addAddress(address: String, prefixLength: Int, ipv6: Boolean): Boolean

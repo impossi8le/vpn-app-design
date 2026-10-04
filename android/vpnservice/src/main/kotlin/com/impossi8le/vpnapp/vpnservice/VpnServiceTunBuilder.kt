@@ -37,6 +37,17 @@ class VpnServiceTunBuilder(
         builder.setMtu(mtu)
     }.isSuccess
 
+    /**
+     * Адрес удалённой стороны.
+     *
+     * `VpnService.Builder` такого метода не имеет: маршрутами и адресами
+     * занимается система, а адрес сервера знать ей не нужно. Но вернуть надо
+     * именно `true` — базовая реализация отдаёт `false`, а ядро трактует это
+     * как «интерфейс не создать» и рвёт установку уже после успешного
+     * TLS-рукопожатия с сервером.
+     */
+    override fun setRemoteAddress(address: String, ipv6: Boolean): Boolean = true
+
     override fun addAddress(address: String, prefixLength: Int, ipv6: Boolean): Boolean =
         runCatching {
             builder.addAddress(InetAddress.getByName(address), prefixLength)

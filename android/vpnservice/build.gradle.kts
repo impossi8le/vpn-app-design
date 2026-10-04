@@ -14,6 +14,12 @@ android {
         unitTests.all { it.useJUnitPlatform() }
     }
 
+    buildFeatures {
+        // buildConfig нужен ради BuildConfig.DEBUG: логи ядра включаем
+        // только в отладочной сборке, в релизе им в logcat не место.
+        buildConfig = true
+    }
+
     namespace = "com.impossi8le.vpnapp.vpnservice"
     compileSdk = 35
     defaultConfig {

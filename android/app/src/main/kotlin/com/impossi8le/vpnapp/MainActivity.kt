@@ -1,8 +1,11 @@
 package com.impossi8le.vpnapp
 
+import android.content.IntentFilter
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
@@ -13,11 +16,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
 import com.impossi8le.vpnapp.feature.home.HomeScreen
 import com.impossi8le.vpnapp.feature.home.HomeViewModel
+import com.impossi8le.vpnapp.tunnel.AppTunnelController
+import com.impossi8le.vpnapp.tunnel.TunnelStatusReceiver
+import com.impossi8le.vpnapp.vpnservice.VpnTunnelService
+import java.io.File
 import kotlinx.coroutines.launch
 
 /**
@@ -30,12 +39,14 @@ import kotlinx.coroutines.launch
  * `launchMode="singleTask"` в манифесте нужен для deep link входа:
  * возврат из Telegram не должен создавать второй экземпляр активности.
  *
- * **Что сейчас в сборке.** Туннель — `DemoTunnelEngine`: движок уже собран в
- * `:vpnengine`, но к сервису ещё не подключён, поэтому попытка подключения
- * отвечает причиной, а не имитацией. Проба защиты неплатформенная и сообщает
- * `ProbeUnavailable`. Экран поэтому покажет «защита не подтверждена», и это
- * правда: изображать работающий VPN без поднятого туннеля — ровно та ложная
- * уверенность, против которой написан инвариант §6.
+ * **Что сейчас в сборке.** Кнопка «Подключить» поднимает `VpnTunnelService`
+ * через `AppTunnelController`. Состояние сервиса приходит широковещанием и
+ * переводится в домен через `SystemState.toConnectionStatus()`, который
+ * физически не умеет вернуть «защищено». Проба защиты пока неплатформенная и
+ * сообщает `ProbeUnavailable`, поэтому экран честно покажет «защита не
+ * подтверждена»: поднятый интерфейс не доказывает, что трафик пошёл через
+ * него, и выдавать зелёное без замера — ровно та ложная уверенность, против
+ * которой написан инвариант §6.
  */
 class MainActivity : ComponentActivity() {
 
@@ -55,7 +66,19 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun HomeRoute() {
-    val tunnel = remember { DemoTunnelEngine() }
+    val context = LocalContext.current
+    val tunnel = remember {
+        AppTunnelController(
+            context = context.applicationContext,
+            serviceClass = VpnTunnelService::class.java,
+            actionConnect = VpnTunnelService.ACTION_CONNECT,
+            actionDisconnect = VpnTunnelService.ACTION_DISCONNECT,
+            extraProfile = VpnTunnelService.EXTRA_PROFILE,
+            // Путь к профилю в приватном каталоге приложения: сам текст с
+            // приватным ключом через намерение не передаётся (см. сервис).
+            profilePath = File(context.filesDir, "profile.ovpn").absolutePath,
+        )
+    }
     val viewModel: HomeViewModel = viewModel {
         HomeViewModel(tunnel, ProtectionGate(UnavailableProbe))
     }
@@ -63,11 +86,47 @@ private fun HomeRoute() {
     val status by viewModel.status.collectAsState()
     val scope = rememberCoroutineScope()
 
+    // Диалог согласия на VPN показывает система, и показать его может только
+    // активность. Контроллер живёт в application-контексте, поэтому отдаёт
+    // намерение сюда, а экран запускает его и сообщает о полученном согласии.
+    //
+    // Без этого шага подключение молча не работало: ядро стартовало, печатало
+    // свою версию и останавливалось — `Builder.establish()` без согласия
+    // возвращает null, и интерфейс создать нечем.
+    val consentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            tunnel.onConsentGranted()
+        }
+    }
+
+    DisposableEffect(tunnel) {
+        tunnel.onConsentRequired = { intent -> consentLauncher.launch(intent) }
+        onDispose { tunnel.onConsentRequired = null }
+    }
+
     // Наблюдение привязано к жизненному циклу экрана: таймер перепроверки делает
     // сетевые обращения, и держать его вне экрана незачем.
     DisposableEffect(Unit) {
+        // RECEIVER_NOT_EXPORTED: сервис в том же приложении, сторонним
+        // приложениям слать сюда нечего. Без явного флага на Android 14
+        // регистрация динамического приёмника падает.
+        val receiver = TunnelStatusReceiver(tunnel)
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter().apply {
+                addAction(TunnelStatusReceiver.ACTION_STATE)
+                addAction(TunnelStatusReceiver.ACTION_NETWORK_CHANGED)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         viewModel.start()
-        onDispose { viewModel.stop() }
+        onDispose {
+            context.unregisterReceiver(receiver)
+            viewModel.stop()
+        }
     }
 
     HomeScreen(

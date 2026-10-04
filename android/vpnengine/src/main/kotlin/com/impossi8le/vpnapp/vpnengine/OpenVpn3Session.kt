@@ -4,6 +4,7 @@ import com.impossi8le.vpnapp.domain.tunnel.CoreConfig
 import com.impossi8le.vpnapp.domain.tunnel.ProfileSanitizer
 import net.openvpn.ovpn3.ClientAPI_Config
 import net.openvpn.ovpn3.ClientAPI_EvalConfig
+import net.openvpn.ovpn3.ClientAPI_StringVec
 import net.openvpn.ovpn3.ClientAPI_Event
 import net.openvpn.ovpn3.ClientAPI_LogInfo
 import net.openvpn.ovpn3.ClientAPI_OpenVPNClient
@@ -69,6 +70,21 @@ class OpenVpn3Session(
      * сразу, а не после попытки соединения.
      */
     fun evaluate(profileText: String): ProfileEvaluation {
+        // Загрузка ДО создания любого класса ядра: `ClientAPI_Config` тоже
+        // тянет за собой статический инициализатор JNI, и без библиотеки это
+        // падение, а не возврат ошибки. Поэтому проверяем здесь, а не только
+        // в start(): метод могут позвать раньше.
+        if (!EngineLoader.load()) {
+            return ProfileEvaluation(
+                valid = false,
+                error = EngineLoader.failureReason ?: "движок недоступен на этом устройстве",
+                serverHost = "",
+                serverPort = "",
+                protocol = "",
+                requiresPassword = false,
+            )
+        }
+
         val config = ClientAPI_Config().apply {
             setContent(ProfileSanitizer.sanitizeVerb(profileText).text)
         }
@@ -108,6 +124,20 @@ class OpenVpn3Session(
     fun start(profileText: String) {
         if (client != null) return
 
+        // Ядро — нативная библиотека, и её надо загрузить ДО первого обращения к
+        // сгенерированным классам. SWIG-классы сами этого не делают: в их
+        // статическом блоке только `swig_module_init()`. Без загрузки первое же
+        // обращение падает с UnsatisfiedLinkError уже в момент выполнения.
+        if (!EngineLoader.load()) {
+            onState?.invoke(
+                EngineState.Failed(
+                    EngineLoader.failureReason ?: "движок недоступен на этом устройстве",
+                    fatal = true,
+                ),
+            )
+            return
+        }
+
         // Правка уровня логирования — ДО передачи ядру. Иначе ключ уйдёт в лог.
         val sanitized = ProfileSanitizer.sanitizeVerb(profileText)
         if (sanitized.wasUnsafe) {
@@ -116,8 +146,42 @@ class OpenVpn3Session(
             )
         }
 
+        // РАЗВОРАЧИВАЕМ ИНЛАЙН-БЛОКИ, и без этого шага ядро профиль не примет.
+        //
+        // `<ca>`, `<cert>`, `<key>`, `<tls-auth>` — это не опции OpenVPN, а
+        // формат хранения: содержимое блоков надо «вклеить» в плоский профиль.
+        // Делает это `merge_config_string`, и именно он превращает
+        // `<cert>...</cert>` в `cert` вместе со встроенным сертификатом.
+        //
+        // Без merge ядро сообщает `ERR_INVALID_CONFIG: option 'cert' not found`
+        // и не подключается — проверено на устройстве. Симптом обманчив: файл
+        // прочитан и блок в нём есть, но для ядра его как будто нет.
+        val merged = try {
+            helper.merge_config_string(sanitized.text)
+        } catch (e: Exception) {
+            onState?.invoke(EngineState.Failed(e.message ?: "профиль не разобран", fatal = true))
+            return
+        }
+
+        if (merged.getErrorText().isNotBlank()) {
+            onState?.invoke(EngineState.Failed(merged.getErrorText(), fatal = true))
+            return
+        }
+
+        // Диагностика: показывает, что именно уходит ядру. Без неё сообщение
+        // «option 'cert' not found» не отличить от «файл не прочитан».
+        val mergedText = merged.getProfileContent()
+        onLog?.invoke(
+            "профиль ядру: ${mergedText.length} символов, " +
+                "cert=${mergedText.contains("cert")}, " +
+                "арморов=${Regex("-----BEGIN").findAll(mergedText).count()}",
+        )
+        // Первые 900 символов — чтобы увидеть, во что ядро превратило блоки.
+        val preview = mergedText.take(900).replace('\n', '|')
+        onLog?.invoke("НАЧАЛО: $preview")
+
         val config = ClientAPI_Config().apply {
-            setContent(sanitized.text)
+            setContent(mergedText)
         }
 
         val newClient = EngineClient(tun).also {
@@ -128,7 +192,19 @@ class OpenVpn3Session(
 
         onState?.invoke(EngineState.Connecting)
 
-        val eval = helper.eval_config(config)
+        // eval_config вызывается У КЛИЕНТА, а не у helper'а, и это принципиально.
+        //
+        // В ядре это два разных метода с одинаковым именем:
+        //   - `helper.eval_config()`  — только разбирает профиль И ВЫБРАСЫВАЕТ
+        //     результат, он нужен лишь для предварительного осмотра;
+        //   - `client.eval_config()`  — разбирает профиль и СОХРАНЯЕТ разобранные
+        //     опции в состояние клиента, откуда их берёт `connect()`.
+        //
+        // Я звал метод helper'а, поэтому `connect()` шёл в бой с пустым набором
+        // опций и сообщал `option 'cert' not found` — хотя сертификат в профиле
+        // был. Проверено по исходнику ядра (ovpncli.cpp: «API client submits the
+        // configuration here before calling connect()»).
+        val eval = newClient.eval_config(config)
         if (eval.getError()) {
             onState?.invoke(EngineState.Failed(eval.getMessage(), fatal = true))
             client = null
@@ -136,6 +212,10 @@ class OpenVpn3Session(
         }
 
         val status: ClientAPI_Status = newClient.connect()
+        // Статус логируем ВСЕГДА, а не только при ошибке: успешное завершение
+        // `connect()` тоже означает разрыв, и без строки «connect вернулся»
+        // непонятно, ждать ли ещё или уже поздно.
+        onLog?.invoke("connect() вернулся: error=${status.getError()} status=${status.getStatus()} msg=${status.getMessage()}")
         if (status.getError()) {
             onState?.invoke(EngineState.Failed(status.getMessage(), fatal = true))
         }
@@ -147,8 +227,22 @@ class OpenVpn3Session(
         onState?.invoke(EngineState.Disconnected)
     }
 
-    private companion object {
-        val helper = ClientAPI_OpenVPNClientHelper()
+    /**
+     * Помощник ядра.
+     *
+     * **Создаётся ЛЕНИВО, а не в `companion object`, и это не оптимизация.**
+     * `ClientAPI_OpenVPNClientHelper` при инициализации класса вызывает
+     * статический блок `ovpncliJNI`, а тот — нативный `swig_module_init()`.
+     * Если объект лежит в статическом инициализаторе, он создаётся при первом
+     * обращении К КЛАССУ, то есть раньше, чем `start()` успевает загрузить
+     * библиотеку. Приложение падало с `UnsatisfiedLinkError: swig_module_init
+     * ... is the library loaded?` ровно на этом — проверено на устройстве.
+     *
+     * `by lazy` сдвигает создание к первому использованию, а оно всегда идёт
+     * после [EngineLoader.load].
+     */
+    private val helper: ClientAPI_OpenVPNClientHelper by lazy {
+        ClientAPI_OpenVPNClientHelper()
     }
 }
 
@@ -183,6 +277,12 @@ private class EngineClient(private val tun: TunBridge) : ClientAPI_OpenVPNClient
         val name = event.getName().orEmpty()
         val info = event.getInfo().orEmpty()
 
+        // Логируем КАЖДОЕ событие целиком, включая те, для которых у нас нет
+        // состояния. Без этого причина отказа не видна: события вроде
+        // AUTH_FAILED или WAIT попадали в `else -> null` и терялись молча, а в
+        // логе оставалась только версия ядра.
+        onLog?.invoke("event: name=$name error=${event.getError()} fatal=${event.getFatal()} info=$info")
+
         val state: EngineState? = when {
             // `fatal` означает разрыв соединения, `error` — некритичный сбой:
             // разница важна для пользователя, поэтому не смешиваем.
@@ -212,6 +312,16 @@ private class EngineClient(private val tun: TunBridge) : ClientAPI_OpenVPNClient
     // поэтому ядро зовёт методы напрямую.
 
     override fun tun_builder_new(): Boolean = tun.new()
+
+    /**
+     * Адрес удалённой стороны.
+     *
+     * Базовая реализация возвращает `false`, а ядро считает это отказом и рвёт
+     * установку. На Android адрес сервера `Builder` не принимает — маршрутами
+     * занимается система, — но метод обязан вернуть `true`.
+     */
+    override fun tun_builder_set_remote_address(address: String?, ipv6: Boolean): Boolean =
+        tun.setRemoteAddress(address.orEmpty(), ipv6)
 
     override fun tun_builder_set_mtu(mtu: Int): Boolean = tun.setMtu(mtu)
 
@@ -275,6 +385,67 @@ private class EngineClient(private val tun: TunBridge) : ClientAPI_OpenVPNClient
     override fun tun_builder_persist(): Boolean = tun.persist()
 
     override fun tun_builder_teardown(disconnect: Boolean) = tun.teardown(disconnect)
+
+    // --- остальные запросы ядра ---------------------------------------------
+    //
+    // Каждый из этих методов обязан вернуть `true` (или быть пустым для `void`).
+    // Причина не в том, что они что-то делают, а в том, что базовая реализация
+    // возвращает `false`, а ядро читает `false` как ОТКАЗ и обрывает установку.
+    //
+    // Это выяснилось последовательными прогонами на устройстве: ядро доходило
+    // до успешного TLS-рукопожатия с сервером (сессия становилась ACTIVE) и
+    // падало на очередном методе:
+    //   TUN Error: tun_prop_error: tun_builder_set_remote_address failed
+    //   TUN Error: tun_prop_error: tun_builder_set_session_name failed
+    // Поэтому реализованы ВСЕ, а не по одному: иначе каждый прогон (минуты)
+    // вскрывал бы ровно следующий.
+    //
+    // Что эти методы означают в терминах Android:
+    //  - `set_layer` / `set_session_name` / `set_route_metric_default` — у
+    //    `VpnService.Builder` соответствий нет, но пропустить их нельзя;
+    //  - `exclude_route` — исключение маршрута из туннеля. Намеренно НЕ
+    //    реализуем: исключённый маршрут означает трафик мимо туннеля, а это
+    //    ровно та утечка, против которой всё делается. Возвращаем `true`,
+    //    потому что исключать нечего: у нас нет ни одного такого маршрута;
+    //  - `set_allow_family` — разрешение семейства адресов. `false` отдаём
+    //    только на явный запрет, иначе туннель не поднимется;
+    //  - прокси и WINS — на Android не поддерживаем, но обязаны ответить;
+    //  - `get_local_networks` — список локальных сетей. Пустой список корректен:
+    //    ядро использует его для обхода локальных адресов, а у нас такого
+    //    обхода нет — весь трафик идёт в туннель;
+    //  - `establish_lite` — вариант поднятия без настройки; пустой.
+
+    override fun tun_builder_set_layer(layer: Int): Boolean = true
+
+    override fun tun_builder_set_session_name(name: String?): Boolean = true
+
+    override fun tun_builder_set_route_metric_default(metric: Int): Boolean = true
+
+    override fun tun_builder_exclude_route(
+        address: String?,
+        prefixLength: Int,
+        metric: Int,
+        ipv6: Boolean,
+    ): Boolean = true
+
+    override fun tun_builder_set_allow_family(af: Int, allow: Boolean): Boolean = allow
+
+    override fun tun_builder_add_proxy_bypass(bypassHost: String?): Boolean = true
+
+    override fun tun_builder_set_proxy_auto_config_url(url: String?): Boolean = true
+
+    override fun tun_builder_set_proxy_http(host: String?, port: Int): Boolean = true
+
+    override fun tun_builder_set_proxy_https(host: String?, port: Int): Boolean = true
+
+    override fun tun_builder_add_wins_server(address: String?): Boolean = true
+
+    override fun tun_builder_get_local_networks(ipv6: Boolean): ClientAPI_StringVec =
+        ClientAPI_StringVec()
+
+    override fun tun_builder_establish_lite() {
+        // Ничего: отдельного «лёгкого» поднятия на Android нет.
+    }
 
     // --- защита сокета -------------------------------------------------------
     /**

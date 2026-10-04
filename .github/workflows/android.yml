@@ -142,7 +142,21 @@ jobs:
 
             # Библиотека — в jniLibs, чтобы Gradle упаковала её в APK.
             mkdir -p "android/vpnengine/src/main/jniLibs/$abi"
-            find "$build" -name 'ovpn3.so' -exec cp {} "android/vpnengine/src/main/jniLibs/$abi/" \;
+            # libovpn3.so, а НЕ ovpn3.so: Android пакует в APK только файлы вида
+            # lib<имя>.so, и System.loadLibrary("ovpn3") ищет именно libovpn3.so.
+            # Ищем по маске lib*.so, но проверяем, что нашли ровно одну.
+            found=false
+            for so in "$build"/libovpn3.so "$build"/*/libovpn3.so; do
+              [ -f "$so" ] || continue
+              cp "$so" "android/vpnengine/src/main/jniLibs/$abi/"
+              found=true
+              break
+            done
+            if [ "$found" != "true" ]; then
+              echo "::error::Не найден libovpn3.so для $abi в $build — собран без префикса lib?"
+              find "$build" -name '*.so' | head -10
+              exit 1
+            fi
             # Java-классы биндинга одинаковы для всех архитектур: копируем один раз.
             if [ ! -d android/vpnengine/src/main/java/net ]; then
               mkdir -p android/vpnengine/src/main/java
