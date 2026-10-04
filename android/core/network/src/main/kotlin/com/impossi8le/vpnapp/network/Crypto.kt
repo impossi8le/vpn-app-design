@@ -22,9 +22,18 @@ object Crypto {
     /** Публичный код: короткий, попадает в ссылку и виден в чате. Hex, 12 символов. */
     fun newPublicCode(): String = random.bytes(PUBLIC_CODE_BYTES)
 
-    fun sha256Hex(value: String): String =
+    fun sha256Hex(value: String): String = sha256Hex(value.toByteArray(Charsets.UTF_8))
+
+    /**
+     * Хеш байтов.
+     *
+     * Нужен для сверки тела конфига: профиль приходит байтами, а не строкой
+     * (внутри может быть что угодно, включая не-UTF-8), поэтому приведение к
+     * строке до хеширования испортило бы результат.
+     */
+    fun sha256Hex(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
+            .digest(bytes)
             .joinToString("") { "%02x".format(it) }
 
     private fun SecureRandom.bytes(count: Int): String {

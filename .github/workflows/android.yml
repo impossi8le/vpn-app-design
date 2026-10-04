@@ -106,8 +106,14 @@ jobs:
             abi="${pair%%:*}"; triplet="${pair##*:}"
             echo "=== $abi ($triplet) ==="
 
+            # --overlay-triplets ОБЯЗАТЕЛЕН: триплеты arm64-android и x64-android
+            # лежат в triplets/community, и без overlay vcpkg их не находит —
+            # отсюда было «Could NOT find lz4» при формально успешной установке.
+            # Вывод НЕ прячем в /dev/null: спрятанный вывод уже стоил отдельной
+            # отладочной итерации, потому что причина утонула.
             "$VCPKG_ROOT/vcpkg" install --triplet "$triplet" \
-              openssl lz4 lzo fmt jsoncpp mbedtls >/dev/null
+              --overlay-triplets="$VCPKG_ROOT/triplets/community" \
+              openssl lz4 lzo fmt jsoncpp mbedtls
 
             build="$RUNNER_TEMP/build-$abi"
             cmake -S android/vpnengine -B "$build" \
