@@ -46,8 +46,16 @@ else
   say "Запускаю эмулятор (первый старт может занять несколько минут)…"
   # -no-snapshot: предсказуемый старт, без зависимости от прошлого состояния.
   # -gpu swiftshader_indirect: на headless/без GPU это надёжнее хостового GL.
+  #
+  # -dns-server ОБЯЗАТЕЛЕН, и вот почему. Без него slirp прописывает гостю свой
+  # прокси 10.0.2.3, который не отвечает: `dumpsys dnsresolver` показывал 128
+  # таймаутов из 128 UDP-запросов, и `ping github.com` давал «unknown host» при
+  # том, что ICMP до 8.8.8.8 ходил. Проверить приложение без резолвинга имён
+  # невозможно, а `setprop net.dns1` на API 35 не работает, `ndc resolver`
+  # убран — обычные советы из интернета тут бессильны. Подробности и пруфы:
+  # scripts/emulator-network-notes.md
   "$EMULATOR" -avd "$AVD_NAME" -no-snapshot -no-boot-anim \
-    -gpu swiftshader_indirect >/dev/null 2>&1 &
+    -gpu swiftshader_indirect -dns-server 8.8.8.8,8.8.4.4 >/dev/null 2>&1 &
 fi
 
 say "Жду загрузки Android…"
