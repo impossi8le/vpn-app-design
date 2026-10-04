@@ -23,9 +23,21 @@ on:
 
 jobs:
   build-core:
-    name: Build OpenVPN 3 core for arm64
+    # Две архитектуры, и обе нужны по делу: arm64 — для реального телефона,
+    # x86_64 — для эмулятора, на котором идёт проверка. Собрав только arm64,
+    # движок на эмуляторе не проверить вовсе: APK установится, а библиотека
+    # не загрузится, и это выглядело бы как поломка приложения, а не сборки.
+    name: Core for ${{ matrix.abi }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            triplet: arm64-android
+          - abi: x86_64
+            triplet: x64-android
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,8 +86,8 @@ jobs:
           # и кэш тогда не восстанавливается никогда — каждая сборка заново
           # компилирует OpenSSL под arm64. Ключ привязан к набору зависимостей,
           # который меняется редко.
-          key: vcpkg-arm64-android-openssl-lz4-lzo-fmt-jsoncpp-mbedtls-v1
-          restore-keys: vcpkg-arm64-android-
+          key: vcpkg-${{ matrix.abi }}-openssl-lz4-lzo-fmt-jsoncpp-mbedtls-v1
+          restore-keys: vcpkg-${{ matrix.abi }}-
 
       - name: Provide asio and vcpkg
         run: |
@@ -101,13 +113,13 @@ jobs:
           echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg-installed" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/vcpkg-cache"
 
-      - name: Install native deps for arm64-android
+      - name: Install native deps
         run: |
           set -euo pipefail
           # Именно эти шесть названы в cmake/findcoredeps.cmake, и именно их
           # нельзя взять из apt при кросс-компиляции.
           "$VCPKG_ROOT/vcpkg" install \
-            --triplet arm64-android \
+            --triplet ${{ matrix.triplet }} \
             --overlay-triplets="$VCPKG_ROOT/triplets/community" \
             openssl lz4 lzo fmt jsoncpp mbedtls
 
@@ -148,7 +160,7 @@ jobs:
       #     CMakeLists они делают `if (NOT BUILD_TESTING) return()`. Имя
       #     `ENABLE_TESTING` не подходит: это опция mbedTLS, и она ни на что
       #     здесь не влияет.
-      - name: Configure for Android arm64
+      - name: Configure for Android
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/engine/openvpn3"
@@ -158,9 +170,9 @@ jobs:
           cmake -S . -B build-android \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ndk_toolchain" \
-            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
             -DVCPKG_OVERLAY_TRIPLETS="$VCPKG_ROOT/triplets/community" \
-            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_ABI=${{ matrix.abi }} \
             -DANDROID_PLATFORM=android-26 \
             -DANDROID_STL=c++_static \
             -DCMAKE_BUILD_TYPE=Release \
@@ -185,9 +197,9 @@ jobs:
           cmake -S "$GITHUB_WORKSPACE/android/vpnengine" -B "$RUNNER_TEMP/enginebuild" \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ndk_toolchain" \
-            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
             -DVCPKG_OVERLAY_TRIPLETS="$VCPKG_ROOT/triplets/community" \
-            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_ABI=${{ matrix.abi }} \
             -DANDROID_PLATFORM=android-26 \
             -DANDROID_STL=c++_static \
             -DCMAKE_BUILD_TYPE=Release \
@@ -224,7 +236,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ovpn3-engine-arm64
+          name: ovpn3-engine-${{ matrix.abi }}
           path: |
             ${{ runner.temp }}/enginebuild/jniLibs/**/*.so
             ${{ runner.temp }}/enginebuild/java/**/*.java
