@@ -15,10 +15,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.impossi8le.vpnapp.core.ui.VpnColors
-import com.impossi8le.vpnapp.domain.protection.ProtectionFailure
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
-import com.impossi8le.vpnapp.domain.protection.ProtectionProbe
-import com.impossi8le.vpnapp.domain.protection.ProtectionVerdict
 import com.impossi8le.vpnapp.feature.home.HomeScreen
 import com.impossi8le.vpnapp.feature.home.HomeViewModel
 import kotlinx.coroutines.launch
@@ -33,12 +30,12 @@ import kotlinx.coroutines.launch
  * `launchMode="singleTask"` в манифесте нужен для deep link входа:
  * возврат из Telegram не должен создавать второй экземпляр активности.
  *
- * **Что пока заглушка и почему это честно.** Проба защиты неплатформенная: она
- * сообщает `ProbeUnavailable`, а не зелёное. Туннель — `TunnelEnginePending`,
- * который на попытку подключения отвечает отказом с причиной. Экран поэтому
- * покажет «защита не подтверждена», и это правда: движок ещё не выбран
- * (§4.7 архитектуры), а изображать работающий VPN без движка — ровно та ложная
- * уверенность, против которой написан инвариант защиты.
+ * **Что сейчас в сборке.** Туннель — `DemoTunnelEngine`: движок уже собран в
+ * `:vpnengine`, но к сервису ещё не подключён, поэтому попытка подключения
+ * отвечает причиной, а не имитацией. Проба защиты неплатформенная и сообщает
+ * `ProbeUnavailable`. Экран поэтому покажет «защита не подтверждена», и это
+ * правда: изображать работающий VPN без поднятого туннеля — ровно та ложная
+ * уверенность, против которой написан инвариант §6.
  */
 class MainActivity : ComponentActivity() {
 
@@ -58,7 +55,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun HomeRoute() {
-    val tunnel = remember { TunnelEnginePending() }
+    val tunnel = remember { DemoTunnelEngine() }
     val viewModel: HomeViewModel = viewModel {
         HomeViewModel(tunnel, ProtectionGate(UnavailableProbe))
     }
@@ -78,15 +75,4 @@ private fun HomeRoute() {
         onConnect = { scope.launch { viewModel.connect() } },
         onDisconnect = { scope.launch { viewModel.disconnect() } },
     )
-}
-
-/**
- * Проба, которая честно сообщает, что проверить не может.
- *
- * Не возвращает зелёное: подтверждать нечего, пока нет туннеля. Экран покажет
- * «защита не подтверждена», и это правда, а не удобное умолчание.
- */
-private object UnavailableProbe : ProtectionProbe {
-    override suspend fun verify(): ProtectionVerdict =
-        ProtectionVerdict.Failed(ProtectionFailure.ProbeUnavailable)
 }
