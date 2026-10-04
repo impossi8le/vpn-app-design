@@ -129,6 +129,21 @@ fun AppRoot(
             AppDestination.LoginWaiting -> LoginWaitingScreen(
                 remainingLabel = state.loginRemainingLabel,
                 onReopenTelegram = { onIntent(AppIntent.StartLogin) },
+                // **Демонстрационный проход дальше.** Настоящий вход ждёт
+                // подтверждения в Telegram, которого в сборке для проверки нет:
+                // показывать тупик на экране ожидания — значит оставить
+                // недостижимыми ещё десять экранов, и проверить их нельзя.
+                //
+                // Поэтому здесь есть проход с явной пометкой, что он
+                // демонстрационный. Он НЕ выдаёт себя за подтверждённый вход и
+                // НЕ влияет на статус защиты: тот по-прежнему появляется только
+                // из состоявшегося замера.
+                onContinueDemo = {
+                    // После входа возврат на экран входа бессмысленен: историю
+                    // сбрасываем, а не копим.
+                    stack.resetTo(AppDestination.Connection)
+                    destination = stack.current()
+                },
             )
 
             AppDestination.Connection -> ConnectionScreen(

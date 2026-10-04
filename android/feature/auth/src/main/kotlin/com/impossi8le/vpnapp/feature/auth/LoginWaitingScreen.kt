@@ -21,6 +21,7 @@ import com.impossi8le.vpnapp.core.ui.VpnColors
 
 const val LOGIN_WAITING_TITLE_TAG = "login_waiting_title"
 const val LOGIN_WAITING_COUNTDOWN_TAG = "login_waiting_countdown"
+const val LOGIN_WAITING_DEMO_TAG = "login_waiting_demo"
 const val LOGIN_WAITING_REOPEN_TAG = "login_waiting_reopen"
 
 /**
@@ -37,6 +38,15 @@ const val LOGIN_WAITING_REOPEN_TAG = "login_waiting_reopen"
 fun LoginWaitingScreen(
     remainingLabel: String,
     onReopenTelegram: () -> Unit,
+    /**
+     * Демонстрационный проход дальше, без подтверждения в Telegram.
+     *
+     * Нужен, потому что настоящий вход ждёт подтверждения в боте: без этого
+     * прохода все экраны после входа недостижимы, и проверить их нельзя.
+     * Кнопка явно помечена как демонстрационная и не выдаёт себя за вход;
+     * статус защиты она не затрагивает.
+     */
+    onContinueDemo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -95,6 +105,22 @@ fun LoginWaitingScreen(
             height = 46.dp,
             testTag = LOGIN_WAITING_REOPEN_TAG,
             modifier = Modifier.padding(top = 20.dp),
+        )
+
+        // Демонстрационный проход. Настоящий вход ждёт подтверждения в
+        // Telegram, которого в проверочной сборке нет; без этого прохода
+        // десять экранов после входа остаются недостижимыми и непроверенными.
+        //
+        // Кнопка названа прямо, а не замаскирована под «Продолжить»: выдать
+        // демонстрацию за состоявшийся вход значило бы соврать о том, что
+        // пользователь вошёл. Статус защиты это не затрагивает — он появляется
+        // только из замера.
+        GhostButton(
+            text = "Демонстрация: показать экраны дальше",
+            onClick = onContinueDemo,
+            height = 46.dp,
+            testTag = LOGIN_WAITING_DEMO_TAG,
+            modifier = Modifier.padding(top = 9.dp),
         )
     }
 }
