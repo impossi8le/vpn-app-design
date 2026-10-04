@@ -13,7 +13,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -21,7 +23,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
-import com.impossi8le.vpnapp.feature.home.HomeScreen
+import com.impossi8le.vpnapp.feature.home.StatusAction
 import com.impossi8le.vpnapp.feature.home.HomeViewModel
 import com.impossi8le.vpnapp.tunnel.AppTunnelController
 import com.impossi8le.vpnapp.tunnel.TunnelStatusReceiver
@@ -58,14 +60,14 @@ class MainActivity : ComponentActivity() {
                     .fillMaxSize()
                     .background(VpnColors.Void),
             ) {
-                HomeRoute()
+                VpnApp()
             }
         }
     }
 }
 
 @Composable
-private fun HomeRoute() {
+private fun VpnApp() {
     val context = LocalContext.current
     val tunnel = remember {
         AppTunnelController(
@@ -129,9 +131,40 @@ private fun HomeRoute() {
         }
     }
 
-    HomeScreen(
-        status = status,
-        onConnect = { scope.launch { viewModel.connect() } },
-        onDisconnect = { scope.launch { viewModel.disconnect() } },
+    // Экраны собраны в AppRoot, а вся работа с туннелем осталась здесь: она
+    // требует активности — системный диалог согласия и регистрацию приёмника.
+    var showDemo by remember { mutableStateOf(false) }
+    var switching by remember { mutableStateOf(false) }
+
+    AppRoot(
+        state = AppRootState(
+            status = status,
+            configs = emptyList(),
+            switchingInProgress = switching,
+        ),
+        onIntent = { intent ->
+            when (intent) {
+                // Действия по матрице кнопки из макета.
+                is AppIntent.ConnectionAction -> scope.launch {
+                    when (intent.action) {
+                        StatusAction.Connect -> viewModel.connect()
+
+                        // «Отменить» и «Отключить» — разные подписи, но действие
+                        // одно: опустить то, что поднимается или уже поднято.
+                        StatusAction.Cancel,
+                        StatusAction.Disconnect,
+                        -> viewModel.disconnect()
+
+                        StatusAction.Retry -> viewModel.reverify()
+
+                        StatusAction.OpenSettings -> Unit
+
+                        StatusAction.RefreshAccess -> Unit
+                    }
+                }
+
+                else -> Unit
+            }
+        },
     )
 }
