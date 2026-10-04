@@ -14,6 +14,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -25,6 +26,7 @@ import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
 import com.impossi8le.vpnapp.feature.home.StatusAction
 import com.impossi8le.vpnapp.feature.home.HomeViewModel
+import com.impossi8le.vpnapp.feature.home.toRowStates
 import com.impossi8le.vpnapp.tunnel.AppTunnelController
 import com.impossi8le.vpnapp.tunnel.TunnelStatusReceiver
 import com.impossi8le.vpnapp.vpnservice.VpnTunnelService
@@ -136,10 +138,22 @@ private fun VpnApp() {
     var showDemo by remember { mutableStateOf(false) }
     var switching by remember { mutableStateOf(false) }
 
+    // Список подключений берём из подставного бэкенда один раз на экран: это
+    // демонстрационный ответ сети, а не живой поток. `emptyList()` здесь
+    // оставлял секцию «Подключения» пустой — проверить список на устройстве
+    // было нельзя. Момент «сейчас» передаём внутрь преобразования явно, чтобы
+    // подписи срока были детерминированы.
+    val configs by produceState(initialValue = emptyList()) {
+        value = DemoMode.api.listConfigs().getOrNull()
+            ?.configs
+            ?.toRowStates(System.currentTimeMillis() / 1000)
+            .orEmpty()
+    }
+
     AppRoot(
         state = AppRootState(
             status = status,
-            configs = emptyList(),
+            configs = configs,
             switchingInProgress = switching,
         ),
         onIntent = { intent ->
