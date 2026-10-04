@@ -93,8 +93,11 @@ set_target_properties(ovpn3 PROPERTIES
     # приложение падает на первом обращении к ядру.
     PREFIX "lib"
     OUTPUT_NAME "ovpn3"
-    # Раскладка, которую ждёт Android-плагин: jniLibs/<abi>/.
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/jniLibs/arm64-v8a"
+    # Раскладка, которую ждёт Android-плагин: jniLibs/<abi>/. АБИ подставляется
+    # из переменной сборки, а не зашита: с жёстким `arm64-v8a` библиотека для
+    # x86_64 тоже ложилась в каталог arm64, и сборка APK оставалась без
+    # библиотеки для эмулятора — при этом сам CMake завершался успешно.
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/jniLibs/${ANDROID_ABI}"
 )
 
 # На Android pthread — часть libc, отдельной `libpthread.so` в NDK нет.
