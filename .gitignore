@@ -75,3 +75,7 @@ android/app/release/
 # В репозитории не хранится: собирается заново, а размер делает клон тяжёлым.
 /android/vpnengine/src/main/jniLibs/
 /android/vpnengine/src/main/java/
+
+# Выгруженный артефакт движка для сверки сигнатур SWIG (42 класса + .so).
+/.chk/
+/.profile-directives.txt
