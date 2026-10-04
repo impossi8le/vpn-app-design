@@ -144,19 +144,22 @@ jobs:
             mkdir -p "android/vpnengine/src/main/jniLibs/$abi"
             # libovpn3.so, а НЕ ovpn3.so: Android пакует в APK только файлы вида
             # lib<имя>.so, и System.loadLibrary("ovpn3") ищет именно libovpn3.so.
-            # Ищем по маске lib*.so, но проверяем, что нашли ровно одну.
-            found=false
-            for so in "$build"/libovpn3.so "$build"/*/libovpn3.so; do
-              [ -f "$so" ] || continue
-              cp "$so" "android/vpnengine/src/main/jniLibs/$abi/"
-              found=true
-              break
-            done
-            if [ "$found" != "true" ]; then
-              echo "::error::Не найден libovpn3.so для $abi в $build — собран без префикса lib?"
+            #
+            # Ищем РЕКУРСИВНО. Библиотека лежит на два уровня глубже корня
+            # сборки — `jniLibs/<abi>/libovpn3.so`, потому что там её размещает
+            # LIBRARY_OUTPUT_DIRECTORY в CMakeLists. Первая версия этого поиска
+            # смотрела только `$build/*/libovpn3.so`, файла не находила и валила
+            # джобу, хотя библиотека была собрана и лежала рядом.
+            so=$(find "$build" -name 'libovpn3.so' -print -quit)
+            if [ -z "$so" ]; then
+              echo "::error::Не найден libovpn3.so для $abi в $build"
+              echo "--- что вообще собралось ---"
               find "$build" -name '*.so' | head -10
               exit 1
             fi
+            echo "нашлась библиотека: $so"
+            mkdir -p "android/vpnengine/src/main/jniLibs/$abi"
+            cp "$so" "android/vpnengine/src/main/jniLibs/$abi/"
             # Java-классы биндинга одинаковы для всех архитектур: копируем один раз.
             if [ ! -d android/vpnengine/src/main/java/net ]; then
               mkdir -p android/vpnengine/src/main/java
