@@ -65,7 +65,10 @@ jobs:
           "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
           echo "VCPKG_BINARY_SOURCES=clear;files,$RUNNER_TEMP/vcpkg-cache,readwrite" >> "$GITHUB_ENV"
-          echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg-installed" >> "$GITHUB_ENV"
+          # VCPKG_INSTALLED_DIR НЕ задаём: пакеты должны лечь туда, куда их
+          # положит сам vcpkg внутри своего корня — оттуда их ищет его
+          # CMake-тулчейн. Переопределение каталога уводило установку в сторону,
+          # и CMake сообщал «Could NOT find lz4» при формально успешном install.
           mkdir -p "$RUNNER_TEMP/vcpkg-cache"
 
       - name: Ensure NDK
@@ -116,11 +119,18 @@ jobs:
               openssl lz4 lzo fmt jsoncpp mbedtls
 
             build="$RUNNER_TEMP/build-$abi"
+            # Набор флагов дословно повторяет спайк, который сборку уже провёл.
+            # Ключевой из них — VCPKG_OVERLAY_TRIPLETS: без него CMake-тулчейн
+            # vcpkg не знает про overlay и ищет пакеты в стандартном каталоге,
+            # где их нет. Именно этим отличалась первая версия этого шага, и
+            # отсюда было «Could NOT find lz4» при формально успешной установке.
+            # VCPKG_INSTALLED_DIR намеренно НЕ задаём: в рабочем спайке его нет,
+            # а лишняя переменная уводит установку из каталога, который ищет CMake.
             cmake -S android/vpnengine -B "$build" \
               -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
               -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ndk_toolchain" \
               -DVCPKG_TARGET_TRIPLET="$triplet" \
-              -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+              -DVCPKG_OVERLAY_TRIPLETS="$VCPKG_ROOT/triplets/community" \
               -DANDROID_ABI="$abi" \
               -DANDROID_PLATFORM=android-26 \
               -DANDROID_STL=c++_static \
