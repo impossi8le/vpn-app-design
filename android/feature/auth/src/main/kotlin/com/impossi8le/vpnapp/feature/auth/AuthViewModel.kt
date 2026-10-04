@@ -44,8 +44,22 @@ sealed interface AuthUiState {
 class AuthViewModel(
     private val service: AuthService,
     private val sessionStore: SessionStore,
-    private val deviceName: String,
+    deviceName: String,
 ) : ViewModel() {
+
+    /**
+     * Имя устройства для поддержки.
+     *
+     * Подставляется в последний момент, а не принимается как есть: раньше поле
+     * приходило пустым, потому что вызывающий его не заполнял, и на сервер
+     * уходила пустая строка. Поддержка оставалась без модели телефона — а
+     * именно ради неё поле и заведено в контракте.
+     *
+     * Если вызывающий не передал ничего, отправляем `Android`: это честнее
+     * пустоты — понятно, что клиент не смог определить модель, а не что сервер
+     * потерял поле.
+     */
+    private val deviceName: String = deviceName.trim().ifEmpty { "Android" }
 
     private val _state = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
     val state: StateFlow<AuthUiState> = _state.asStateFlow()

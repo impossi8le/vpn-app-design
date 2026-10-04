@@ -108,13 +108,39 @@ class AuthApi(
 
                 val root = json.parseToJsonElement(body).jsonObject
                 val outcome = when (root.str("status")) {
-                    "confirmed" -> PollOutcome.Confirmed(
-                        session = Session(
-                            token = root.str("session_token").orEmpty(),
-                            expiresAtEpochSeconds = root.instant("expires_at"),
-                        ),
-                        chatId = root.long("chat_id") ?: 0L,
-                    )
+                    "confirmed" -> {
+                        // Срок жизни сессии обязателен, и отсутствие поля —
+                        // ОШИБКА, а не ноль.
+                        //
+                        // Раньше здесь стоял `instant("expires_at")`, который
+                        // на отсутствующем поле молча возвращал `0L`. Сессия
+                        // записывалась с нулевым сроком, и клиент выходил из
+                        // неё немедленно — вход выглядел сломанным, а причина
+                        // не была видна ни в логе, ни на экране.
+                        //
+                        // Контракт описывает это поле в §1, но у `/auth/poll`
+                        // его не упоминал. Теперь расхождение закрыто с обеих
+                        // сторон: сервер обязан прислать поле, а клиент честно
+                        // скажет, если его нет.
+                        val expiresAt = root.instantOrNull("expires_at")
+                            ?: return@withContext Result.failure(
+                                ApiException(ApiError.Unexpected(response.code, body)),
+                            )
+                        val token = root.str("session_token").orEmpty()
+                        if (token.isBlank()) {
+                            return@withContext Result.failure(
+                                ApiException(ApiError.Unexpected(response.code, body)),
+                            )
+                        }
+
+                        PollOutcome.Confirmed(
+                            session = Session(
+                                token = token,
+                                expiresAtEpochSeconds = expiresAt,
+                            ),
+                            chatId = root.long("chat_id") ?: 0L,
+                        )
+                    }
                     "pending" -> PollOutcome.Pending(root.long("retry_after_ms") ?: 2000L)
                     "expired" -> PollOutcome.Expired
                     "denied" -> PollOutcome.Denied
