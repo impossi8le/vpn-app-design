@@ -141,6 +141,13 @@ private fun VpnApp() {
     // рекомпозицию — список остался бы пустым до случайной перерисовки.
     var sessionToken by remember { mutableStateOf<String?>(null) }
 
+    // Выход состоялся: `graph.signOut()` уже погасил туннель и стёр профиль с
+    // сессией. Флаг ведёт на экран входа — навигация живёт в AppRoot, снаружи
+    // туда не дотянуться, поэтому признак едет через состояние. Это событие на
+    // один раз: AppRoot, вернув на вход, отвечает `SignOutHandled`, и флаг
+    // снимается — иначе повторный выход не сработал бы.
+    var signedOut by remember { mutableStateOf(false) }
+
     // Восстановление сохранённой сессии при запуске: `restoreSession()` вернёт
     // `true` и кладёт валидный токен в ApiClient; мы отражаем его в состоянии,
     // чтобы список подключений подтянулся без повторного входа.
@@ -238,6 +245,7 @@ private fun VpnApp() {
             signingIn = authState is AuthUiState.Polling,
             loginError = (authState as? AuthUiState.Failed)?.reason,
             signedIn = authState is AuthUiState.SignedIn,
+            signedOut = signedOut,
         ),
         onIntent = { intent ->
             when (intent) {
@@ -279,6 +287,19 @@ private fun VpnApp() {
                 }
 
                 AppIntent.StartLogin -> authViewModel.startLogin()
+
+                AppIntent.SignOut -> scope.launch {
+                    // Порядок гашения — внутри `AppGraph.signOut()`: туннель →
+                    // профиль с метаданными → сессия → токен в памяти. Здесь только
+                    // вызов и очистка состояния входа; следом AppRoot уводит на вход.
+                    graph.signOut()
+                    authViewModel.signOut()
+                    signedOut = true
+                }
+
+                // AppRoot уже вернул на вход — снимаем признак, чтобы следующий
+                // выход в этом же сеансе снова считался новым событием.
+                AppIntent.SignOutHandled -> signedOut = false
 
                 // Ручной ввод кода из бота — единственная защита входа от
                 // подмены. Код уходит в ViewModel, тот опрашивает сервер до

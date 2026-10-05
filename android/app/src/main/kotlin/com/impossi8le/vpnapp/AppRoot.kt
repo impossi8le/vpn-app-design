@@ -107,6 +107,24 @@ fun AppRoot(
         }
     }
 
+    // Выход состоялся — возвращаемся на вход.
+    //
+    // Туннель и профиль к этому моменту уже погашены (это сделал
+    // `AppGraph.signOut()`), здесь остаётся только показать экран входа. Историю
+    // сбрасываем: возврат на экран аккаунта после выхода бессмыслен и опасен —
+    // там уже нет ни сессии, ни профиля.
+    //
+    // Признак — событие на один раз: сразу после перехода просим снять флаг.
+    // Иначе повторный выход в том же сеансе оставил бы `signedOut` тем же `true`,
+    // ключ эффекта не изменился бы — и на вход во второй раз мы бы не вернулись.
+    LaunchedEffect(state.signedOut) {
+        if (state.signedOut) {
+            stack.resetTo(AppDestination.Login)
+            destination = stack.current()
+            onIntent(AppIntent.SignOutHandled)
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(VpnColors.Void)) {
         when (destination) {
 
@@ -268,6 +286,8 @@ data class AppRootState(
     val loginError: String? = null,
     /** Вход состоялся: `AppRoot` уводит на экран подключения. */
     val signedIn: Boolean = false,
+    /** Выход состоялся: `AppRoot` возвращает на экран входа. */
+    val signedOut: Boolean = false,
     /**
      * Показывать ли демонстрационный проход мимо входа.
      *
@@ -318,6 +338,9 @@ sealed interface AppIntent {
     data object CopyErrorCode : AppIntent
     data object DeleteAccount : AppIntent
     data object SignOut : AppIntent
+
+    /** Признак выхода отработан: `AppRoot` уже вернул пользователя на вход. */
+    data object SignOutHandled : AppIntent
     data object RecheckVpnPermission : AppIntent
     data class ConnectionAction(val action: StatusAction) : AppIntent
     data class SelectConfig(val id: String) : AppIntent
