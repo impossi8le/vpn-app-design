@@ -57,6 +57,8 @@ import com.impossi8le.vpnapp.tunnel.TunnelStatusReceiver
 import com.impossi8le.vpnapp.update.ApkDownloader
 import com.impossi8le.vpnapp.update.ApkInstaller
 import com.impossi8le.vpnapp.update.UpdateChecker
+import com.impossi8le.vpnapp.update.UpdateVerdictStore
+import com.impossi8le.vpnapp.update.restoredUpdateState
 import com.impossi8le.vpnapp.vpnservice.VpnTunnelService
 import java.io.File
 import kotlinx.coroutines.Job
@@ -433,7 +435,18 @@ private fun VpnApp() {
     val apkDownloader = remember { ApkDownloader(graph.apiClient.http, context.cacheDir) }
     val apkInstaller = remember { ApkInstaller(context) }
 
-    var updateState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
+    val verdictStore = remember { UpdateVerdictStore(File(context.filesDir, "update-verdict.txt")) }
+
+    // Стартовое состояние — ИЗ ПАМЯТИ, а не Idle.
+    //
+    // Проверено на телефоне: с Idle приложение на холодном старте успевало
+    // показать рабочий экран, пока шла сетевая проверка, и блокировку можно
+    // было обойти, просто вернувшись в приложение. Блокировка обязана
+    // действовать с первого кадра, поэтому прошлый вердикт читается здесь же,
+    // до первой композиции.
+    var updateState by remember {
+        mutableStateOf(restoredUpdateState(BuildConfig.VERSION_CODE, verdictStore.read(), !BuildConfig.DEBUG))
+    }
     var updateProgress by remember { mutableStateOf<Int?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
     var updateBannerDismissed by remember { mutableStateOf(false) }
@@ -445,8 +458,13 @@ private fun VpnApp() {
     // Проверка при запуске. Один раз, не в цикле: анонимный лимит запросов
     // GitHub невелик, а баннер подождёт.
     LaunchedEffect(Unit) {
-        updateState = UpdateUiState.Checking
         updateState = updateChecker.check()
+        // Вердикт запоминается, чтобы блокировка не ждала сеть при следующем
+        // запуске. Состояние Failed не пишем: оно про сеть, а не про версии.
+        val available = updateState as? UpdateUiState.Available
+        if (available != null) {
+            verdictStore.write(latest = available.versionCode, minSupported = graph.updateApi.minSupported())
+        }
     }
 
     // Результат система показывает сама (диалог установки или сообщение об
