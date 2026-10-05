@@ -914,17 +914,13 @@ git commit -m "Add the composition root that talks to the real backend"
     val authState by authViewModel.state.collectAsState()
 ```
 
-- [ ] **Step 2: Обработать `StartLogin` и открыть Telegram**
+- [ ] **Step 2: Обработать `StartLogin`**
 
-В `onIntent` заменить ветку `else -> Unit` и добавить обработку входа:
+В `onIntent` заменить ветку `else -> Unit`, добавив обработку входа. Переход на экран ожидания НЕ делается здесь: его выполняет `AppRoot` (`LoginScreen.onLogin` → `go(AppDestination.LoginWaiting)`), а `go` — локальная функция внутри `AppRoot`, снаружи недоступная. Отсюда стартуем только сам вход:
 
 ```kotlin
-                AppIntent.StartLogin -> {
-                    authViewModel.startLogin()
-                    go(/* LoginWaiting */) // переход уже делает AppRoot по onLogin
-                }
+                AppIntent.StartLogin -> authViewModel.startLogin()
 ```
-Уточнение: переход на `LoginWaiting` выполняет `AppRoot` (см. `LoginScreen.onLogin` → `go(AppDestination.LoginWaiting)`), поэтому в `StartLogin` достаточно `authViewModel.startLogin()`.
 
 Открытие Telegram — по состоянию `AwaitingNonce`:
 
@@ -993,9 +989,9 @@ git commit -m "Start a real sign-in from the login screen"
 ```kotlin
 package com.impossi8le.vpnapp.feature.auth
 
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -1237,15 +1233,13 @@ git commit -m "Load the connection list from the live backend"
 
 - [ ] **Step 3: Показать причину отказа**
 
-В `AppRoot`, в `AppDestination.Connection`, передать в `ConnectionScreen` предупреждение:
+В `AppRoot`, в `AppDestination.Connection`, добавить в `ConnectionScreen` отдельный параметр `notice: String?` (не переиспользовать `switchingWarning`: у него другой смысл — «переключение страны оставляет окно без защиты», и подмена исказила бы его). Показывать `notice` тем же блоком-предупреждением, что и `switchingWarning`:
 
 ```kotlin
             AppDestination.Connection -> ConnectionScreen(
                 // ... существующие параметры ...
-                switchingWarning = state.switchingInProgress || state.prepareError != null,
-                startProgressText = state.prepareError ?: state.startProgressText,
+                notice = state.prepareError,
 ```
-(Если `switchingWarning: Boolean` уже занят смыслом «переключение страны» — вместо заимствования добавить в `ConnectionScreen` отдельный параметр `notice: String?` и показать его тем же блоком, что и предупреждение. Выбрать вариант, который не искажает смысл существующего поля.)
 
 - [ ] **Step 4: Собрать и проверить на эмуляторе**
 
