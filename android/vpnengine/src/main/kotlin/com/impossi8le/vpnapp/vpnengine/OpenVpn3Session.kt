@@ -289,13 +289,13 @@ private class EngineClient(private val tun: TunBridge) : ClientAPI_OpenVPNClient
             event.getFatal() -> EngineState.Failed(info.ifBlank { name }, fatal = true)
             event.getError() -> EngineState.Failed(info.ifBlank { name }, fatal = false)
 
-            name.contains(EVENT_CONNECTED) -> EngineState.Connected
-            name.contains(EVENT_RECONNECTING) -> EngineState.Reconnecting
-            name.contains(EVENT_DISCONNECTED) -> EngineState.Disconnected
-            // Остальные имена (CONNECTING, GET_CONFIG, ASSIGN_IP, ADD_ROUTES,
-            // RESOLVE, WAIT) — промежуточные шаги. Отдельных состояний для них
-            // нет намеренно: пользователю важно «идёт процесс», а не его фаза.
-            else -> null
+            // Разбор имени — в чистой функции [engineStateFrom]: она сравнивает
+            // имена ТОЧНО, а не по подстроке. Прежнее `name.contains("CONNECTED")`
+            // путало разрыв `DISCONNECTED` с подъёмом `CONNECTED` (одно имя
+            // содержит другое) и после отключения возвращало экран в «туннель
+            // поднят». Подробности и проверка на устройстве — в doc-комментарии
+            // к [engineStateFrom].
+            else -> engineStateFrom(name)
         }
 
         state?.let { onState?.invoke(it) }
@@ -459,13 +459,3 @@ private class EngineClient(private val tun: TunBridge) : ClientAPI_OpenVPNClient
         tun.protectSocket(socket)
 }
 
-/**
- * Имена событий ядра.
- *
- * Сравниваются через `contains`: ядро присылает их в виде, который может нести
- * уточнение, и точное равенство строки хрупко. Константы вынесены, чтобы смысл
- * был виден в коде, а не терялся в строках-литералах.
- */
-private const val EVENT_CONNECTED = "CONNECTED"
-private const val EVENT_RECONNECTING = "RECONNECTING"
-private const val EVENT_DISCONNECTED = "DISCONNECTED"
