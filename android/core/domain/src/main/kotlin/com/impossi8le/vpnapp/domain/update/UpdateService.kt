@@ -29,4 +29,12 @@ class UpdateException(val error: UpdateError) :
 /** Источник сведений о последней версии. */
 interface UpdateService {
     suspend fun latestRelease(): Result<ReleaseInfo>
+
+    /**
+     * Наименьшая поддерживаемая версия. `null` — узнать не удалось (нет файла,
+     * нет связи, мусор в файле). Возвращает не `Result`, а `null`, потому что
+     * вызывающему нечего различать: любая неудача означает одно — порога нет,
+     * блокировать нельзя.
+     */
+    suspend fun minSupported(): Int?
 }

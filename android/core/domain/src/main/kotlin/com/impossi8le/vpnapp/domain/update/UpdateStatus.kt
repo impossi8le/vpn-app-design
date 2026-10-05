@@ -42,3 +42,28 @@ fun updateStatus(currentVersionCode: Int, latestTag: String?): UpdateStatus {
         UpdateStatus.UpToDate
     }
 }
+
+/**
+ * Наименьшая поддерживаемая версия из текста файла `min-supported.txt`.
+ *
+ * `null` — файла нет, он пуст или в нём не число. Отсутствие порога означает
+ * «не знаем», а не «поддерживается всё»: решение о блокировке принимает
+ * [isVersionSupported], и она при `null` не блокирует.
+ */
+fun parseMinSupported(text: String): Int? {
+    val digits = text.trim()
+    if (digits.isEmpty() || digits.any { !it.isDigit() }) return null
+    return digits.toIntOrNull()
+}
+
+/**
+ * Поддерживается ли установленная версия.
+ *
+ * **Неизвестный порог не блокирует.** Обратное правило («нет ответа — значит
+ * устарело») запирало бы пользователя вне приложения из-за недоступного сети
+ * файла: отказаться пускать человека в оплаченный клиент из-за неполученной
+ * цифры было бы хуже, чем позволить ему пользоваться чуть устаревшей сборкой.
+ */
+fun isVersionSupported(currentVersionCode: Int, minSupported: Int?): Boolean =
+    minSupported == null || currentVersionCode >= minSupported
+

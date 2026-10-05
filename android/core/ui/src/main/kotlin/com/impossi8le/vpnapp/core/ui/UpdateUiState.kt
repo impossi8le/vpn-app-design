@@ -17,8 +17,14 @@ sealed interface UpdateUiState {
     /** Обновляться не нужно. */
     data object UpToDate : UpdateUiState
 
-    /** Есть версия новее. */
-    data class Available(val versionCode: Int) : UpdateUiState
+    /**
+     * Есть версия новее.
+     *
+     * `required` — установленная сборка ниже порога поддерживаемых: обновление
+     * обязательно, экран блокируется. По умолчанию `false` — безопасная
+     * сторона: без явного признака мы ничего не запираем.
+     */
+    data class Available(val versionCode: Int, val required: Boolean = false) : UpdateUiState
 
     /** Проверить не удалось: показываем причину, а не «версия свежая». */
     data class Failed(val reason: String) : UpdateUiState

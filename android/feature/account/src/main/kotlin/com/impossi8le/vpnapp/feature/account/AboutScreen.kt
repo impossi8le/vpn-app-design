@@ -85,17 +85,19 @@ fun AboutScreen(
         SectionLabel(text = "Обновление")
 
         VpnCard {
+            // Сообщение о сорвавшейся установке показывается ДОПОЛНИТЕЛЬНО к
+            // состоянию проверки, а не вместо него. Иначе после отказа —
+            // например, система не дала установить APK — строка «Скачать»
+            // исчезала и повторить попытку было нечем: так это и выглядело на
+            // телефоне.
+            if (updateMessage != null && updateProgress == null) {
+                VpnRow(key = "Обновление", value = updateMessage)
+            }
             when {
                 updateProgress != null -> VpnRow(
                     key = "Скачивание обновления",
                     value = "$updateProgress%",
                     valueMono = true,
-                )
-                // Сообщение о сорвавшейся установке важнее состояния проверки:
-                // пользователь уже нажал «Скачать» и ждёт объяснения.
-                updateMessage != null -> VpnRow(
-                    key = "Обновление",
-                    value = updateMessage,
                 )
                 update is UpdateUiState.Available -> Column {
                     VpnRow(

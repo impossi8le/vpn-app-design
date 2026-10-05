@@ -4,6 +4,7 @@ import com.impossi8le.vpnapp.domain.update.ReleaseInfo
 import com.impossi8le.vpnapp.domain.update.UpdateError
 import com.impossi8le.vpnapp.domain.update.UpdateException
 import com.impossi8le.vpnapp.domain.update.UpdateService
+import com.impossi8le.vpnapp.domain.update.parseMinSupported
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,6 +18,16 @@ const val GITHUB_RELEASES_URL =
     "https://api.github.com/repos/impossi8le/vpn-app-design/releases/latest"
 
 /**
+ * Порог поддерживаемых версий — обычный файл в репозитории.
+ *
+ * Не поле релиза и не бэкенд: поднять порог должно быть видно в истории git и не
+ * требовать выпуска новой сборки. `raw.githubusercontent` отдаёт файл анонимно и
+ * без лимита на запросы, который есть у API.
+ */
+const val MIN_SUPPORTED_URL =
+    "https://raw.githubusercontent.com/impossi8le/vpn-app-design/main/min-supported.txt"
+
+/**
  * Чтение последнего релиза GitHub.
  *
  * Анонимно: релиз публичный, токен не нужен. Обратная сторона — лимит запросов
@@ -25,8 +36,25 @@ const val GITHUB_RELEASES_URL =
 class UpdateApi(
     private val client: ApiClient,
     private val releasesUrl: String = GITHUB_RELEASES_URL,
+    private val minSupportedUrl: String = MIN_SUPPORTED_URL,
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) : UpdateService {
+
+    override suspend fun minSupported(): Int? = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder().url(minSupportedUrl).get().build()
+            client.http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                parseMinSupported(response.body?.string().orEmpty())
+            }
+        } catch (e: IOException) {
+            // Файл недоступен — порога нет, блокировать нечем. Запирать
+            // пользователя из-за неполученной цифры нельзя (см. isVersionSupported).
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     override suspend fun latestRelease(): Result<ReleaseInfo> = withContext(Dispatchers.IO) {
         try {

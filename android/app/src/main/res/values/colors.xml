@@ -9,4 +9,8 @@
 -->
 <resources>
     <color name="surface_base">#FF0B0B0D</color>
+    <!-- Подложка иконки. Родственный Void из палитры :core:ui (там #0A0C10),
+         но на шаг светлее: на чисто чёрной подложке щит на светлом рабочем
+         столе сливался с маской лончера. -->
+    <color name="icon_background">#FF12151B</color>
 </resources>

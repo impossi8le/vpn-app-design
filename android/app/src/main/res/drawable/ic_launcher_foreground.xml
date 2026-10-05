@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Щит: контур повторяет StatusRings/значок защиты с экрана подключения.
+
+  Viewport 108×108, рисунок вписан в центральные 54dp (с 27 по 81) — запас под
+  обрезку маской лончера. Заливка сплошная, без градиентов: система масштабирует
+  иконку вплоть до 48dp, где градиент превращается в грязь.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Щит: плоская верхняя грань, скруглённые бока, острие снизу. -->
+    <path
+        android:fillColor="#6FB3FF"
+        android:pathData="M54,28 L76,37 L76,55 C76,66.5 66.5,75.5 54,80 C41.5,75.5 32,66.5 32,55 L32,37 Z" />
+
+    <!-- Светлая внутренняя линия — тот же приём, что у значка защиты в приложении. -->
+    <path
+        android:strokeColor="#0A0C10"
+        android:strokeWidth="2.4"
+        android:fillColor="#00000000"
+        android:strokeLineJoin="round"
+        android:pathData="M54,35 L70,41.5 L70,55 C70,63.5 63.5,70.5 54,74.5 C44.5,70.5 38,63.5 38,55 L38,41.5 Z" />
+</vector>

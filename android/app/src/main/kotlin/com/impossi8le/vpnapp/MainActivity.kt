@@ -421,7 +421,15 @@ private fun VpnApp() {
     // установка APK требует активности — системный диалог запускается только
     // через ActivityResultLauncher.
 
-    val updateChecker = remember { UpdateChecker(BuildConfig.VERSION_CODE, graph.updateApi) }
+    val updateChecker = remember {
+        // enforceMinSupported = !DEBUG: отладочные сборки идут с versionCode = 1,
+        // и порог поддерживаемых версий запер бы разработку вне приложения.
+        UpdateChecker(
+            currentVersionCode = BuildConfig.VERSION_CODE,
+            service = graph.updateApi,
+            enforceMinSupported = !BuildConfig.DEBUG,
+        )
+    }
     val apkDownloader = remember { ApkDownloader(graph.apiClient.http, context.cacheDir) }
     val apkInstaller = remember { ApkInstaller(context) }
 

@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.feature.account.AboutScreen
+import com.impossi8le.vpnapp.feature.account.ForceUpdateScreen
 import com.impossi8le.vpnapp.feature.account.AccessRevokedScreen
 import com.impossi8le.vpnapp.feature.account.AccountScreen
 import com.impossi8le.vpnapp.feature.account.AccountScreenState
@@ -125,6 +126,25 @@ fun AppRoot(
             destination = stack.current()
             onIntent(AppIntent.SignOutHandled)
         }
+    }
+
+    // Обязательное обновление перекрывает ВСЁ, включая навигацию.
+    //
+    // Проверка стоит здесь, а не отдельным маршрутом: маршрут можно выставить
+    // неверно или уйти с него кнопкой «Назад», тогда как сборка ниже
+    // поддерживаемой от этого не перестанет быть неподдерживаемой. Пока условие
+    // истинно, ни один другой экран не рисуется — в том числе экран входа.
+    val forced = state.update as? UpdateUiState.Available
+    if (forced != null && forced.required) {
+        ForceUpdateScreen(
+            installedVersionName = state.build.versionName,
+            update = forced,
+            updateProgress = state.updateProgress,
+            updateMessage = state.updateMessage,
+            onDownloadUpdate = { onIntent(AppIntent.DownloadUpdate) },
+            onCheckUpdate = { onIntent(AppIntent.CheckForUpdate) },
+        )
+        return
     }
 
     Box(modifier = Modifier.fillMaxSize().background(VpnColors.Void)) {

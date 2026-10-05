@@ -54,4 +54,36 @@ class UpdateStatusTest {
         assertEquals(UpdateStatus.Unknown, updateStatus(currentVersionCode = 12, latestTag = "v1.0.5"))
         assertEquals(UpdateStatus.Unknown, updateStatus(currentVersionCode = 12, latestTag = null))
     }
+
+    @Test
+    fun `порог читается из текста файла`() {
+        assertEquals(90, parseMinSupported("90"))
+        // Файл часто заканчивается переводом строки — это не ошибка.
+        assertEquals(90, parseMinSupported("90\n"))
+        assertEquals(7, parseMinSupported("  7  "))
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["", "   ", "ninety", "90a", "-5", "9.0"])
+    fun `битый порог не даёт числа`(text: String) {
+        assertNull(parseMinSupported(text), "«$text» — это не порог")
+    }
+
+    @Test
+    fun `версия ниже порога не поддерживается`() {
+        assertEquals(false, isVersionSupported(currentVersionCode = 89, minSupported = 90))
+        assertEquals(false, isVersionSupported(currentVersionCode = 1, minSupported = 90))
+    }
+
+    @Test
+    fun `версия на пороге и выше поддерживается`() {
+        assertEquals(true, isVersionSupported(currentVersionCode = 90, minSupported = 90))
+        assertEquals(true, isVersionSupported(currentVersionCode = 91, minSupported = 90))
+    }
+
+    @Test
+    fun `неизвестный порог не блокирует`() {
+        // Иначе недоступный файл запер бы человека вне оплаченного приложения.
+        assertEquals(true, isVersionSupported(currentVersionCode = 1, minSupported = null))
+    }
 }
