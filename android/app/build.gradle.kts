@@ -25,6 +25,14 @@ android {
         versionCode = (System.getenv("ANDROID_VERSION_CODE")?.toIntOrNull()) ?: 1
         versionName = System.getenv("ANDROID_VERSION_NAME") ?: "0.1.0"
 
+        // Короткий SHA коммита: по нему сборка из релиза опознаётся однозначно.
+        // Локально (нет GIT_SHA) — "dev", это честно: сборка не из git.
+        buildConfigField(
+            "String",
+            "GIT_SHA",
+            "\"${System.getenv("GIT_SHA") ?: "dev"}\"",
+        )
+
         // Без этого connectedAndroidTest не запускается вовсе: инструментам
         // нечем стартовать тесты. AndroidJUnitRunner работает на JUnit4 —
         // JUnit5 там не поддерживается, поэтому у инструментальных тестов
@@ -119,6 +127,11 @@ dependencies {
     testImplementation(libs.junit5.params)
     testRuntimeOnly(libs.junit5.engine)
     testRuntimeOnly(libs.junit5.launcher)
+    // Скачивание APK проверяется против подставного сервера, а не сети.
+    testImplementation(libs.okhttp)
+    testImplementation(libs.okhttp.mockwebserver)
+    // runTest: тесты обновления асинхронные, как и их код.
+    testImplementation(libs.coroutines.test)
 
     // Инструментальные тесты идут под JUnit4: AndroidJUnitRunner не умеет JUnit5,
     // поэтому это отдельный контур и отдельная задача (connectedAndroidTest),

@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Установка скачанного обновления: система спросит подтверждение сама. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!--
       android:allowBackup="false" — осознанно.
       В приложении лежат сессия и профиль с приватным ключом. Системный автобэкап
@@ -22,6 +25,18 @@
         android:fullBackupContent="@xml/backup_rules"
         android:supportsRtl="true"
         android:theme="@style/Theme.VpnApp">
+
+        <!-- APK отдаётся установщику как content:// — file:// на Android 7+
+             бросает FileUriExposedException. Каталог ограничен кешем. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <activity
             android:name=".MainActivity"

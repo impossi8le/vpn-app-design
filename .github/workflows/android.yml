@@ -16,6 +16,11 @@ concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
 
+# Создание релиза требует записи в contents. Без этого блока GITHUB_TOKEN
+# read-only, и gh release create падает на 403.
+permissions:
+  contents: write
+
 # Android-минуты на публичном репозитории бесплатны и без лимита (в отличие от macOS).
 # Это основной способ проверки кода, пока на рабочей машине нет JDK и Android SDK.
 jobs:
@@ -487,6 +492,14 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
 
+      # Короткий SHA уходит в BuildConfig.GIT_SHA: сборка из релиза должна
+      # опознаваться однозначно, а сорок символов на экране «О сервисе» читать
+      # нельзя. Отдельным шагом, а не в env сборки: подстановка ${GITHUB_SHA:0:7}
+      # в самом env не раскрывается.
+      - if: steps.signing.outputs.ok == 'true'
+        name: Shorten git sha
+        run: echo "GIT_SHA=${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+
       - if: steps.signing.outputs.ok == 'true'
         name: Build signed release
         working-directory: android
@@ -514,8 +527,8 @@ jobs:
           apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           "$apksigner" verify --print-certs "$apk"
 
-      # APK публикуется как артефакт прогона; бот забирает его через
-      # GitHub Release / artifact API (см. §10.3 архитектуры).
+      # Артефакт прогона — для отладки самих сборок. Пользователям APK достаётся
+      # из релиза ниже (см. §10.3 архитектуры).
       - if: steps.signing.outputs.ok == 'true'
         name: Upload APK
         uses: actions/upload-artifact@v4
@@ -523,3 +536,24 @@ jobs:
           name: vpn-app-android-${{ github.run_number }}
           path: android/app/build/outputs/apk/release/*.apk
           retention-days: 90
+
+      # Релиз — то, что читает приложение при проверке обновления (§10.3).
+      # Тег несёт номер сборки: android-v<N>, где N — versionCode. Приложение
+      # сравнивает его со своим BuildConfig.VERSION_CODE.
+      - if: steps.signing.outputs.ok == 'true'
+        name: Publish release
+        working-directory: android
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: android-v${{ github.run_number }}
+          TITLE: "1.0.${{ github.run_number }}"
+        run: |
+          set -euo pipefail
+          apk=$(ls app/build/outputs/apk/release/*.apk)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$apk" --clobber
+          else
+            gh release create "$TAG" "$apk" \
+              --title "$TITLE" \
+              --notes "Сборка ${GITHUB_SHA:0:7}. Подписана ключом релиза."
+          fi

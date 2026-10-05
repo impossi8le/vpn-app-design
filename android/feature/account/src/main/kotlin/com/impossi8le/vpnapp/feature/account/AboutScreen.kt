@@ -14,11 +14,14 @@ import androidx.compose.ui.unit.sp
 import com.impossi8le.vpnapp.core.ui.SectionLabel
 import com.impossi8le.vpnapp.core.ui.VpnCard
 import com.impossi8le.vpnapp.core.ui.VpnColors
+import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnRow
 
 const val ABOUT_BACK_TAG = "about_back"
 const val ABOUT_PRIVACY_TAG = "about_privacy"
 const val ABOUT_TERMS_TAG = "about_terms"
+const val ABOUT_UPDATE_TAG = "about_update"
+const val ABOUT_CHECK_UPDATE_TAG = "about_check_update"
 
 /**
  * О сервисе.
@@ -32,6 +35,12 @@ const val ABOUT_TERMS_TAG = "about_terms"
 @Composable
 fun AboutScreen(
     appVersion: String,
+    buildSha: String,
+    update: UpdateUiState,
+    updateProgress: Int?,
+    updateMessage: String?,
+    onCheckUpdate: () -> Unit,
+    onDownloadUpdate: () -> Unit,
     onBack: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onOpenTerms: () -> Unit,
@@ -59,11 +68,67 @@ fun AboutScreen(
         SectionLabel(text = "Сборка")
 
         VpnCard {
-            VpnRow(
-                key = "Версия приложения",
-                value = appVersion,
-                valueMono = true,
-            )
+            Column {
+                VpnRow(
+                    key = "Версия приложения",
+                    value = appVersion,
+                    valueMono = true,
+                )
+                VpnRow(
+                    key = "Сборка git",
+                    value = buildSha,
+                    valueMono = true,
+                )
+            }
+        }
+
+        SectionLabel(text = "Обновление")
+
+        VpnCard {
+            when {
+                updateProgress != null -> VpnRow(
+                    key = "Скачивание обновления",
+                    value = "$updateProgress%",
+                    valueMono = true,
+                )
+                // Сообщение о сорвавшейся установке важнее состояния проверки:
+                // пользователь уже нажал «Скачать» и ждёт объяснения.
+                updateMessage != null -> VpnRow(
+                    key = "Обновление",
+                    value = updateMessage,
+                )
+                update is UpdateUiState.Available -> Column {
+                    VpnRow(
+                        key = "Доступна версия",
+                        value = "1.0.${update.versionCode}",
+                        valueMono = true,
+                    )
+                    VpnRow(
+                        key = "Установить обновление",
+                        trailing = {
+                            LinkAction("Скачать ›", onDownloadUpdate, ABOUT_UPDATE_TAG)
+                        },
+                    )
+                }
+                update is UpdateUiState.Checking -> VpnRow(
+                    key = "Проверка обновлений",
+                    value = "идёт…",
+                )
+                update is UpdateUiState.Failed -> VpnRow(
+                    key = "Проверка обновлений",
+                    value = update.reason,
+                )
+                update is UpdateUiState.UpToDate -> VpnRow(
+                    key = "Проверка обновлений",
+                    value = "установлена последняя",
+                )
+                else -> VpnRow(
+                    key = "Проверка обновлений",
+                    trailing = {
+                        LinkAction("Проверить ›", onCheckUpdate, ABOUT_CHECK_UPDATE_TAG)
+                    },
+                )
+            }
         }
 
         SectionLabel(text = "Документы")

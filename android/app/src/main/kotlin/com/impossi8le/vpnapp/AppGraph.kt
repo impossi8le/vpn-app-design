@@ -12,6 +12,7 @@ import com.impossi8le.vpnapp.domain.tunnel.TunnelControlling
 import com.impossi8le.vpnapp.network.ApiClient
 import com.impossi8le.vpnapp.network.AuthApi
 import com.impossi8le.vpnapp.network.ConfigApi
+import com.impossi8le.vpnapp.network.UpdateApi
 import com.impossi8le.vpnapp.security.AndroidSecureBackend
 import com.impossi8le.vpnapp.security.SessionStoreImpl
 import java.io.File
@@ -36,6 +37,12 @@ class AppGraph(
     val apiClient = ApiClient(baseUrl = API_BASE_URL)
     val authApi = AuthApi(apiClient)
     val configApi = ConfigApi(apiClient)
+
+    /**
+     * Источник сведений о новой версии. Внешний — публичный релиз GitHub, а не
+     * бэкенд: серверу сознательно нечего знать о сборках клиента (§10.3).
+     */
+    val updateApi = UpdateApi(apiClient)
 
     val sessionStore: SessionStore = SessionStoreImpl(AndroidSecureBackend(context))
     val profileStore: ProfileStore = FileProfileStore(filesDir)

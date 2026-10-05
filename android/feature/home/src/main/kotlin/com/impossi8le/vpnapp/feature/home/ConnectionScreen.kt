@@ -6,10 +6,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -82,6 +84,14 @@ fun ConnectionScreen(
      * их в один флаг значило бы соврать читателю.
      */
     notice: String? = null,
+    /**
+     * Номер доступной версии или `null`. Баннер обновления — приглашение, а не
+     * предупреждение: он не про защиту и не должен пугать. Поэтому нейтральный
+     * тон, а не жёлтый/красный (ср. [switchingWarning] и [notice]).
+     */
+    updateVersionCode: Int? = null,
+    onDownloadUpdate: () -> Unit = {},
+    onDismissUpdateBanner: () -> Unit = {},
 ) {
     val presentation = status.presentation()
 
@@ -128,6 +138,16 @@ fun ConnectionScreen(
                         tone = com.impossi8le.vpnapp.core.ui.Tone.Warning,
                         icon = "!",
                         testTag = CONNECTION_NOTICE_TAG,
+                    )
+                }
+            }
+
+            if (updateVersionCode != null) {
+                item {
+                    UpdateBanner(
+                        versionCode = updateVersionCode,
+                        onDownload = onDownloadUpdate,
+                        onDismiss = onDismissUpdateBanner,
                     )
                 }
             }
@@ -405,6 +425,54 @@ const val CONNECTION_PROGRESS_TAG = "connection_progress"
 const val CONNECTION_SWITCH_WARNING_TAG = "connection_switch_warning"
 const val CONNECTION_NOTICE_TAG = "connection_notice"
 const val CONNECTION_REFRESHING_TAG = "connection_refreshing"
+const val HOME_UPDATE_TAG = "home_update"
+const val HOME_UPDATE_DISMISS_TAG = "home_update_dismiss"
+
+/**
+ * Плашка «доступна новая версия».
+ *
+ * Не [VpnNotice]: уведомление несёт тон и значок состояния (опасность,
+ * предупреждение), а обновление — не состояние подключения. Здесь две ссылки —
+ * обновиться или отложить, и обе видны сразу: спрятать «Позже» за крестик
+ * значило бы заставить пользователя угадывать, как убрать плашку с глаз.
+ */
+@Composable
+private fun UpdateBanner(
+    versionCode: Int,
+    onDownload: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    VpnCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                text = "Доступна новая версия 1.0.$versionCode",
+                color = VpnColors.Bone,
+                fontSize = 15.sp,
+            )
+            Row(modifier = Modifier.padding(top = 6.dp)) {
+                Text(
+                    text = "Обновить",
+                    color = VpnColors.Ice,
+                    fontSize = 15.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onDownload)
+                        .padding(vertical = 6.dp, horizontal = 4.dp)
+                        .testTag(HOME_UPDATE_TAG),
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = "Позже",
+                    color = VpnColors.Ash,
+                    fontSize = 15.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onDismiss)
+                        .padding(vertical = 6.dp, horizontal = 4.dp)
+                        .testTag(HOME_UPDATE_DISMISS_TAG),
+                )
+            }
+        }
+    }
+}
 
 /** Тег строки подключения: один на всех, различается по id. */
 fun configRowTag(id: String): String = "config_row_$id"

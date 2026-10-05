@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.impossi8le.vpnapp.config.PrepareResult
+import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
 import com.impossi8le.vpnapp.feature.auth.AuthUiState
@@ -39,6 +40,9 @@ import com.impossi8le.vpnapp.feature.home.HomeViewModel
 import com.impossi8le.vpnapp.feature.home.toRowStates
 import com.impossi8le.vpnapp.tunnel.AppTunnelController
 import com.impossi8le.vpnapp.tunnel.TunnelStatusReceiver
+import com.impossi8le.vpnapp.update.ApkDownloader
+import com.impossi8le.vpnapp.update.ApkInstaller
+import com.impossi8le.vpnapp.update.UpdateChecker
 import com.impossi8le.vpnapp.vpnservice.VpnTunnelService
 import java.io.File
 import kotlinx.coroutines.Job
@@ -288,6 +292,38 @@ private fun VpnApp() {
     /** Корутина отложенного повтора после «Обновить список». Одна, не цикл. */
     var refreshRetry by remember { mutableStateOf<Job?>(null) }
 
+    // --- Обновление приложения ---
+    //
+    // Проверка и установка живут здесь по той же причине, что и туннель:
+    // установка APK требует активности — системный диалог запускается только
+    // через ActivityResultLauncher.
+
+    val updateChecker = remember { UpdateChecker(BuildConfig.VERSION_CODE, graph.updateApi) }
+    val apkDownloader = remember { ApkDownloader(graph.apiClient.http, context.cacheDir) }
+    val apkInstaller = remember { ApkInstaller(context) }
+
+    var updateState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
+    var updateProgress by remember { mutableStateOf<Int?>(null) }
+    var updateMessage by remember { mutableStateOf<String?>(null) }
+    var updateBannerDismissed by remember { mutableStateOf(false) }
+
+    // Огрызки прошлых закачек не должны переживать запуск: установщик может
+    // принять за готовый APK половину файла.
+    LaunchedEffect(Unit) { apkDownloader.clearStale() }
+
+    // Проверка при запуске. Один раз, не в цикле: анонимный лимит запросов
+    // GitHub невелик, а баннер подождёт.
+    LaunchedEffect(Unit) {
+        updateState = UpdateUiState.Checking
+        updateState = updateChecker.check()
+    }
+
+    // Результат система показывает сама (диалог установки или сообщение об
+    // ошибке). Здесь ловится только отказ запустить установщик.
+    val installLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { /* результат установки система показывает сама */ }
+
     // Загрузка списка — одна на три случая: первичную загрузку при входе,
     // обновление по кнопке и отложенный повтор. Три копии разошлись бы.
     //
@@ -355,10 +391,49 @@ private fun VpnApp() {
                 versionCode = BuildConfig.VERSION_CODE,
                 gitSha = BuildConfig.GIT_SHA,
             ),
-            account = AppRootState().account.copy(appVersion = BuildConfig.VERSION_NAME),
+            update = updateState,
+            updateProgress = updateProgress,
+            updateMessage = updateMessage,
+            updateBannerDismissed = updateBannerDismissed,
         ),
         onIntent = { intent ->
             when (intent) {
+                AppIntent.CheckForUpdate -> scope.launch {
+                    updateState = UpdateUiState.Checking
+                    updateMessage = null
+                    updateState = updateChecker.check()
+                }
+
+                AppIntent.DownloadUpdate -> scope.launch {
+                    // Ссылку берём заново: между проверкой и нажатием прошло
+                    // время, и релиз мог обновиться.
+                    val info = graph.updateApi.latestRelease().getOrNull()
+                    if (info == null) {
+                        updateMessage = "не удалось получить ссылку на обновление"
+                        return@launch
+                    }
+                    if (!apkInstaller.canInstall()) {
+                        // Не молчим и не показываем «скачано»: ведём туда, где
+                        // разрешение включается — иначе пользователь упрётся в
+                        // диалог, которого не будет.
+                        updateMessage = "разрешите установку из этого источника"
+                        runCatching { installLauncher.launch(apkInstaller.unknownSourcesIntent()) }
+                        return@launch
+                    }
+                    updateMessage = null
+                    updateProgress = 0
+                    val file = apkDownloader.download(info.apkUrl) { updateProgress = it }.getOrNull()
+                    updateProgress = null
+                    if (file == null) {
+                        updateMessage = "скачивание не удалось"
+                        return@launch
+                    }
+                    runCatching { installLauncher.launch(apkInstaller.install(file)) }
+                        .onFailure { updateMessage = "на устройстве нечем установить APK" }
+                }
+
+                AppIntent.DismissUpdateBanner -> updateBannerDismissed = true
+
                 // Действия по матрице кнопки из макета.
                 is AppIntent.ConnectionAction -> scope.launch {
                     when (intent.action) {

@@ -71,7 +71,6 @@ data class AccountScreenState(
     val activeConnections: Int,
     val totalConnections: Int,
     val expiredConnections: Int,
-    val appVersion: String,
     val buildExpiryDate: String,
     val subscriptionUntil: String,
     val autoConnect: Boolean,
@@ -91,6 +90,7 @@ data class AccountScreenState(
 @Composable
 fun AccountScreen(
     state: AccountScreenState,
+    appVersion: String,
     onBack: () -> Unit,
     onToggleTelegramId: () -> Unit,
     onAutoConnectChange: (Boolean) -> Unit,
@@ -151,7 +151,7 @@ fun AccountScreen(
                     // гасится Apple. Здесь тот же смысл — срок жизни тестовой сборки,
                     // поэтому подпись говорит о тестировании, а не о чужом канале.
                     sub = "Сборка для тестирования",
-                    value = state.appVersion,
+                    value = appVersion,
                     valueMono = true,
                 )
                 VpnRow(

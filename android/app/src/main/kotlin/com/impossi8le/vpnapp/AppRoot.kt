@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.feature.account.AboutScreen
 import com.impossi8le.vpnapp.feature.account.AccessRevokedScreen
@@ -208,10 +209,15 @@ fun AppRoot(
                 onRefreshConfigs = { onIntent(AppIntent.RefreshConfigs) },
                 onSelectConfig = { id -> onIntent(AppIntent.SelectConfig(id)) },
                 onSwitchCountry = { id -> onIntent(AppIntent.SwitchCountry(id)) },
+                updateVersionCode = (state.update as? UpdateUiState.Available)
+                    ?.takeUnless { state.updateBannerDismissed }?.versionCode,
+                onDownloadUpdate = { onIntent(AppIntent.DownloadUpdate) },
+                onDismissUpdateBanner = { onIntent(AppIntent.DismissUpdateBanner) },
             )
 
             AppDestination.Account -> AccountScreen(
                 state = state.account,
+                appVersion = state.build.versionName,
                 onBack = { back() },
                 onToggleTelegramId = { onIntent(AppIntent.ToggleTelegramId) },
                 onAutoConnectChange = { onIntent(AppIntent.SetAutoConnect(it)) },
@@ -255,6 +261,11 @@ fun AppRoot(
             AppDestination.About -> AboutScreen(
                 appVersion = state.build.versionName,
                 buildSha = state.build.gitSha,
+                update = state.update,
+                updateProgress = state.updateProgress,
+                updateMessage = state.updateMessage,
+                onCheckUpdate = { onIntent(AppIntent.CheckForUpdate) },
+                onDownloadUpdate = { onIntent(AppIntent.DownloadUpdate) },
                 onBack = { back() },
                 onOpenPrivacy = { onIntent(AppIntent.OpenPrivacyPolicy) },
                 onOpenTerms = { onIntent(AppIntent.OpenTerms) },
@@ -298,7 +309,6 @@ data class AppRootState(
         activeConnections = 0,
         totalConnections = 0,
         expiredConnections = 0,
-        appVersion = "0.0.0",
         buildExpiryDate = "—",
         subscriptionUntil = "—",
         autoConnect = false,
@@ -314,6 +324,17 @@ data class AppRootState(
         versionCode = 0,
         gitSha = "dev",
     ),
+    /** Состояние проверки обновления. Показывается в «О сервисе» и баннером. */
+    val update: UpdateUiState = UpdateUiState.Idle,
+    /** Прогресс скачивания APK, `null` — не качаем. */
+    val updateProgress: Int? = null,
+    /**
+     * Почему установка не началась или не удалась. Показывается в «О сервисе».
+     * `null` — причины нет.
+     */
+    val updateMessage: String? = null,
+    /** Баннер обновления закрыт пользователем. */
+    val updateBannerDismissed: Boolean = false,
     val loginRemainingLabel: String = "5:00",
     /** Идёт проверка введённого кода: кнопка подтверждения занята. */
     val signingIn: Boolean = false,
@@ -373,6 +394,15 @@ data class AppRootState(
  * бэкенд в демо-режиме, не меняя экраны.
  */
 sealed interface AppIntent {
+    /** Проверить обновление вручную (кнопка в «О сервисе»). */
+    data object CheckForUpdate : AppIntent
+
+    /** Скачать и установить доступное обновление. */
+    data object DownloadUpdate : AppIntent
+
+    /** Убрать баннер обновления с главного экрана. */
+    data object DismissUpdateBanner : AppIntent
+
     data object SessionChecked : AppIntent
     data object StartLogin : AppIntent
 
