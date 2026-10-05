@@ -197,6 +197,7 @@ fun AppRoot(
             AppDestination.Connection -> ConnectionScreen(
                 status = state.status,
                 configs = state.configs,
+                refreshing = state.refreshingConfigs,
                 switchingWarning = state.switchingInProgress,
                 startProgressText = state.startProgressText,
                 notice = state.prepareError,
@@ -252,7 +253,8 @@ fun AppRoot(
             )
 
             AppDestination.About -> AboutScreen(
-                appVersion = state.account.appVersion,
+                appVersion = state.build.versionName,
+                buildSha = state.build.gitSha,
                 onBack = { back() },
                 onOpenPrivacy = { onIntent(AppIntent.OpenPrivacyPolicy) },
                 onOpenTerms = { onIntent(AppIntent.OpenTerms) },
@@ -274,6 +276,19 @@ fun AppRoot(
  * позволяет видеть в одном месте, какие данные вообще есть у интерфейса. Когда
  * появится настоящий backend, сюда придут те же поля — интерфейс не изменится.
  */
+/**
+ * Что известно о самой сборке. Заполняется из `BuildConfig`, то есть из того,
+ * чем сборку собрал CI (версия и SHA), — а не константой в коде.
+ *
+ * Отдельная структура, а не поля `AccountScreenState`: версия принадлежит
+ * сборке, а не аккаунту, и лежать в двух местах она уже начинала разъезжаться.
+ */
+data class BuildInfo(
+    val versionName: String,
+    val versionCode: Int,
+    val gitSha: String,
+)
+
 data class AppRootState(
     val status: ConnectionStatus = ConnectionStatus.Disconnected,
     val configs: List<ConfigRowState> = emptyList(),
@@ -283,12 +298,21 @@ data class AppRootState(
         activeConnections = 0,
         totalConnections = 0,
         expiredConnections = 0,
-        appVersion = "1.0.0",
+        appVersion = "0.0.0",
         buildExpiryDate = "—",
         subscriptionUntil = "—",
         autoConnect = false,
         askFaceId = false,
         confirmCountrySwitch = true,
+    ),
+    /**
+     * Данные сборки: версия, номер и SHA. Заполняет [MainActivity] из
+     * `BuildConfig` — то есть из того, чем сборку собрал CI.
+     */
+    val build: BuildInfo = BuildInfo(
+        versionName = "0.0.0",
+        versionCode = 0,
+        gitSha = "dev",
     ),
     val loginRemainingLabel: String = "5:00",
     /** Идёт проверка введённого кода: кнопка подтверждения занята. */
@@ -318,6 +342,15 @@ data class AppRootState(
      * что в release демонстрационного прохода нет.
      */
     val showDemoButton: Boolean = false,
+    /**
+     * Идёт перезагрузка списка подключений по «Обновить список».
+     *
+     * Отдельный флаг, а не вывод из пустоты списка: пустой список — это и
+     * «подключений нет», и «ещё грузим», и различить их иначе нельзя. Пока
+     * флаг поднят, экран говорит «идёт обновление…» — до правки нажатие на
+     * кнопку вообще не давало видимой реакции.
+     */
+    val refreshingConfigs: Boolean = false,
     val switchingInProgress: Boolean = false,
     val startProgressText: String? = null,
     /**

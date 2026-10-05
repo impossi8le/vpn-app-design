@@ -60,6 +60,15 @@ fun ConnectionScreen(
     onSelectConfig: (String) -> Unit,
     onSwitchCountry: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Список подключений сейчас перезагружается.
+     *
+     * Нужен, чтобы нажатие на «Обновить список» что-то показывало: раньше
+     * запрос уходил молча, и человек не знал, услышали ли его. Это состояние
+     * списка, а не туннеля, и на статус защиты оно влиять не может (§6) —
+     * отсюда и живёт на подписи раздела, а не рядом с кольцами.
+     */
+    refreshing: Boolean = false,
     /** Предупреждение об окне без защиты: показывается при переключении страны. */
     switchingWarning: Boolean = false,
     /** Показывать ли системный запрос разрешения перед первым подключением. */
@@ -166,9 +175,26 @@ fun ConnectionScreen(
             item {
                 SectionLabel(
                     text = "Подключения",
-                    action = "Обновить список",
+                    action = if (refreshing) "Обновление…" else "Обновить список",
                     onAction = onRefreshConfigs,
                 )
+            }
+
+            // Видимая реакция на «Обновить список». Без неё нажатие не давало
+            // никакого сигнала, что запрос ушёл и выполняется.
+            if (refreshing) {
+                item {
+                    Text(
+                        "Идёт обновление — запрашиваем список подключений…",
+                        color = VpnColors.Mist,
+                        fontSize = 12.sp,
+                        fontFamily = MonoFont,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                            .testTag(CONNECTION_REFRESHING_TAG),
+                    )
+                }
             }
 
             items(configs, key = { it.id }) { config ->
@@ -378,6 +404,7 @@ const val CONNECTION_REVERIFY_TAG = "connection_reverify"
 const val CONNECTION_PROGRESS_TAG = "connection_progress"
 const val CONNECTION_SWITCH_WARNING_TAG = "connection_switch_warning"
 const val CONNECTION_NOTICE_TAG = "connection_notice"
+const val CONNECTION_REFRESHING_TAG = "connection_refreshing"
 
 /** Тег строки подключения: один на всех, различается по id. */
 fun configRowTag(id: String): String = "config_row_$id"

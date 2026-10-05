@@ -7,7 +7,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -15,7 +19,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -29,6 +32,8 @@ import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
 import com.impossi8le.vpnapp.feature.auth.AuthUiState
 import com.impossi8le.vpnapp.feature.auth.AuthViewModel
+import com.impossi8le.vpnapp.feature.home.ConfigRowState
+import com.impossi8le.vpnapp.feature.home.ConfigRowStatus
 import com.impossi8le.vpnapp.feature.home.StatusAction
 import com.impossi8le.vpnapp.feature.home.HomeViewModel
 import com.impossi8le.vpnapp.feature.home.toRowStates
@@ -36,7 +41,19 @@ import com.impossi8le.vpnapp.tunnel.AppTunnelController
 import com.impossi8le.vpnapp.tunnel.TunnelStatusReceiver
 import com.impossi8le.vpnapp.vpnservice.VpnTunnelService
 import java.io.File
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+/**
+ * Через сколько после «Обновить список» повторить запрос «ещё раз потом».
+ *
+ * Пользователь просил именно таймер, а не мгновенный дубль: список на сервере
+ * мог обновиться секундой позже. 15 секунд — достаточно, чтобы сервер успел, и
+ * не настолько долго, чтобы человек решил, что кнопка ничего не делает: он уже
+ * видит «идёт обновление…» с первого нажатия.
+ */
+private const val REFRESH_RETRY_DELAY_MS = 15_000L
 
 /**
  * Точка входа.
@@ -62,12 +79,32 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            // targetSdk 35 принуждает edge-to-edge на Android 15+: без отступа
+            // контент рисуется ПОД строкой статуса и панелью навигации, и
+            // верхний ряд с нижней кнопкой оказываются перекрыты. Фон при этом
+            // обязан заливать экран целиком — поэтому insets применяются
+            // отступом к СОДЕРЖИМОМУ внутри Box, а не к Surface: панели
+            // получают тёмную подложку приложения, а не системный цвет.
             Surface(
+                // `color` задан явно, а не оставлен по умолчанию: у material3
+                // Surface цвет по умолчанию — светлый `colorScheme.surface`
+                // (0xFFFEF7FF). Пока Box заливал экран целиком, он перекрывал
+                // эту подложку, и ошибки не было видно. После отступа insets Box
+                // сжался контентом, и фон Surface проступил светлой полосой под
+                // статус-баром. Поэтому и подложка здесь тёмная — та же, что у
+                // контента.
+                color = VpnColors.Void,
                 modifier = Modifier
                     .fillMaxSize()
                     .background(VpnColors.Void),
             ) {
-                VpnApp()
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing),
+                ) {
+                    VpnApp()
+                }
             }
         }
     }
@@ -230,26 +267,72 @@ private fun VpnApp() {
     // ничего» читается как поломка.
     var prepareMessage by remember { mutableStateOf<String?>(null) }
 
-    // Список подключений — из живого /me. Ключ produceState — токен сессии,
-    // прочитанный ИЗ Compose-состояния: без наблюдаемого ключа список пуст на
-    // старте и не наполнился бы сам, когда вход завершится (иначе пользователю
-    // пришлось бы перезаходить на экран). `emptyList()` в начале — честный
-    // ответ, а не заглушка: при отсутствии токена сервер вернёт 401, и мы
-    // покажем «войдите». Момент «сейчас» передаём внутрь преобразования явно,
-    // чтобы подписи срока были детерминированы.
-    val configs by produceState(initialValue = emptyList(), sessionToken) {
-        val token = sessionToken ?: return@produceState
+    // Список подключений — из живого /me. Держим его в обычном состоянии, а не
+    // в `produceState`: список обязан перезагружаться не только при смене
+    // токена, но и по кнопке «Обновить список», и по таймеру после неё, а
+    // `produceState` перезапускается лишь по смене ключа.
+    var configs by remember { mutableStateOf(emptyList<ConfigRowState>()) }
+
+    /** Идёт обновление списка: экран говорит это словами, а не молчит. */
+    var refreshingConfigs by remember { mutableStateOf(false) }
+
+    /**
+     * Выбранное подключение.
+     *
+     * `rememberSaveable`, а не `remember`: выбор переживает пересоздание
+     * активности. Полный перезапуск приложения он НЕ переживает — это осознанно,
+     * хранить выбор на диске сейчас нечем без новой зависимости.
+     */
+    var selectedConfigId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    /** Корутина отложенного повтора после «Обновить список». Одна, не цикл. */
+    var refreshRetry by remember { mutableStateOf<Job?>(null) }
+
+    // Загрузка списка — одна на три случая: первичную загрузку при входе,
+    // обновление по кнопке и отложенный повтор. Три копии разошлись бы.
+    //
+    // **Истёкшие подключения не показываем.** Выбирать в них нечего, и строка,
+    // которую нельзя выбрать, — шум. Фильтр стоит здесь, где список
+    // ПРОИЗВОДИТСЯ, а не в композабле: так он лежит рядом с источником данных и
+    // не прячется в разметке. Момент «сейчас» передаём в преобразование явно —
+    // подписи срока должны быть детерминированы.
+    suspend fun loadConfigs() {
+        val token = sessionToken ?: return
         graph.apiClient.sessionToken = token
-        value = graph.configApi.listConfigs().getOrNull()
+        configs = graph.configApi.listConfigs().getOrNull()
             ?.configs
             ?.toRowStates(System.currentTimeMillis() / 1000)
+            ?.filter { it.status == ConfigRowStatus.Available }
             .orEmpty()
+    }
+
+    // Первичная загрузка при получении токена. Ключ — сам токен: без
+    // наблюдаемого ключа список остался бы пустым до случайной перерисовки,
+    // когда вход завершится.
+    LaunchedEffect(sessionToken) {
+        if (sessionToken == null) return@LaunchedEffect
+        loadConfigs()
+    }
+
+    // Показать выбранную строку выбранной. Статус Selected включает в ConfigRow
+    // и рамку, и значок «Выбрано» — отдельного параметра экрану не нужно.
+    // Копия строки, а не флаг: решение «что выбрано» приходит готовым, как и
+    // «истекло», — экран по-прежнему решает только «как показать».
+    val displayConfigs = remember(configs, selectedConfigId) {
+        configs.map { row ->
+            if (row.id == selectedConfigId) {
+                row.copy(status = ConfigRowStatus.Selected)
+            } else {
+                row
+            }
+        }
     }
 
     AppRoot(
         state = AppRootState(
             status = status,
-            configs = configs,
+            configs = displayConfigs,
+            refreshingConfigs = refreshingConfigs,
             switchingInProgress = switching,
             prepareError = prepareMessage,
             // Состояние входа приходит от AuthViewModel: экран ожидания показывает
@@ -265,6 +348,14 @@ private fun VpnApp() {
             // `BuildConfig.DEBUG` == false, и кнопки на экране ожидания нет.
             // BuildConfig лежит в этом же пакете, отдельный импорт не нужен.
             showDemoButton = BuildConfig.DEBUG,
+            // Версия и SHA — из BuildConfig, то есть из того, чем собрал CI.
+            // Раньше на экранах стояла константа «1.0.0», расходившаяся со сборкой.
+            build = BuildInfo(
+                versionName = BuildConfig.VERSION_NAME,
+                versionCode = BuildConfig.VERSION_CODE,
+                gitSha = BuildConfig.GIT_SHA,
+            ),
+            account = AppRootState().account.copy(appVersion = BuildConfig.VERSION_NAME),
         ),
         onIntent = { intent ->
             when (intent) {
@@ -324,6 +415,40 @@ private fun VpnApp() {
                 // подмены. Код уходит в ViewModel, тот опрашивает сервер до
                 // терминального состояния.
                 is AppIntent.SubmitNonce -> authViewModel.submitNonce(intent.nonce)
+
+                // «Обновить список». Раньше падало в `else -> Unit`, и кнопка
+                // молчала. Теперь: показать «идёт обновление…», перезагрузить
+                // список и ОДИН раз запросить ещё раз по таймеру — пользователь
+                // просил именно отложенный повтор, а не мгновенный дубль.
+                AppIntent.RefreshConfigs -> scope.launch {
+                    refreshingConfigs = true
+                    try {
+                        loadConfigs()
+                    } finally {
+                        refreshingConfigs = false
+                    }
+                    // Прошлый повтор отменяем: два нажатия подряд не должны
+                    // породить два независимых таймера.
+                    refreshRetry?.cancel()
+                    refreshRetry = scope.launch {
+                        delay(REFRESH_RETRY_DELAY_MS)
+                        loadConfigs()
+                    }
+                }
+
+                // Выбор подключения: запомнить id и показать строку выбранной.
+                // Профиль под это подключение ещё НЕ готовится — подготовка
+                // идёт на «Подключить», и делать сеть здесь значило бы грузить
+                // конфиг по одному тапу в список.
+                is AppIntent.SelectConfig -> selectedConfigId = intent.id
+
+                // «Поднять туннель на другом подключении». Минимально: тот же
+                // выбор строки, что и у [SelectConfig]. Мы СОЗНАТЕЛЬНО не
+                // трогаем туннель и не показываем «переключаюсь»: без
+                // подготовленного профиля другого подключения поднимать нечего,
+                // а фальшивый статус защиты запрещён инвариантом §6. Смена
+                // страны меняет только выбор в списке.
+                is AppIntent.SwitchCountry -> selectedConfigId = intent.id
 
                 else -> Unit
             }
