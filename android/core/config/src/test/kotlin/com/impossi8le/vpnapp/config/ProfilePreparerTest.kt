@@ -53,6 +53,23 @@ class ProfilePreparerTest {
 
         assertEquals(PrepareResult.Ready, result)
         assertEquals(0, service.fetchCount) // профиль не скачивался
+        assertEquals(0, service.listCount)  // и список подключений не запрашивался
+    }
+
+    @Test
+    fun `годный профиль на диске — GET me не делается, даже когда сеть вернула бы иное`() = runTest {
+        // listResult оставлен дефолтным (пустой список). Оффлайн-пользователь с
+        // валидным профилем не должен зависеть от сети: если бы listConfigs()
+        // всё-таки вызвали, активного подключения не нашлось бы и вернулся бы
+        // NoActiveConfig (а при ошибке сети — Failed), но никак не Ready.
+        val service = ScriptedConfigService()
+        val store = storeWithProfile()
+        val meta = FakeProfileMetaStore(ProfileMeta("GEclient94", "v1", 1_000_000L))
+
+        val result = preparer(service, store, meta).ensureProfile()
+
+        assertEquals(PrepareResult.Ready, result)
+        assertEquals(0, service.listCount) // GET /me не сделан вовсе
     }
 
     @Test
@@ -81,16 +98,20 @@ class ProfilePreparerTest {
 
     @Test
     fun `смена конфига при совпадении версии не оставляет старые байты`() = runTest {
-        // На диске лежит профиль ДРУГОГО конфига (A) с метаданными (A, v1).
+        // Профиля на диске нет, но метаданные — от ДРУГОГО конфига (A) с версией v1.
         // Активный теперь B, а сервер отдаёт B с ТОЙ ЖЕ версией v1 — коллизия.
         // Если версию A передать в apply, ConfigManager посчитает B уже
-        // установленным и не запишет его байты: туннель поднимет A как будто это B.
+        // установленным (AlreadyCurrent) и не запишет его байты: профиля на диске
+        // не останется вовсе. Гард `takeIf { it.configId == active.id }` это ловит:
+        // storedVersion пуст, поэтому B записывается по-настоящему.
+        // (Сценарий «профиль A уже на диске» теперь короче: валидный кэш отдаётся
+        // без сети — это проверяют тесты переиспользования выше.)
         val bBytes = "client\nremote host 443\n".toByteArray()
         val service = ScriptedConfigService(
             listResult = Result.success(ConfigList(0L, listOf(activeConfig(id = "B")))),
             fetchResult = Result.success(FetchedConfig(bBytes, "v1", sha256(bBytes))),
         )
-        val store = storeWithProfile() // на диске байты A
+        val store = FileProfileStore(dir) // на диске профиля нет
         val meta = FakeProfileMetaStore(ProfileMeta("A", "v1", 1_000_000L))
 
         val result = preparer(service, store, meta).ensureProfile()
@@ -98,7 +119,7 @@ class ProfilePreparerTest {
         assertEquals(PrepareResult.Ready, result)
         assertEquals(
             String(bBytes),
-            String(store.load()!!.raw), // именно байты B, а не оставшиеся от A
+            String(store.load()!!.raw), // именно байты B
         )
     }
 

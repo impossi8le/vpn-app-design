@@ -45,15 +45,27 @@ class ProfilePreparer(
 ) {
 
     suspend fun ensureProfile(): PrepareResult {
+        val hasProfile = store.load() != null
+        val meta = metaStore.load()
+
+        // Быстрый путь без сети: профиль уже на диске и срок не вышел. Список
+        // подключений не запрашиваем — иначе оффлайн-пользователь с валидным
+        // профилем не поднял бы туннель (спека §6.2, §6.4 шаг 1).
+        if (hasProfile && meta != null) {
+            if (meta.endDateEpochSeconds <= now()) {
+                store.clear()
+                metaStore.clear()
+                return PrepareResult.SubscriptionExpired
+            }
+            return PrepareResult.Ready
+        }
+
         val list = service.listConfigs().getOrElse {
             return PrepareResult.Failed("не удалось получить список подключений")
         }
 
         val active = list.configs.firstOrNull { it.status == SubscriptionStatus.ACTIVE }
             ?: return PrepareResult.NoActiveConfig
-
-        val hasProfile = store.load() != null
-        val meta = metaStore.load()
 
         when (decideProfileUse(hasProfile, meta, active.id, now())) {
             ProfileUse.Reusable -> return PrepareResult.Ready
