@@ -80,6 +80,29 @@ class ProfilePreparerTest {
     }
 
     @Test
+    fun `смена конфига при совпадении версии не оставляет старые байты`() = runTest {
+        // На диске лежит профиль ДРУГОГО конфига (A) с метаданными (A, v1).
+        // Активный теперь B, а сервер отдаёт B с ТОЙ ЖЕ версией v1 — коллизия.
+        // Если версию A передать в apply, ConfigManager посчитает B уже
+        // установленным и не запишет его байты: туннель поднимет A как будто это B.
+        val bBytes = "client\nremote host 443\n".toByteArray()
+        val service = ScriptedConfigService(
+            listResult = Result.success(ConfigList(0L, listOf(activeConfig(id = "B")))),
+            fetchResult = Result.success(FetchedConfig(bBytes, "v1", sha256(bBytes))),
+        )
+        val store = storeWithProfile() // на диске байты A
+        val meta = FakeProfileMetaStore(ProfileMeta("A", "v1", 1_000_000L))
+
+        val result = preparer(service, store, meta).ensureProfile()
+
+        assertEquals(PrepareResult.Ready, result)
+        assertEquals(
+            String(bBytes),
+            String(store.load()!!.raw), // именно байты B, а не оставшиеся от A
+        )
+    }
+
+    @Test
     fun `профиля нет — скачивается и метаданные пишутся`() = runTest {
         val raw = "client\nremote x\n".toByteArray()
         val service = ScriptedConfigService(

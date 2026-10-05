@@ -66,7 +66,13 @@ class ProfilePreparer(
             ProfileUse.Missing -> Unit
         }
 
-        return when (val applied = manager.apply(active.id, meta?.version, active.endDateEpochSeconds)) {
+        // Версия прежнего профиля годится только если он ОТ ТОГО ЖЕ конфига.
+        // Иначе совпадение версий (а это серверные метки времени — коллизии
+        // вероятны) заставит apply решить, будто запрошенный конфиг уже стоит,
+        // и не записать его байты: туннель поднял бы чужой профиль как Ready.
+        val storedVersion = meta?.takeIf { it.configId == active.id }?.version
+
+        return when (val applied = manager.apply(active.id, storedVersion, active.endDateEpochSeconds)) {
             is ApplyResult.Applied, is ApplyResult.AlreadyCurrent -> PrepareResult.Ready
             ApplyResult.Rejected, ApplyResult.HashMismatch -> PrepareResult.Failed("конфиг отклонён")
             is ApplyResult.FetchFailed -> when (applied.error) {
