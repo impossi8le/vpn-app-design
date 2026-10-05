@@ -170,6 +170,7 @@ fun AppRoot(
                 configs = state.configs,
                 switchingWarning = state.switchingInProgress,
                 startProgressText = state.startProgressText,
+                notice = state.prepareError,
                 onAction = { action -> onIntent(AppIntent.ConnectionAction(action)) },
                 onOpenAccount = {
                     go(AppDestination.Account)
@@ -275,6 +276,14 @@ data class AppRootState(
     val showDemoButton: Boolean = true,
     val switchingInProgress: Boolean = false,
     val startProgressText: String? = null,
+    /**
+     * Почему подключение не началось: нет активных подключений, подписка истекла,
+     * доступ отозван, нет сети. `null` — причины нет.
+     *
+     * Отдельно от [switchingInProgress]: тот про окно без защиты при смене
+     * страны, здесь же туннель просто не подняли.
+     */
+    val prepareError: String? = null,
     val demoConfigs: List<DemoConfig> = emptyList(),
     val demoSelectedCode: String? = null,
 )

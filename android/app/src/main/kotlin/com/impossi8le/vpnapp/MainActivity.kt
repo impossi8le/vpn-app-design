@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.impossi8le.vpnapp.config.PrepareResult
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
 import com.impossi8le.vpnapp.feature.auth.AuthUiState
@@ -205,6 +206,11 @@ private fun VpnApp() {
     var showDemo by remember { mutableStateOf(false) }
     var switching by remember { mutableStateOf(false) }
 
+    // Причина, по которой подключение не началось: профиль не готов. Показывается
+    // на экране подключения отдельным блоком, а не молчанием кнопки — «нажал, и
+    // ничего» читается как поломка.
+    var prepareMessage by remember { mutableStateOf<String?>(null) }
+
     // Список подключений — из живого /me. Ключ produceState — токен сессии,
     // прочитанный ИЗ Compose-состояния: без наблюдаемого ключа список пуст на
     // старте и не наполнился бы сам, когда вход завершится (иначе пользователю
@@ -226,6 +232,7 @@ private fun VpnApp() {
             status = status,
             configs = configs,
             switchingInProgress = switching,
+            prepareError = prepareMessage,
             // Состояние входа приходит от AuthViewModel: экран ожидания показывает
             // «проверяем…»/ошибку, а AppRoot по `signedIn` уводит на подключение.
             signingIn = authState is AuthUiState.Polling,
@@ -237,7 +244,25 @@ private fun VpnApp() {
                 // Действия по матрице кнопки из макета.
                 is AppIntent.ConnectionAction -> scope.launch {
                     when (intent.action) {
-                        StatusAction.Connect -> viewModel.connect()
+                        // Сначала профиль, потом туннель. Если профиль уже лежит
+                        // и годен, ensureProfile НЕ обращается к сети — поднимаем
+                        // из файла (см. ProfilePreparer). Только на Ready зовём
+                        // connect: поднять интерфейс без файла профиля нельзя, а
+                        // молчаливая кнопка хуже честной причины.
+                        StatusAction.Connect -> {
+                            // Прошлая причина не должна пережить новую попытку.
+                            prepareMessage = null
+                            when (val prepared = graph.preparer.ensureProfile()) {
+                                PrepareResult.Ready -> viewModel.connect()
+                                PrepareResult.NoActiveConfig -> prepareMessage =
+                                    "Нет активных подключений"
+                                PrepareResult.SubscriptionExpired -> prepareMessage =
+                                    "Подписка истекла"
+                                PrepareResult.Revoked -> prepareMessage =
+                                    "Доступ к подключению отозван"
+                                is PrepareResult.Failed -> prepareMessage = prepared.reason
+                            }
+                        }
 
                         // «Отменить» и «Отключить» — разные подписи, но действие
                         // одно: опустить то, что поднимается или уже поднято.

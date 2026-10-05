@@ -64,6 +64,15 @@ fun ConnectionScreen(
     switchingWarning: Boolean = false,
     /** Показывать ли системный запрос разрешения перед первым подключением. */
     startProgressText: String? = null,
+    /**
+     * Почему подключение не началось: нет активных подключений, подписка истекла,
+     * доступ отозван, нет сети. `null` — причины нет, экран как обычно.
+     *
+     * Отдельно от [switchingWarning]: тот значит «трафик прямо сейчас без
+     * защиты», здесь же туннель просто НЕ подняли — это разные вещи, и свести
+     * их в один флаг значило бы соврать читателю.
+     */
+    notice: String? = null,
 ) {
     val presentation = status.presentation()
 
@@ -99,11 +108,29 @@ fun ConnectionScreen(
                 }
             }
 
+            // Причина, по которой подключение не началось: профиль не готов.
+            // Тот же блок-предупреждение, что и у переключения страны, но НЕ
+            // Danger: туннель просто не подняли, трафика без защиты нет — и
+            // красный здесь читался бы как уже случившаяся утечка.
+            if (notice != null) {
+                item {
+                    com.impossi8le.vpnapp.core.ui.VpnNotice(
+                        text = notice,
+                        tone = com.impossi8le.vpnapp.core.ui.Tone.Warning,
+                        icon = "!",
+                        testTag = CONNECTION_NOTICE_TAG,
+                    )
+                }
+            }
+
             item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = if (switchingWarning) 12.dp else 0.dp, bottom = 4.dp),
+                        .padding(
+                            top = if (switchingWarning || notice != null) 12.dp else 0.dp,
+                            bottom = 4.dp,
+                        ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     // Кольца неинтерактивны: в первой версии макета они выглядели
@@ -350,6 +377,7 @@ const val CONNECTION_PROTECTION_STATUS_TAG = "connection_protection_status"
 const val CONNECTION_REVERIFY_TAG = "connection_reverify"
 const val CONNECTION_PROGRESS_TAG = "connection_progress"
 const val CONNECTION_SWITCH_WARNING_TAG = "connection_switch_warning"
+const val CONNECTION_NOTICE_TAG = "connection_notice"
 
 /** Тег строки подключения: один на всех, различается по id. */
 fun configRowTag(id: String): String = "config_row_$id"
