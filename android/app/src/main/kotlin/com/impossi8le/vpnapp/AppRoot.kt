@@ -92,6 +92,21 @@ fun AppRoot(
         back()
     }
 
+    // Настоящий вход состоялся — уходим на подключение.
+    //
+    // Переход живёт здесь, а не в экране ожидания: стек навигации виден только
+    // внутри этого файла. Признак «вход состоялся» кладёт в состояние
+    // MainActivity, узнав о нём от AuthViewModel; здесь мы лишь реагируем.
+    //
+    // Историю сбрасываем, а не копим: возврат на экран входа после состоявшегося
+    // входа бессмысленен.
+    LaunchedEffect(state.signedIn) {
+        if (state.signedIn) {
+            stack.resetTo(AppDestination.Connection)
+            destination = stack.current()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(VpnColors.Void)) {
         when (destination) {
 
@@ -128,7 +143,11 @@ fun AppRoot(
 
             AppDestination.LoginWaiting -> LoginWaitingScreen(
                 remainingLabel = state.loginRemainingLabel,
+                signingIn = state.signingIn,
+                errorText = state.loginError,
+                onSubmitNonce = { nonce -> onIntent(AppIntent.SubmitNonce(nonce)) },
                 onReopenTelegram = { onIntent(AppIntent.StartLogin) },
+                showDemoButton = state.showDemoButton,
                 // **Демонстрационный проход дальше.** Настоящий вход ждёт
                 // подтверждения в Telegram, которого в сборке для проверки нет:
                 // показывать тупик на экране ожидания — значит оставить
@@ -242,6 +261,18 @@ data class AppRootState(
         confirmCountrySwitch = true,
     ),
     val loginRemainingLabel: String = "5:00",
+    /** Идёт проверка введённого кода: кнопка подтверждения занята. */
+    val signingIn: Boolean = false,
+    /** Текст ошибки входа, показываемый под полем кода. `null` — ошибки нет. */
+    val loginError: String? = null,
+    /** Вход состоялся: `AppRoot` уводит на экран подключения. */
+    val signedIn: Boolean = false,
+    /**
+     * Показывать ли демонстрационный проход мимо входа.
+     *
+     * Пока `true` — поведение прежнее. Гейт по debug-сборке ставит Task 11.
+     */
+    val showDemoButton: Boolean = true,
     val switchingInProgress: Boolean = false,
     val startProgressText: String? = null,
     val demoConfigs: List<DemoConfig> = emptyList(),
@@ -258,6 +289,15 @@ data class AppRootState(
 sealed interface AppIntent {
     data object SessionChecked : AppIntent
     data object StartLogin : AppIntent
+
+    /**
+     * Пользователь ввёл код из бота и подтвердил.
+     *
+     * Ручной ввод — единственная защита входа от подмены (login-CSRF), поэтому
+     * код идёт наверх как отдельное намерение, а не растворяется в состоянии
+     * экрана.
+     */
+    data class SubmitNonce(val nonce: String) : AppIntent
     data object RefreshConfigs : AppIntent
     data object RefreshAccess : AppIntent
     data object SwitchTelegram : AppIntent

@@ -6,8 +6,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
@@ -23,6 +28,8 @@ const val LOGIN_WAITING_TITLE_TAG = "login_waiting_title"
 const val LOGIN_WAITING_COUNTDOWN_TAG = "login_waiting_countdown"
 const val LOGIN_WAITING_DEMO_TAG = "login_waiting_demo"
 const val LOGIN_WAITING_REOPEN_TAG = "login_waiting_reopen"
+const val LOGIN_WAITING_NONCE_TAG = "login_waiting_nonce"
+const val LOGIN_WAITING_SUBMIT_TAG = "login_waiting_submit"
 
 /**
  * Экран ожидания подтверждения входа (макет «1б. Проверяем вход»).
@@ -31,12 +38,21 @@ const val LOGIN_WAITING_REOPEN_TAG = "login_waiting_reopen"
  * должен быть общим с логикой (метка ставится до ухода в фон, см. AuthViewModel),
  * иначе он разойдётся при возврате из Telegram.
  *
+ * **Поле кода — не украшение, а защита входа.** Бот показывает шестизначный код,
+ * и пользователь вводит его здесь; сервер подтверждает сессию только по нему.
+ * Без этого шага вход завершался бы сам собой, и подтверждение в боте переставало
+ * бы что-либо удостоверять. Поэтому поле обязательно, а кнопка без кода не
+ * отправляет запрос (проверка пустого кода — в AuthViewModel).
+ *
  * Значок янтарный — идущий процесс. Это не ошибка и не опасность, поэтому ни
  * красного, ни зелёного здесь быть не может.
  */
 @Composable
 fun LoginWaitingScreen(
     remainingLabel: String,
+    signingIn: Boolean,
+    errorText: String?,
+    onSubmitNonce: (String) -> Unit,
     onReopenTelegram: () -> Unit,
     /**
      * Демонстрационный проход дальше, без подтверждения в Telegram.
@@ -47,8 +63,20 @@ fun LoginWaitingScreen(
      * статус защиты она не затрагивает.
      */
     onContinueDemo: () -> Unit,
+    /**
+     * Показывать ли демонстрационный проход.
+     *
+     * Пока по умолчанию `true` — это текущее поведение сборки для проверок.
+     * Гейт по debug-сборке (`BuildConfig.DEBUG`) ставит Task 11: в release
+     * демонстрационной кнопки быть не должно.
+     */
+    showDemoButton: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    // Ввод кода живёт на экране: состоянием логики он не является, наружу уходит
+    // только готовый код при подтверждении.
+    var nonce by remember { mutableStateOf("") }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -71,11 +99,11 @@ fun LoginWaitingScreen(
 
         Text(
             text = buildAnnotatedString {
-                append("Откройте Telegram — бот пришлёт кнопку ")
+                append("Откройте Telegram — бот пришлёт ")
                 withStyle(SpanStyle(color = VpnColors.Bone, fontWeight = FontWeight.Medium)) {
-                    append("«Подтвердить вход»")
+                    append("код подтверждения")
                 }
-                append(". Нажмите её, и мы продолжим сами.")
+                append(". Введите его здесь.")
             },
             color = VpnColors.TextSecondary,
             fontSize = 14.sp,
@@ -99,6 +127,38 @@ fun LoginWaitingScreen(
             )
         }
 
+        // Поле кода. Оставляем только цифры и не длиннее шести: код всегда
+        // шестизначный, и буква в нём — заведомо неверный ввод, который лучше не
+        // отправлять на сервер вовсе.
+        OutlinedTextField(
+            value = nonce,
+            onValueChange = { nonce = it.filter(Char::isDigit).take(6) },
+            singleLine = true,
+            label = { Text("Код из бота") },
+            isError = errorText != null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 18.dp)
+                .testTag(LOGIN_WAITING_NONCE_TAG),
+        )
+
+        if (errorText != null) {
+            Text(
+                text = errorText,
+                color = VpnColors.Amber,
+                fontSize = 12.5.sp,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+
+        GhostButton(
+            text = if (signingIn) "Проверяем…" else "Подтвердить",
+            onClick = { onSubmitNonce(nonce) },
+            height = 46.dp,
+            testTag = LOGIN_WAITING_SUBMIT_TAG,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+
         GhostButton(
             text = "Открыть Telegram ещё раз",
             onClick = onReopenTelegram,
@@ -115,12 +175,17 @@ fun LoginWaitingScreen(
         // демонстрацию за состоявшийся вход значило бы соврать о том, что
         // пользователь вошёл. Статус защиты это не затрагивает — он появляется
         // только из замера.
-        GhostButton(
-            text = "Демонстрация: показать экраны дальше",
-            onClick = onContinueDemo,
-            height = 46.dp,
-            testTag = LOGIN_WAITING_DEMO_TAG,
-            modifier = Modifier.padding(top = 9.dp),
-        )
+        //
+        // Гейт по [showDemoButton] ставит Task 11: в release кнопки быть не
+        // должно. Пока флаг включён — поведение прежнее.
+        if (showDemoButton) {
+            GhostButton(
+                text = "Демонстрация: показать экраны дальше",
+                onClick = onContinueDemo,
+                height = 46.dp,
+                testTag = LOGIN_WAITING_DEMO_TAG,
+                modifier = Modifier.padding(top = 9.dp),
+            )
+        }
     }
 }

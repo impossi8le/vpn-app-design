@@ -1,4 +1,5 @@
-// ViewModel-логика против фейков core:domain — UI не нужен (§4.10).
+// Экраны входа и ViewModel-логика против фейков core:domain (§4.10).
+// Плюс инструментальный контур: поле кода из бота проверяется на устройстве.
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -14,7 +15,11 @@ android {
 
     namespace = "com.impossi8le.vpnapp.feature.auth"
     compileSdk = 35
-    defaultConfig { minSdk = 26 }
+    defaultConfig {
+        minSdk = 26
+        // Инструментальный контур: Compose-тесты рендеринга требуют устройства.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -40,4 +45,13 @@ dependencies {
     testImplementation(libs.coroutines.test)
     testRuntimeOnly(libs.junit5.engine)
     testRuntimeOnly(libs.junit5.launcher)
+
+    // Тесты рендеринга: проверяют то, что НЕЛЬЗЯ проверить на JVM — что поле
+    // кода действительно доходит до экрана и что нажатие отдаёт введённый код
+    // наружу. Идут на эмуляторе, отдельной задачей.
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }

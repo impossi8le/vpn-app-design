@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -111,8 +112,18 @@ private fun VpnApp() {
     // startActivity из application-контекста требует FLAG_ACTIVITY_NEW_TASK;
     // если Telegram не установлен, запуск бросает ActivityNotFoundException —
     // его глушим, чтобы отсутствие мессенджера не роняло экран входа.
+    //
+    // Открытие привязано к КОНКРЕТНОМУ вызову входа (`publicCode`), а не к
+    // факту состояния `AwaitingNonce`: при повороте экрана активность
+    // пересоздаётся, ViewModel остаётся жива и `authState` остаётся тем же
+    // `AwaitingNonce`. Без этой привязки Telegram открывался бы заново на
+    // каждом повороте — неожиданно для пользователя. Запоминаем код через
+    // `rememberSaveable`, чтобы пережить пересоздание активности.
+    var openedPublicCode by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(authState) {
         val challenge = (authState as? AuthUiState.AwaitingNonce)?.challenge ?: return@LaunchedEffect
+        if (challenge.publicCode == openedPublicCode) return@LaunchedEffect
+        openedPublicCode = challenge.publicCode
         runCatching {
             context.startActivity(
                 android.content.Intent(
@@ -124,8 +135,8 @@ private fun VpnApp() {
     }
 
     // Сессия получена: токен кладём в общий ApiClient — его читают ConfigApi и
-    // профиль. Переход на главный экран делает Task 7: признак «вход состоялся»
-    // ещё не протянут в AppRootState.
+    // профиль. Сам переход на главный экран делает AppRoot по признаку
+    // `signedIn` ниже: навигация живёт внутри AppRoot, снаружи туда не дотянуться.
     LaunchedEffect(authState) {
         val signedIn = authState as? AuthUiState.SignedIn ?: return@LaunchedEffect
         graph.apiClient.sessionToken = signedIn.token
@@ -196,6 +207,11 @@ private fun VpnApp() {
             status = status,
             configs = configs,
             switchingInProgress = switching,
+            // Состояние входа приходит от AuthViewModel: экран ожидания показывает
+            // «проверяем…»/ошибку, а AppRoot по `signedIn` уводит на подключение.
+            signingIn = authState is AuthUiState.Polling,
+            loginError = (authState as? AuthUiState.Failed)?.reason,
+            signedIn = authState is AuthUiState.SignedIn,
         ),
         onIntent = { intent ->
             when (intent) {
@@ -219,6 +235,11 @@ private fun VpnApp() {
                 }
 
                 AppIntent.StartLogin -> authViewModel.startLogin()
+
+                // Ручной ввод кода из бота — единственная защита входа от
+                // подмены. Код уходит в ViewModel, тот опрашивает сервер до
+                // терминального состояния.
+                is AppIntent.SubmitNonce -> authViewModel.submitNonce(intent.nonce)
 
                 else -> Unit
             }
