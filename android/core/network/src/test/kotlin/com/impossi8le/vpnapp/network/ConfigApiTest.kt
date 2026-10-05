@@ -84,6 +84,62 @@ class ConfigApiTest {
     }
 
     @Test
+    fun `лимит устройств и срок подписки разбираются из me`() = runTest {
+        // §3 контракта: экран «Аккаунт» показывает лимит и срок, а не список.
+        // Без этих двух полей он рисовал «0 из 0» и «—» при живой подписке.
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {"chat_id":1,
+                 "connections_limit":3,
+                 "subscription_until":"2026-11-01T12:45:56Z",
+                 "configs":[
+                   {"id":"de-1","name":"Германия · Франкфурт",
+                    "location":{"country_code":"DE","city":"Франкфурт"},
+                    "start_date":"2026-10-02T12:45:56Z","end_date":"2026-11-01T12:45:56Z",
+                    "status":"active"}
+                 ]}
+                """.trimIndent(),
+            ),
+        )
+
+        val list = api.listConfigs().getOrThrow()
+        assertEquals(3, list.connectionsLimit)
+        assertEquals(
+            java.time.Instant.parse("2026-11-01T12:45:56Z").epochSecond,
+            list.subscriptionUntilEpochSeconds,
+        )
+    }
+
+    @Test
+    fun `отсутствие полей аккаунта не роняет список`() = runTest {
+        // Сервер обязан их присылать, но урезанный ответ — не повод терять
+        // подключения. Лимит тогда 0, срок — честный null (не 1970).
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"chat_id":1,"configs":[{"id":"x","name":"x","location":{},"start_date":"2026-01-01T00:00:00Z","end_date":"2026-02-01T00:00:00Z","status":"active"}]}""",
+            ),
+        )
+
+        val list = api.listConfigs().getOrThrow()
+        assertEquals(0, list.connectionsLimit)
+        assertEquals(null, list.subscriptionUntilEpochSeconds)
+        assertEquals(1, list.configs.size, "список должен пережить отсутствие полей аккаунта")
+    }
+
+    @Test
+    fun `битый срок подписки не превращается в дату 1970`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"chat_id":1,"connections_limit":2,"subscription_until":"не дата","configs":[]}""",
+            ),
+        )
+
+        val list = api.listConfigs().getOrThrow()
+        assertEquals(null, list.subscriptionUntilEpochSeconds)
+    }
+
+    @Test
     fun `config отдаёт сырые байты с версией и хешем`() = runTest {
         val ovpn = "client\ndev tun\nremote host 1194\n"
         server.enqueue(

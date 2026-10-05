@@ -34,7 +34,25 @@ data class ConfigSummary(
     val status: SubscriptionStatus,
 )
 
-data class ConfigList(val chatId: Long, val configs: List<ConfigSummary>)
+/**
+ * Ответ `GET /me` целиком.
+ *
+ * Помимо списка подключений сервер отдаёт данные аккаунта: лимит устройств
+ * ([connectionsLimit]) и срок подписки ([subscriptionUntilEpochSeconds]).
+ * Экран аккаунта показывает именно их — раньше их негде было взять, и он
+ * показывал «0 из 0» и «—».
+ *
+ * Оба поля необязательны на уровне разбора: сервер обязан их присылать (§3
+ * контракта), но кривой/урезанный ответ не должен ронять список. Отсутствие
+ * [subscriptionUntilEpochSeconds] — честное `null`, а не «первое января 1970»:
+ * ноль выглядел бы правдоподобной датой.
+ */
+data class ConfigList(
+    val chatId: Long,
+    val configs: List<ConfigSummary>,
+    val connectionsLimit: Int = 0,
+    val subscriptionUntilEpochSeconds: Long? = null,
+)
 
 /** Результат `stage`: прошёл валидацию, но ещё не применён. */
 interface StagedProfile

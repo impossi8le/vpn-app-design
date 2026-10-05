@@ -47,6 +47,11 @@ class ConfigApi(
                 Result.success(
                     ConfigList(
                         chatId = root.long("chat_id") ?: 0L,
+                        // Данные аккаунта для экрана «Аккаунт»: лимит устройств и
+                        // срок подписки. Разбираются null-безопасно — неполный
+                        // ответ не должен ронять список подключений.
+                        connectionsLimit = root.long("connections_limit")?.toInt() ?: 0,
+                        subscriptionUntilEpochSeconds = root.instantOrNull("subscription_until"),
                         configs = root["configs"]?.jsonArray.orEmpty().map { element ->
                             val item = element.jsonObject
                             val location = item["location"]?.jsonObject

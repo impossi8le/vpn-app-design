@@ -31,6 +31,8 @@ import com.impossi8le.vpnapp.config.PrepareResult
 import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
+import com.impossi8le.vpnapp.feature.account.DefaultAccountScreenState
+import com.impossi8le.vpnapp.feature.account.toAccountScreenState
 import com.impossi8le.vpnapp.feature.auth.AuthUiState
 import com.impossi8le.vpnapp.feature.auth.AuthViewModel
 import com.impossi8le.vpnapp.feature.home.ConfigRowState
@@ -277,6 +279,12 @@ private fun VpnApp() {
     // `produceState` перезапускается лишь по смене ключа.
     var configs by remember { mutableStateOf(emptyList<ConfigRowState>()) }
 
+    // Данные экрана «Аккаунт» — та же природа, что у списка: приходят из `/me`
+    // и перезагружаются вместе с ним. Хранятся отдельным состоянием, потому что
+    // экран аккаунта показывает их в другом месте и в другом виде, а не строкой
+    // подключения. Стартуем с умолчания экрана, пока ответа нет.
+    var account by remember { mutableStateOf(DefaultAccountScreenState) }
+
     /** Идёт обновление списка: экран говорит это словами, а не молчит. */
     var refreshingConfigs by remember { mutableStateOf(false) }
 
@@ -335,7 +343,15 @@ private fun VpnApp() {
     suspend fun loadConfigs() {
         val token = sessionToken ?: return
         graph.apiClient.sessionToken = token
-        configs = graph.configApi.listConfigs().getOrNull()
+        val list = graph.configApi.listConfigs().getOrNull()
+        // Экран «Аккаунт» питается тем же ответом `/me`, что и список: сервер
+        // отдаёт там лимит устройств и срок подписки, и без этого экран показывал
+        // «0 из 0» и «—». Считаем ДО фильтра — «N истекли» должно видеть и
+        // истёкшие строки, которые из списка подключений убраны.
+        if (list != null) {
+            account = list.toAccountScreenState(account)
+        }
+        configs = list
             ?.configs
             ?.toRowStates(System.currentTimeMillis() / 1000)
             ?.filter { it.status == ConfigRowStatus.Available }
@@ -368,6 +384,9 @@ private fun VpnApp() {
         state = AppRootState(
             status = status,
             configs = displayConfigs,
+            // Данные экрана «Аккаунт»: заполняются из `/me` в loadConfigs. Здесь —
+            // то, что успело прийти (или умолчание, если ответа ещё нет).
+            account = account,
             refreshingConfigs = refreshingConfigs,
             switchingInProgress = switching,
             prepareError = prepareMessage,

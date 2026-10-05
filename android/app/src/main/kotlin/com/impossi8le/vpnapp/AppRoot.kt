@@ -18,6 +18,7 @@ import com.impossi8le.vpnapp.feature.account.AccessRevokedScreen
 import com.impossi8le.vpnapp.feature.account.AccountScreen
 import com.impossi8le.vpnapp.feature.account.AccountScreenState
 import com.impossi8le.vpnapp.feature.account.BuildExpiryScreen
+import com.impossi8le.vpnapp.feature.account.DefaultAccountScreenState
 import com.impossi8le.vpnapp.feature.account.DemoConfig
 import com.impossi8le.vpnapp.feature.account.DemoScreen
 import com.impossi8le.vpnapp.feature.account.HowToEnableVpnScreen
@@ -303,18 +304,12 @@ data class BuildInfo(
 data class AppRootState(
     val status: ConnectionStatus = ConnectionStatus.Disconnected,
     val configs: List<ConfigRowState> = emptyList(),
-    val account: AccountScreenState = AccountScreenState(
-        telegramId = "•••• 4821",
-        telegramIdRevealed = false,
-        activeConnections = 0,
-        totalConnections = 0,
-        expiredConnections = 0,
-        buildExpiryDate = "—",
-        subscriptionUntil = "—",
-        autoConnect = false,
-        askFaceId = false,
-        confirmCountrySwitch = true,
-    ),
+    /**
+     * Данные аккаунта для экрана «Аккаунт». Дефолт — [DefaultAccountScreenState]:
+     * до ответа `/me` показывать нечего, а считать тут нечего и подавно.
+     * Настоящие значения кладёт [MainActivity], когда приходит список из `/me`.
+     */
+    val account: AccountScreenState = DefaultAccountScreenState,
     /**
      * Данные сборки: версия, номер и SHA. Заполняет [MainActivity] из
      * `BuildConfig` — то есть из того, чем сборку собрал CI.
