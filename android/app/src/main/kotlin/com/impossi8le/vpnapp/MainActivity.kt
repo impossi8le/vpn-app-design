@@ -190,13 +190,15 @@ private fun VpnApp() {
     var showDemo by remember { mutableStateOf(false) }
     var switching by remember { mutableStateOf(false) }
 
-    // Список подключений берём из подставного бэкенда один раз на экран: это
-    // демонстрационный ответ сети, а не живой поток. `emptyList()` здесь
-    // оставлял секцию «Подключения» пустой — проверить список на устройстве
-    // было нельзя. Момент «сейчас» передаём внутрь преобразования явно, чтобы
-    // подписи срока были детерминированы.
-    val configs by produceState(initialValue = emptyList()) {
-        value = DemoMode.api.listConfigs().getOrNull()
+    // Список подключений — из живого /me. Ключ produceState — токен сессии:
+    // без него список пуст на старте и должен наполниться сам, когда вход
+    // завершится и токен появится (иначе пользователю пришлось бы перезаходить
+    // на экран). `emptyList()` в начале — честный ответ, а не заглушка: при
+    // отсутствии токена сервер вернёт 401, и мы покажем «войдите».
+    // Момент «сейчас» передаём внутрь преобразования явно, чтобы подписи срока
+    // были детерминированы.
+    val configs by produceState(initialValue = emptyList(), graph.apiClient.sessionToken) {
+        value = graph.configApi.listConfigs().getOrNull()
             ?.configs
             ?.toRowStates(System.currentTimeMillis() / 1000)
             .orEmpty()
