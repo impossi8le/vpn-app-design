@@ -11,6 +11,7 @@ kotlin {
 dependencies {
     implementation(project(":core:domain"))
     implementation(libs.coroutines.core)
+    implementation(libs.serialization.json)
 
     testImplementation(libs.junit5.api)
     testImplementation(libs.coroutines.test)
