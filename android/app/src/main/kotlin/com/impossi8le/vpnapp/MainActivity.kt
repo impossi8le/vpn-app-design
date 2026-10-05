@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
+import com.impossi8le.vpnapp.feature.auth.AuthUiState
+import com.impossi8le.vpnapp.feature.auth.AuthViewModel
 import com.impossi8le.vpnapp.feature.home.StatusAction
 import com.impossi8le.vpnapp.feature.home.HomeViewModel
 import com.impossi8le.vpnapp.feature.home.toRowStates
@@ -87,8 +90,46 @@ private fun VpnApp() {
         HomeViewModel(tunnel, ProtectionGate(UnavailableProbe))
     }
 
+    // Точка сборки backend-зависимостей: сеть, хранилища и координаторы живут
+    // в AppGraph. Собираем ровно один раз на экран — пересоздание графа на
+    // каждой рекомпозиции означало бы новый ApiClient и потерянный токен.
+    val graph = remember { AppGraph(context.applicationContext, tunnel) }
+
+    val authViewModel: AuthViewModel = viewModel {
+        // Build.MODEL идёт в device_name: поддержка получает модель телефона,
+        // а не пустую строку (закрывает расхождение №3 аудита).
+        AuthViewModel(graph.authApi, graph.sessionStore, android.os.Build.MODEL)
+    }
+    val authState by authViewModel.state.collectAsState()
+
     val status by viewModel.status.collectAsState()
     val scope = rememberCoroutineScope()
+
+    // Открываем Telegram, когда пришла ссылка. Показывать экран ожидания без
+    // попытки открыть бота — значит оставить пользователя гадать, что дальше.
+    //
+    // startActivity из application-контекста требует FLAG_ACTIVITY_NEW_TASK;
+    // если Telegram не установлен, запуск бросает ActivityNotFoundException —
+    // его глушим, чтобы отсутствие мессенджера не роняло экран входа.
+    LaunchedEffect(authState) {
+        val challenge = (authState as? AuthUiState.AwaitingNonce)?.challenge ?: return@LaunchedEffect
+        runCatching {
+            context.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(challenge.deepLink),
+                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
+    // Сессия получена: токен кладём в общий ApiClient — его читают ConfigApi и
+    // профиль. Переход на главный экран делает Task 7: признак «вход состоялся»
+    // ещё не протянут в AppRootState.
+    LaunchedEffect(authState) {
+        val signedIn = authState as? AuthUiState.SignedIn ?: return@LaunchedEffect
+        graph.apiClient.sessionToken = signedIn.token
+    }
 
     // Диалог согласия на VPN показывает система, и показать его может только
     // активность. Контроллер живёт в application-контексте, поэтому отдаёт
@@ -176,6 +217,8 @@ private fun VpnApp() {
                         StatusAction.RefreshAccess -> Unit
                     }
                 }
+
+                AppIntent.StartLogin -> authViewModel.startLogin()
 
                 else -> Unit
             }
