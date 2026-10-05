@@ -8,6 +8,7 @@ import com.impossi8le.vpnapp.config.ProfilePreparer
 import com.impossi8le.vpnapp.domain.auth.SessionStore
 import com.impossi8le.vpnapp.domain.config.ProfileMetaStore
 import com.impossi8le.vpnapp.domain.config.ProfileStore
+import com.impossi8le.vpnapp.domain.settings.AppSettingsStore
 import com.impossi8le.vpnapp.domain.tunnel.TunnelControlling
 import com.impossi8le.vpnapp.network.ApiClient
 import com.impossi8le.vpnapp.network.AuthApi
@@ -45,6 +46,14 @@ class AppGraph(
     val updateApi = UpdateApi(apiClient)
 
     val sessionStore: SessionStore = SessionStoreImpl(AndroidSecureBackend(context))
+
+    /**
+     * Несекретные настройки интерфейса: «подтверждать смену страны» и «больше не
+     * спрашивать». Обычные `SharedPreferences`, а НЕ зашифрованное хранилище —
+     * это предпочтения, а не секреты; шифрование остаётся границей сессии и
+     * приватного ключа (§6/§7), и размывать её незачем.
+     */
+    val settings: AppSettingsStore = SharedPrefsSettingsStore(context)
     val profileStore: ProfileStore = FileProfileStore(filesDir)
     val metaStore: ProfileMetaStore = FileProfileMetaStore(filesDir)
 

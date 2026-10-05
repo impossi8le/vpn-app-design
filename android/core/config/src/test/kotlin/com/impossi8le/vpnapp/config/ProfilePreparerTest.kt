@@ -139,4 +139,56 @@ class ProfilePreparerTest {
         assertEquals(1, service.fetchCount)
         assertEquals(ProfileMeta("GEclient94", "v7", 1_000_000L), meta.load())
     }
+
+    @Test
+    fun `смена страны — на диске профиль A, просят B, скачивается именно B`() = runTest {
+        // Ключевой сценарий переключения: пользователь выбрал другое подключение,
+        // а на диске лежит профиль прежнего. Гард быстрого пути не должен отдать
+        // Ready по чужому кэшу — обязан сходить за B и записать ЕГО байты.
+        val bBytes = "client\nremote host 25000\n".toByteArray()
+        val service = ScriptedConfigService(
+            listResult = Result.success(ConfigList(0L, listOf(activeConfig(id = "B")))),
+            fetchResult = Result.success(FetchedConfig(bBytes, "v2", sha256(bBytes))),
+        )
+        val store = storeWithProfile() // на диске профиль A
+        val meta = FakeProfileMetaStore(ProfileMeta("A", "v1", 1_000_000L))
+
+        val result = preparer(service, store, meta).ensureProfile("B")
+
+        assertEquals(PrepareResult.Ready, result)
+        assertEquals(1, service.fetchCount)
+        assertEquals(String(bBytes), String(store.load()!!.raw)) // именно байты B
+        assertEquals(ProfileMeta("B", "v2", 1_000_000L), meta.load())
+    }
+
+    @Test
+    fun `просят уже установленный конфиг — сети нет`() = runTest {
+        // Оффлайн-гарантия сохраняется и для явного id: тот же конфиг на диске и
+        // годен — GET /me и /config не делаются вовсе.
+        val service = ScriptedConfigService()
+        val store = storeWithProfile()
+        val meta = FakeProfileMetaStore(ProfileMeta("A", "v1", 1_000_000L))
+
+        val result = preparer(service, store, meta).ensureProfile("A")
+
+        assertEquals(PrepareResult.Ready, result)
+        assertEquals(0, service.fetchCount)
+        assertEquals(0, service.listCount)
+    }
+
+    @Test
+    fun `запрошенного конфига нет среди активных — не подставляем первый`() = runTest {
+        // Просят Z, активен только A. Молчаливая подстановка A переключила бы не
+        // туда, куда просили, — это ошибка, а не удобство.
+        val service = ScriptedConfigService(
+            listResult = Result.success(ConfigList(0L, listOf(activeConfig(id = "A")))),
+        )
+        val store = FileProfileStore(dir)
+        val meta = FakeProfileMetaStore()
+
+        val result = preparer(service, store, meta).ensureProfile("Z")
+
+        assertEquals(PrepareResult.NoActiveConfig, result)
+        assertEquals(0, service.fetchCount)
+    }
 }

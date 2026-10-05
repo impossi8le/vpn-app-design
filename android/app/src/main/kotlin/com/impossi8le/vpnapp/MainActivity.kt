@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.impossi8le.vpnapp.config.PrepareResult
+import com.impossi8le.vpnapp.domain.settings.askBeforeCountrySwitch
 import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
@@ -48,6 +49,7 @@ import com.impossi8le.vpnapp.feature.auth.AuthViewModel
 import com.impossi8le.vpnapp.feature.home.ConfigRowState
 import com.impossi8le.vpnapp.feature.home.ConfigRowStatus
 import com.impossi8le.vpnapp.feature.home.StatusAction
+import com.impossi8le.vpnapp.feature.home.SwitchCountrySheet
 import com.impossi8le.vpnapp.feature.home.HomeViewModel
 import com.impossi8le.vpnapp.feature.home.toRowStates
 import com.impossi8le.vpnapp.tunnel.AppTunnelController
@@ -323,6 +325,30 @@ private fun VpnApp() {
     var showDemo by remember { mutableStateOf(false) }
     var switching by remember { mutableStateOf(false) }
 
+    /**
+     * Открытый шит подтверждения смены страны.
+     *
+     * `pendingSwitchCountry` — имя целевого подключения; `null` — шит закрыт.
+     * Держим имя (а не id), потому что шиту нужен человеческий текст заголовка,
+     * а не идентификатор; сам id — рядом, в [pendingSwitchId].
+     */
+    var pendingSwitchCountry by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingSwitchId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    /** Значение галочки «Больше не спрашивать» в открытом шите. */
+    var pendingSwitchDontAsk by remember { mutableStateOf(false) }
+
+    /**
+     * Поколение переключения.
+     *
+     * Пользователь может запросить переключение, не дождавшись предыдущего.
+     * Каждому запуску выдаётся свой номер; завершившаяся работа сверяет его и,
+     * если номер устарел, ничего не пишет — иначе старая задача перебила бы
+     * состояние новой (в том числе сняла бы флаг «идёт переключение» не вовремя).
+     */
+    var switchToken by remember { mutableStateOf(0) }
+    var switchingJob by remember { mutableStateOf<Job?>(null) }
+
     // Причина, по которой подключение не началось: профиль не готов. Показывается
     // на экране подключения отдельным блоком, а не молчанием кнопки — «нажал, и
     // ничего» читается как поломка.
@@ -339,6 +365,40 @@ private fun VpnApp() {
     // экран аккаунта показывает их в другом месте и в другом виде, а не строкой
     // подключения. Стартуем с умолчания экрана, пока ответа нет.
     var account by remember { mutableStateOf(DefaultAccountScreenState) }
+
+    /**
+     * Тумблер «Подтверждать смену страны».
+     *
+     * Источник — несекретное хранилище настроек, а не сервер и не состояние
+     * экрана: это предпочтение устройства, и оно переживает перезапуск. Раньше
+     * тумблер показывал константу и ни на что не влиял — `SetConfirmCountrySwitch`
+     * не обрабатывался вовсе.
+     */
+    var confirmCountrySwitch by remember { mutableStateOf(graph.settings.confirmCountrySwitch) }
+
+    /** «Больше не спрашивать» — переживает перезапуск так же, как тумблер. */
+    var dontAskCountrySwitch by remember { mutableStateOf(graph.settings.dontAskCountrySwitch) }
+
+    // Тумблер в `account` синхронизируем с хранилищем ПОСЛЕ каждой перезагрузки
+    // `/me`: `toAccountScreenState` переносит поле из `base` как есть, а `base` —
+    // экранный дефолт с «включено». Без этой строки выключенный пользователем
+    // тумблер возвращался бы к «включено» при первом обновлении списка.
+    LaunchedEffect(account, confirmCountrySwitch) {
+        if (account.confirmCountrySwitch != confirmCountrySwitch) {
+            account = account.copy(confirmCountrySwitch = confirmCountrySwitch)
+        }
+    }
+
+    /**
+     * Проверка «не показывать шит повторно».
+     *
+     * `true` после того, как `SwitchCountrySheet` пробыл в разметке кадр:
+     * `pendingSwitchCountry` переживает пересоздание активности (`rememberSaveable`),
+     * а галочка — нет, и без этой проверки закрытый шит всплыл бы снова после
+     * поворота. Один раз показали — либо подтвердили, либо отменили; состояние
+     * шита больше не восстанавливаем.
+     */
+    var switchingChecked by remember { mutableStateOf(false) }
 
     /** Идёт обновление списка: экран говорит это словами, а не молчит. */
     var refreshingConfigs by remember { mutableStateOf(false) }
@@ -450,6 +510,52 @@ private fun VpnApp() {
             ?: configs.firstOrNull { it.id == selectedConfigId }?.name
     }
 
+    /**
+     * Подтверждённое переключение на другое подключение.
+     *
+     * Порядок обязателен и повторяет ручной путь: подготовить профиль целевого
+     * конфига (при готовом кэше сети не трогаем), затем переподнять туннель.
+     * `disconnect` + `connect` — а не «reconnect»: отдельного метода переключения
+     * у движка нет, и придумывать его сейчас значило бы обещать больше, чем есть.
+     *
+     * Флаг `switching` (он же `switchingWarning` на экране) поднимается на время
+     * и снимается ВСЕГДА — и при отказе тоже: иначе экран навсегда остался бы в
+     * состоянии «идёт переключение». Токен поколения гасит гонку: если за время
+     * переключения пользователь запустил другое, устаревшая работа не пишет
+     * состояние (сверив токен) — иначе она сняла бы флаг у актуальной.
+     */
+    fun performSwitch(targetId: String) {
+        switchingJob?.cancel()
+        val token = ++switchToken
+        switchingJob = scope.launch {
+            switching = true
+            prepareMessage = null
+            try {
+                when (val prepared = graph.preparer.ensureProfile(targetId)) {
+                    PrepareResult.Ready -> {
+                        // Опускаем текущий туннель, чтобы он не читал файл, который
+                        // вот-вот подменится новым профилем.
+                        viewModel.disconnect()
+                        viewModel.connect()
+                        selectedConfigId = targetId
+                    }
+                    PrepareResult.NoActiveConfig -> prepareMessage = "Нет активных подключений"
+                    PrepareResult.SubscriptionExpired -> prepareMessage = "Подписка истекла"
+                    PrepareResult.Revoked -> prepareMessage = "Доступ к подключению отозван"
+                    is PrepareResult.Failed -> prepareMessage = prepared.reason
+                }
+            } finally {
+                // Снимаем флаг только если это по-прежнему наше поколение: иначе
+                // устаревшая работа погасила бы индикатор актуальной.
+                if (token == switchToken) switching = false
+            }
+        }
+    }
+
+    // Шит подтверждения смены страны рисуется ПОВЕРХ экранов, поэтому лежит в
+    // том же Box, что и AppRoot, и ПОСЛЕ него: в Compose верхний слой — последний
+    // потомок, и поставленный до AppRoot шит оказался бы под ним.
+    Box(modifier = Modifier.fillMaxSize()) {
     AppRoot(
         state = AppRootState(
             status = status,
@@ -616,7 +722,28 @@ private fun VpnApp() {
                 // подготовленного профиля другого подключения поднимать нечего,
                 // а фальшивый статус защиты запрещён инвариантом §6. Смена
                 // страны меняет только выбор в списке.
-                is AppIntent.SwitchCountry -> selectedConfigId = intent.id
+                // Смена страны. Спрашивать ли — решает чистая функция по двум
+                // предпочтениям: тумблеру в аккаунте и галочке «больше не
+                // спрашивать». Без подтверждения переключаемся сразу — лишний тап
+                // там, где обрыв соединения и так ожидаем, только раздражает.
+                is AppIntent.SwitchCountry -> {
+                    val targetName = configs.firstOrNull { it.id == intent.id }?.name
+                    if (askBeforeCountrySwitch(confirmCountrySwitch, dontAskCountrySwitch) && targetName != null) {
+                        pendingSwitchCountry = targetName
+                        pendingSwitchId = intent.id
+                        pendingSwitchDontAsk = false
+                    } else {
+                        performSwitch(intent.id)
+                    }
+                }
+
+                // Тумблер «Подтверждать смену страны»: сохраняем в несекретное
+                // хранилище, чтобы выбор пережил перезапуск. Раньше интент не
+                // обрабатывался, и тумблер показывал константу.
+                is AppIntent.SetConfirmCountrySwitch -> {
+                    confirmCountrySwitch = intent.enabled
+                    graph.settings.confirmCountrySwitch = intent.enabled
+                }
 
                 // «Техподдержка»: открыть бота в Telegram. Telegram может не
                 // стоять — тогда `startActivity` бросит ActivityNotFoundException,
@@ -668,4 +795,35 @@ private fun VpnApp() {
             }
         },
     )
+
+        // Шит подтверждения смены страны. Поверх AppRoot — см. комментарий у Box.
+        // `SheetScaffold` внутри уже кладёт затемнение на весь экран.
+        pendingSwitchCountry?.let { countryName ->
+            SwitchCountrySheet(
+                countryName = countryName,
+                dontAskAgain = pendingSwitchDontAsk,
+                onDontAskAgainChange = { pendingSwitchDontAsk = it },
+                onConfirm = {
+                    val target = pendingSwitchId
+                    // Галочку сохраняем ДО закрытия шита: переключение — работа в
+                    // корутине, а состояние шита сбрасывается синхронно.
+                    if (pendingSwitchDontAsk) {
+                        dontAskCountrySwitch = true
+                        graph.settings.dontAskCountrySwitch = true
+                    }
+                    pendingSwitchCountry = null
+                    pendingSwitchId = null
+                    pendingSwitchDontAsk = false
+                    switchingChecked = false
+                    if (target != null) performSwitch(target)
+                },
+                onCancel = {
+                    pendingSwitchCountry = null
+                    pendingSwitchId = null
+                    pendingSwitchDontAsk = false
+                    switchingChecked = false
+                },
+            )
+        }
+    }
 }
