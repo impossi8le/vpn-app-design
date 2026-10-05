@@ -134,12 +134,27 @@ private fun VpnApp() {
         }
     }
 
-    // Сессия получена: токен кладём в общий ApiClient — его читают ConfigApi и
-    // профиль. Сам переход на главный экран делает AppRoot по признаку
+    // Токен сессии держим и в Compose-состоянии, и в общем ApiClient. Именно
+    // запись в Compose-состояние запускает перезагрузку списка ниже: у обычного
+    // `var` в ApiClient нет снапшот-наблюдателя, и запись в него не вызовет
+    // рекомпозицию — список остался бы пустым до случайной перерисовки.
+    var sessionToken by remember { mutableStateOf<String?>(null) }
+
+    // Восстановление сохранённой сессии при запуске: `restoreSession()` вернёт
+    // `true` и кладёт валидный токен в ApiClient; мы отражаем его в состоянии,
+    // чтобы список подключений подтянулся без повторного входа.
+    LaunchedEffect(Unit) {
+        if (graph.restoreSession()) sessionToken = graph.apiClient.sessionToken
+    }
+
+    // Сессия получена: токен кладём в общий ApiClient (его читают ConfigApi и
+    // профиль) и в Compose-состояние — вторая запись и приводит к перезагрузке
+    // списка. Сам переход на главный экран делает AppRoot по признаку
     // `signedIn` ниже: навигация живёт внутри AppRoot, снаружи туда не дотянуться.
     LaunchedEffect(authState) {
         val signedIn = authState as? AuthUiState.SignedIn ?: return@LaunchedEffect
         graph.apiClient.sessionToken = signedIn.token
+        sessionToken = signedIn.token
     }
 
     // Диалог согласия на VPN показывает система, и показать его может только
@@ -190,14 +205,16 @@ private fun VpnApp() {
     var showDemo by remember { mutableStateOf(false) }
     var switching by remember { mutableStateOf(false) }
 
-    // Список подключений — из живого /me. Ключ produceState — токен сессии:
-    // без него список пуст на старте и должен наполниться сам, когда вход
-    // завершится и токен появится (иначе пользователю пришлось бы перезаходить
-    // на экран). `emptyList()` в начале — честный ответ, а не заглушка: при
-    // отсутствии токена сервер вернёт 401, и мы покажем «войдите».
-    // Момент «сейчас» передаём внутрь преобразования явно, чтобы подписи срока
-    // были детерминированы.
-    val configs by produceState(initialValue = emptyList(), graph.apiClient.sessionToken) {
+    // Список подключений — из живого /me. Ключ produceState — токен сессии,
+    // прочитанный ИЗ Compose-состояния: без наблюдаемого ключа список пуст на
+    // старте и не наполнился бы сам, когда вход завершится (иначе пользователю
+    // пришлось бы перезаходить на экран). `emptyList()` в начале — честный
+    // ответ, а не заглушка: при отсутствии токена сервер вернёт 401, и мы
+    // покажем «войдите». Момент «сейчас» передаём внутрь преобразования явно,
+    // чтобы подписи срока были детерминированы.
+    val configs by produceState(initialValue = emptyList(), sessionToken) {
+        val token = sessionToken ?: return@produceState
+        graph.apiClient.sessionToken = token
         value = graph.configApi.listConfigs().getOrNull()
             ?.configs
             ?.toRowStates(System.currentTimeMillis() / 1000)
