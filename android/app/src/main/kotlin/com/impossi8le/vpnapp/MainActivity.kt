@@ -151,8 +151,20 @@ private fun VpnApp() {
     // Восстановление сохранённой сессии при запуске: `restoreSession()` вернёт
     // `true` и кладёт валидный токен в ApiClient; мы отражаем его в состоянии,
     // чтобы список подключений подтянулся без повторного входа.
+    //
+    // **Троичное состояние, а не `Boolean`.** Само чтение сессии —
+    // `restoreSession()` трогает `EncryptedSharedPreferences` — в эффекте, а не
+    // в композиции: на главном потоке это I/O, и делать его во время
+    // композиции нельзя. Но тогда к первому кадру AppRoot ещё не знает ответа,
+    // и `null` («ещё не проверено») — третий, честный вариант помимо
+    // «восстановлена»/«нет». По этому признаку AppRoot держится на экране
+    // `Startup`, пока ответ не пришёл, и лишь затем уходит на подключение или
+    // на вход; с дефолтом `false` он увёл бы на вход раньше проверки.
+    var sessionRestored by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(Unit) {
-        if (graph.restoreSession()) sessionToken = graph.apiClient.sessionToken
+        val restored = graph.restoreSession()
+        if (restored) sessionToken = graph.apiClient.sessionToken
+        sessionRestored = restored
     }
 
     // Сессия получена: токен кладём в общий ApiClient (его читают ConfigApi и
@@ -246,6 +258,9 @@ private fun VpnApp() {
             loginError = (authState as? AuthUiState.Failed)?.reason,
             signedIn = authState is AuthUiState.SignedIn,
             signedOut = signedOut,
+            // Итог проверки сохранённой сессии: `null` пока не проверено,
+            // `true` — AppRoot пропускает вход и ведёт на подключение (§3.3).
+            sessionRestored = sessionRestored,
             // Демонстрационный проход — только в отладочной сборке. В release
             // `BuildConfig.DEBUG` == false, и кнопки на экране ожидания нет.
             // BuildConfig лежит в этом же пакете, отдельный импорт не нужен.
