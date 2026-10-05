@@ -380,10 +380,29 @@ private fun VpnApp() {
         }
     }
 
+    // Имя работающего подключения — честный источник — метаданные установленного
+    // профиля: именно тот configId, что лежит в файле, отдан туннелю. Читаем его
+    // в эффекте, а не в композиции: `currentMeta()` трогает файл, и на главном
+    // потоке во время композиции это I/O. Сопоставляем id со списком, чтобы
+    // показать человеческое имя, а не идентификатор; если такого подключения в
+    // списке уже нет (истекло, отозвано) — падаем на имя выбранного, и лишь
+    // затем на `null`. Пересчитываем по смене статуса: профиль пишется перед
+    // поднятием туннеля, поэтому к моменту «Подключено» метаданные уже готовы.
+    var runningConfigName by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(status, configs, selectedConfigId) {
+        val runningId = graph.configManager.currentMeta()?.configId
+        runningConfigName = configs.firstOrNull { it.id == runningId }?.name
+            ?: configs.firstOrNull { it.id == selectedConfigId }?.name
+    }
+
     AppRoot(
         state = AppRootState(
             status = status,
             configs = displayConfigs,
+            // Имя работающего подключения: см. LaunchedEffect выше. Нужно экрану
+            // подключения, чтобы подзаголовком показать «какой конфиг работает»
+            // при поднятом туннеле.
+            runningConfigName = runningConfigName,
             // Данные экрана «Аккаунт»: заполняются из `/me` в loadConfigs. Здесь —
             // то, что успело прийти (или умолчание, если ответа ещё нет).
             account = account,

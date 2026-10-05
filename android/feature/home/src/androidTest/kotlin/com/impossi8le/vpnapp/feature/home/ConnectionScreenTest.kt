@@ -23,9 +23,9 @@ import org.junit.Test
  * Тест падает, если кто-то захардкодит зелёный заголовок в разметке мимо
  * `presentation()` — это и был дефект, найденный на UX-ревью.
  *
- * Отдельно проверяется блок «Защита»: он отвечает на вопрос «а оно правда
- * работает?», и именно в нём макет разместил честность — заголовок может
- * говорить «идёт проверка», а блок рядом обязан говорить «не проверено».
+ * Экран больше НЕ показывает блок «Защита»: проба защиты — заглушка, и она
+ * ничего не измеряла. Проверяется только то, что показывается теперь:
+ * «подключено / нет» и имя работающего подключения.
  */
 class ConnectionScreenTest {
 
@@ -40,6 +40,7 @@ class ConnectionScreenTest {
         status: ConnectionStatus,
         onAction: (StatusAction) -> Unit = {},
         configs: List<ConfigRowState> = emptyList(),
+        runningConfigName: String? = null,
     ) {
         compose.setContent {
             ConnectionScreen(
@@ -50,55 +51,59 @@ class ConnectionScreenTest {
                 onRefreshConfigs = {},
                 onSelectConfig = {},
                 onSwitchCountry = {},
+                runningConfigName = runningConfigName,
             )
         }
     }
 
     @Test
-    fun raisedTunnelShowsNotVerifiedRatherThanProtected() {
+    fun raisedTunnelShowsConnectedNotProtected() {
         setScreen(ConnectionStatus.VerifyingProtection)
 
         // Главный дефект UX-ревью: зелёный заголовок при неподтверждённой защите.
+        // Теперь поднятый туннель — просто «Подключено», без слова о защите.
         compose.onNodeWithTag(CONNECTION_TITLE_TAG).assertIsDisplayed()
-        compose.onNodeWithText("Туннель поднят").assertIsDisplayed()
+        compose.onNodeWithText("Подключено").assertIsDisplayed()
     }
 
     @Test
-    fun verifyingStateSaysProtectionNotVerifiedInTheProtectionBlock() {
+    fun raisedTunnelShowsTheRunningConfigName() {
+        setScreen(ConnectionStatus.VerifyingProtection, runningConfigName = "Нидерланды")
+
+        compose.onNodeWithText("Подключено").assertIsDisplayed()
+        compose.onNodeWithText("Нидерланды").assertIsDisplayed()
+    }
+
+    @Test
+    fun verifyingProtectionIsNotPresentedAsProtected() {
         setScreen(ConnectionStatus.VerifyingProtection)
 
-        // Блок «Защита» показывает «проверяем», а не «проверено»: поднятый
-        // интерфейс не доказывает, что трафик идёт через него.
-        compose.onNodeWithTag(CONNECTION_PROTECTION_STATUS_TAG).assertIsDisplayed()
-        compose.onNodeWithText("проверяем…").assertIsDisplayed()
+        // Ни слова «защищено»: интерфейс поднят, но доказательства нет.
+        compose.onNodeWithText("Подключено и защищено").assertDoesNotExist()
+        compose.onNodeWithText("защищено").assertDoesNotExist()
     }
 
     @Test
-    fun confirmedProtectionShowsProtected() {
-        setScreen(protected())
-
-        compose.onNodeWithText("Подключено и защищено").assertIsDisplayed()
-    }
-
-    @Test
-    fun confirmedProtectionMarksTheProtectionBlockAsVerified() {
-        setScreen(protected())
-
-        compose.onNodeWithText("проверено").assertIsDisplayed()
-        // IPv6 и DNS показываются как подтверждённые факты замера.
-        compose.onNodeWithText("закрыт").assertIsDisplayed()
-    }
-
-    @Test
-    fun probeFailureExplainsThereIsNoProtection() {
+    fun probeFailureAlsoReadsAsConnected() {
+        // Провал пробы тоже значит «туннель поднят»: пользователю показывается
+        // подключение, а не текст о несостоявшейся защите.
         setScreen(
             ConnectionStatus.ProtectionFailed(
                 ProtectionVerdict.evaluate(false, true, true) as ProtectionVerdict.Failed,
             ),
         )
 
-        compose.onNodeWithText("Трафик не идёт через туннель").assertIsDisplayed()
-        compose.onNodeWithText("не пройдено").assertIsDisplayed()
+        compose.onNodeWithText("Подключено").assertIsDisplayed()
+        compose.onNodeWithText("Трафик не идёт через туннель").assertDoesNotExist()
+    }
+
+    @Test
+    fun protectionBlockIsGone() {
+        setScreen(protected())
+
+        // Блока «Защита» на экране больше нет ни в одном состоянии.
+        compose.onNodeWithText("СОЕДИНЕНИЕ").assertDoesNotExist()
+        compose.onNodeWithText("проверено").assertDoesNotExist()
     }
 
     @Test
@@ -174,5 +179,4 @@ class ConnectionScreenTest {
     // Само поведение — что активное подключение получает статус Active, а
     // истёкшее Expired — проверено на JVM в ConfigMappingTest, где нет ни
     // разметки, ни прокрутки.
-
 }

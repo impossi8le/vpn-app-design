@@ -2,7 +2,6 @@ package com.impossi8le.vpnapp.feature.home
 
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
-import com.impossi8le.vpnapp.domain.protection.ProtectionFailure
 import com.impossi8le.vpnapp.domain.protection.ProtectionVerdict
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -10,56 +9,52 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * Ложный зелёный — главный дефект, найденный на UX-ревью макета: заголовок
- * «Туннель поднят» был зелёным при соседней надписи «не проверено».
+ * Подача главного экрана: только «подключено / нет» и какое подключение работает.
  *
- * Эти тесты падают, если кто-то снова свяжет зелёный цвет с поднятым
- * интерфейсом вместо результата замера.
+ * Экран больше НЕ говорит о защите. Проба защиты — заглушка, поэтому тексты
+ * «трафик не идёт через туннель» и «проверка не пройдена» ничего не измеряли.
+ * Доменный инвариант §6 при этом не ослаблен: он живёт в `core:domain`
+ * (`ProtectionGate`), а не в текстах. Здесь проверяется ровно то, о чём просил
+ * пользователь: что интерфейс поднят и какой конфиг под ним.
+ *
+ * Красный по-прежнему означает только реальную опасность, а в состояниях
+ * «туннель поднят» его нет: соединение не разорвано.
  */
 class StatusPresentationTest {
 
     @Test
-    fun `зелёный цвет только у подтверждённой защиты`() {
-        val protected = protectedStatus().presentation()
-        // Инвариант тот же: зелёный приходит только из состоявшегося замера.
-        assertEquals(VpnColors.Green, protected.accent)
-        // Заголовок обновлён дословно по макету («Подключено и защищено»), но
-        // проверка не про красоту текста, а про то, что зелёный и слово
-        // «защищено» стоят рядом только у подтверждённого состояния.
-        assertEquals("Подключено и защищено", protected.title)
-    }
-
-    @Test
-    fun `поднятый туннель не зелёный и говорит что не проверен`() {
-        val presentation = ConnectionStatus.VerifyingProtection.presentation()
-
-        assertNotEquals(
-            VpnColors.Green,
-            presentation.accent,
-            "поднятый интерфейс не доказывает, что трафик идёт через туннель",
-        )
-        assertTrue(
-            presentation.detail.contains("не проверен", ignoreCase = true),
-            "пользователь должен видеть, что защиты ещё нет",
-        )
-    }
-
-    @Test
-    fun `ни одно состояние кроме подтверждённого не зелёное`() {
-        val all = listOf(
-            ConnectionStatus.Disconnected,
-            ConnectionStatus.Connecting,
+    fun `поднятый туннель показывается подключением без слова о защите`() {
+        // Три доменных исхода «туннель поднят» — один и тот же текст.
+        listOf(
             ConnectionStatus.VerifyingProtection,
-            ConnectionStatus.Failed("нет сети"),
+            protectedStatus(),
             failedStatus(),
-        )
-        all.forEach { status ->
-            assertNotEquals(
-                VpnColors.Green,
-                status.presentation().accent,
-                "зелёный недопустим для состояния $status",
+        ).forEach { status ->
+            val presentation = status.presentation()
+            assertEquals("Подключено", presentation.title, "для $status")
+            assertTrue(
+                !presentation.title.contains("защит", ignoreCase = true) &&
+                    !presentation.detail.contains("защит", ignoreCase = true),
+                "интерфейс не может утверждать защиту: проба её не подтверждает",
             )
         }
+    }
+
+    @Test
+    fun `имя конфига показывается подзаголовком при поднятом туннеле`() {
+        val presentation = ConnectionStatus.VerifyingProtection.presentation("Нидерланды")
+
+        assertEquals("Подключено", presentation.title)
+        assertEquals("Нидерланды", presentation.detail)
+    }
+
+    @Test
+    fun `без имени конфига подзаголовок нейтрален`() {
+        val presentation = ConnectionStatus.VerifyingProtection.presentation(null)
+
+        assertEquals("Подключено", presentation.title)
+        assertTrue(presentation.detail.isNotBlank())
+        assertEquals("Соединение установлено", presentation.detail)
     }
 
     @Test
@@ -84,39 +79,25 @@ class StatusPresentationTest {
         assertEquals(VpnColors.Red, ConnectionStatus.Failed("нет сети").presentation().accent)
         assertEquals(VpnColors.Red, ConnectionStatus.Failed("отказ ядра").presentation().accent)
 
-        // Новое правило по макету: у ProtectionFailed соединение есть, туннель
-        // поднят, не подтвердился только замер. Это внимание (янтарный), а не
-        // разрыв, поэтому красный здесь запрещён — иначе он обесценится на
-        // настоящей опасности. Проверяем не только «не красный», но и «не
-        // зелёный»: это важнее исходного утверждения, потому что именно тут
-        // раньше можно было случайно показать ложную защиту.
-        val protectionFailed = failedStatus().presentation().accent
-        assertEquals(VpnColors.Amber, protectionFailed)
-        assertNotEquals(VpnColors.Red, protectionFailed, "разрыва нет — красный здесь кричал бы ложно")
-        assertNotEquals(VpnColors.Green, protectionFailed, "замер НЕ подтвердил защиту — зелёный запрещён")
+        // У поднятого туннеля разрыва нет — красный запрещён, иначе он обесценится
+        // на настоящей опасности. Проверяем все три исхода «туннель поднят».
+        listOf(
+            ConnectionStatus.VerifyingProtection,
+            protectedStatus(),
+            failedStatus(),
+        ).forEach {
+            assertNotEquals(
+                VpnColors.Red,
+                it.presentation().accent,
+                "разрыва нет — красный здесь кричал бы ложно ($it)",
+            )
+        }
     }
 
     @Test
     fun `отключённое состояние нейтрально, а не красное`() {
         // Отключился — это не опасность, а покой. Красный обесценился бы.
         assertNotEquals(VpnColors.Red, ConnectionStatus.Disconnected.presentation().accent)
-        assertNotEquals(VpnColors.Green, ConnectionStatus.Disconnected.presentation().accent)
-    }
-
-    @Test
-    fun `сбой пробы и отрицательный замер объясняются по-разному`() {
-        val unavailable = ConnectionStatus.ProtectionFailed(
-            ProtectionVerdict.Failed(ProtectionFailure.ProbeUnavailable),
-        ).presentation()
-        val inconclusive = ConnectionStatus.ProtectionFailed(
-            ProtectionVerdict.Failed(ProtectionFailure.Inconclusive),
-        ).presentation()
-
-        assertNotEquals(
-            unavailable.detail,
-            inconclusive.detail,
-            "«не смогли проверить» и «проверили, и плохо» — разные сообщения",
-        )
     }
 
     @Test
@@ -143,34 +124,12 @@ class StatusPresentationTest {
     }
 
     @Test
-    fun `блок защиты отражает итог замера, а не факт поднятия туннеля`() {
-        // «Проверять нечего» до подключения: туннеля ещё нет, и прочерки
-        // притворялись бы проверкой. Это ключевая честность блока защиты.
-        assertEquals(
-            ProtectionBlockStatus.Unavailable,
-            ConnectionStatus.Disconnected.presentation().protection.status,
-        )
-        // Confirmed выставляется ТОЛЬКО при состоявшемся положительном замере —
-        // тот же инвариант, что и у зелёного цвета.
-        assertEquals(
-            ProtectionBlockStatus.Confirmed,
-            protectedStatus().presentation().protection.status,
-        )
-        // Замер прошёл и НЕ подтвердил: это Failed, а не Checking и не NotChecked.
-        // Если бы тут оказался Checking, пользователь ждал бы результата, которого
-        // уже нет.
-        assertEquals(
-            ProtectionBlockStatus.Failed,
-            failedStatus().presentation().protection.status,
-        )
-    }
-
-    @Test
     fun `текст кнопки соответствует матрице действий`() {
         // Матрица из макета. Проверяем дословно, потому что неверная подпись
         // обещает действие, которого не будет.
         assertEquals("Подключить", ConnectionStatus.Disconnected.presentation().actionLabel)
         assertEquals("Отключить", protectedStatus().presentation().actionLabel)
+        assertEquals("Отключить", ConnectionStatus.VerifyingProtection.presentation().actionLabel)
         assertEquals("Повторить", ConnectionStatus.Failed("нет сети").presentation().actionLabel)
 
         val connecting = ConnectionStatus.Connecting.presentation()

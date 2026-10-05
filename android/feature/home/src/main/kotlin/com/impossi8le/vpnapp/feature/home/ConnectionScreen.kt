@@ -33,7 +33,6 @@ import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.core.ui.VpnGhostButton
 import com.impossi8le.vpnapp.core.ui.VpnNavBar
 import com.impossi8le.vpnapp.core.ui.VpnPrimaryButton
-import com.impossi8le.vpnapp.core.ui.VpnRow
 import com.impossi8le.vpnapp.core.ui.MonoFont
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import androidx.compose.material3.Text
@@ -92,8 +91,14 @@ fun ConnectionScreen(
     updateVersionCode: Int? = null,
     onDownloadUpdate: () -> Unit = {},
     onDismissUpdateBanner: () -> Unit = {},
+    /**
+     * Имя работающего подключения, если известно. Показывается подзаголовком,
+     * когда туннель поднят: пользователь просил видеть, какой конфиг работает.
+     * `null` — имени нет, тогда подзаголовок нейтрален.
+     */
+    runningConfigName: String? = null,
 ) {
-    val presentation = status.presentation()
+    val presentation = status.presentation(runningConfigName)
 
     Column(modifier = modifier.fillMaxSize().background(VpnColors.Void)) {
         // Шапка: заголовок и вход в аккаунт. Кнопка «назад» тут не нужна —
@@ -180,18 +185,6 @@ fun ConnectionScreen(
                 }
             }
 
-            // Блок «Защита»: отвечает на вопрос «а оно правда работает?».
-            // Показывается только когда есть что показать: до подключения
-            // проверять нечего, и блок с прочерками был бы шумом.
-            if (presentation.protection.status != ProtectionBlockStatus.Unavailable) {
-                item {
-                    ProtectionCard(
-                        block = presentation.protection,
-                        onReverify = { onAction(StatusAction.Retry) },
-                    )
-                }
-            }
-
             item {
                 SectionLabel(
                     text = "Подключения",
@@ -269,68 +262,6 @@ fun ConnectionScreen(
                     text = presentation.actionLabel,
                     onClick = { onAction(presentation.action) },
                     testTag = CONNECTION_ACTION_TAG,
-                )
-            }
-        }
-    }
-}
-
-/**
- * Карточка «Защита».
- *
- * Показывает ИТОГ замера и его факты. Итог — не украшение: «проверено» и
- * «не проверено» различаются, и различие видно без цвета.
- */
-@Composable
-private fun ProtectionCard(block: ProtectionBlock, onReverify: () -> Unit) {
-    VpnCard(modifier = Modifier.fillMaxWidth()) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "СОЕДИНЕНИЕ",
-                    color = VpnColors.Ash,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    block.status.label,
-                    color = when (block.status) {
-                        ProtectionBlockStatus.Confirmed -> VpnColors.Green
-                        ProtectionBlockStatus.Failed -> VpnColors.Amber
-                        ProtectionBlockStatus.Checking -> VpnColors.Mist
-                        else -> VpnColors.Ash
-                    },
-                    fontSize = 12.5.sp,
-                    modifier = Modifier.testTag(CONNECTION_PROTECTION_STATUS_TAG),
-                )
-            }
-
-            if (block.server != null) {
-                VpnRow(key = "Сервер", value = block.server, valueMono = true)
-            }
-            if (block.ipv6 != null) {
-                VpnRow(key = "IPv6", value = block.ipv6)
-            }
-            if (block.dns != null) {
-                VpnRow(key = "DNS", value = block.dns)
-            }
-            if (block.killSwitch != null) {
-                VpnRow(key = "Kill switch", value = block.killSwitch)
-            }
-
-            // Перепроверка предлагается только там, где она имеет смысл: замер
-            // провалился. В остальных состояниях это кнопка «ничего не делает».
-            if (block.status == ProtectionBlockStatus.Failed) {
-                VpnGhostButton(
-                    text = "Проверить снова",
-                    onClick = onReverify,
-                    height = 46.dp,
-                    modifier = Modifier.padding(top = 10.dp),
-                    testTag = CONNECTION_REVERIFY_TAG,
                 )
             }
         }
@@ -419,8 +350,6 @@ const val CONNECTION_ACTION_TAG = "connection_action"
 const val CONNECTION_TITLE_TAG = "connection_title"
 const val CONNECTION_DETAIL_TAG = "connection_detail"
 const val CONNECTION_RINGS_TAG = "connection_rings"
-const val CONNECTION_PROTECTION_STATUS_TAG = "connection_protection_status"
-const val CONNECTION_REVERIFY_TAG = "connection_reverify"
 const val CONNECTION_PROGRESS_TAG = "connection_progress"
 const val CONNECTION_SWITCH_WARNING_TAG = "connection_switch_warning"
 const val CONNECTION_NOTICE_TAG = "connection_notice"

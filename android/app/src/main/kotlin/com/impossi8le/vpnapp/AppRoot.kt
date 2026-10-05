@@ -199,6 +199,7 @@ fun AppRoot(
             AppDestination.Connection -> ConnectionScreen(
                 status = state.status,
                 configs = state.configs,
+                runningConfigName = state.runningConfigName,
                 refreshing = state.refreshingConfigs,
                 switchingWarning = state.switchingInProgress,
                 startProgressText = state.startProgressText,
@@ -304,6 +305,15 @@ data class BuildInfo(
 data class AppRootState(
     val status: ConnectionStatus = ConnectionStatus.Disconnected,
     val configs: List<ConfigRowState> = emptyList(),
+    /**
+     * Имя работающего подключения, если известно. Показывается на экране
+     * подключения подзаголовком, когда туннель поднят, — пользователь просил
+     * видеть «какой конфиг работает». `null` — имени нет (профиль не готов или
+     * еще не выбран), тогда подзаголовок нейтрален. Источник — метаданные
+     * установленного профиля (`ConfigManager.currentMeta().configId`),
+     * сопоставленные со списком подключений; заполняет [MainActivity].
+     */
+    val runningConfigName: String? = null,
     /**
      * Данные аккаунта для экрана «Аккаунт». Дефолт — [DefaultAccountScreenState]:
      * до ответа `/me` показывать нечего, а считать тут нечего и подавно.
