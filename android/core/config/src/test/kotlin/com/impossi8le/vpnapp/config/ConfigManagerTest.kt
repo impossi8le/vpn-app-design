@@ -5,6 +5,7 @@ import com.impossi8le.vpnapp.domain.config.ConfigFetchException
 import com.impossi8le.vpnapp.domain.config.ConfigList
 import com.impossi8le.vpnapp.domain.config.ConfigService
 import com.impossi8le.vpnapp.domain.config.FetchedConfig
+import com.impossi8le.vpnapp.domain.config.ProfileMeta
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -51,13 +52,16 @@ class ConfigManagerTest {
         String(raw).contains("client") && String(raw).contains("</ca>")
     }
 
-    private fun manager(config: FetchedConfig? = null, failure: Throwable? = null) =
-        ConfigManager(FakeConfigService(config, failure), store())
+    private fun manager(
+        config: FetchedConfig? = null,
+        failure: Throwable? = null,
+        meta: FakeProfileMetaStore = FakeProfileMetaStore(),
+    ) = ConfigManager(FakeConfigService(config, failure), store(), meta)
 
     @Test
     fun `валидный конфиг применяется`() {
         val fetched = FetchedConfig(raw = valid, version = "v1", hash = sha256(valid))
-        expectApply(manager(fetched), "v0", ApplyResult.Applied)
+        expectApply(manager(fetched), "v0", ApplyResult.Applied("v1"))
         assertNotNull(store().load())
     }
 
@@ -65,7 +69,32 @@ class ConfigManagerTest {
     fun `та же версия пропускается без записи`() {
         val fetched = FetchedConfig(raw = valid, version = "v1", hash = sha256(valid))
         // Версия совпала — писать нечего, даже если бы конфиг отличался.
-        expectApply(manager(fetched), "v1", ApplyResult.AlreadyCurrent)
+        expectApply(manager(fetched), "v1", ApplyResult.AlreadyCurrent("v1"))
+    }
+
+    @Test
+    fun `успешное применение записывает метаданные профиля`() {
+        val metaStore = FakeProfileMetaStore()
+        val fetched = FetchedConfig(raw = valid, version = "v7", hash = sha256(valid))
+        val manager = ConfigManager(FakeConfigService(fetched), store(), metaStore)
+
+        runTest { manager.apply("GEclient94", currentVersion = null, endDateEpochSeconds = 1_000_000L) }
+
+        assertEquals(ProfileMeta("GEclient94", "v7", 1_000_000L), metaStore.load())
+    }
+
+    @Test
+    fun `совпавшая версия всё равно фиксирует срок подписки`() {
+        val metaStore = FakeProfileMetaStore()
+        val fetched = FetchedConfig(raw = valid, version = "v1", hash = sha256(valid))
+        val manager = ConfigManager(FakeConfigService(fetched), store(), metaStore)
+
+        val result = kotlinx.coroutines.runBlocking {
+            manager.apply("GEclient94", currentVersion = "v1", endDateEpochSeconds = 2_000_000L)
+        }
+
+        assertEquals(ApplyResult.AlreadyCurrent("v1"), result)
+        assertEquals(ProfileMeta("GEclient94", "v1", 2_000_000L), metaStore.load())
     }
 
     @Test
@@ -76,7 +105,7 @@ class ConfigManagerTest {
 
         val garbage = "это не конфиг".toByteArray()
         val fetched = FetchedConfig(raw = garbage, version = "v2", hash = sha256(garbage))
-        val manager = ConfigManager(FakeConfigService(fetched), s)
+        val manager = ConfigManager(FakeConfigService(fetched), s, FakeProfileMetaStore())
 
         expectApply(manager, "v1", ApplyResult.Rejected)
         assertEquals(String(valid), String(store().load()!!.raw), "старая версия обязана остаться рабочей")
@@ -87,8 +116,8 @@ class ConfigManagerTest {
         // Контракт §5 разводит эти случаи: «подписка истекла» — состояние экрана,
         // конфиг не трогаем; «нет сети» — предложение повторить. Свести их к
         // одному исходу значит потерять реакцию UI.
-        val expired = ConfigManager(FailingFetchService(ConfigFetchError.SubscriptionExpired), store())
-        val offline = ConfigManager(FailingFetchService(ConfigFetchError.NetworkUnavailable), store())
+        val expired = ConfigManager(FailingFetchService(ConfigFetchError.SubscriptionExpired), store(), FakeProfileMetaStore())
+        val offline = ConfigManager(FailingFetchService(ConfigFetchError.NetworkUnavailable), store(), FakeProfileMetaStore())
 
         assertNotEquals(
             applyOf(expired),
@@ -99,8 +128,8 @@ class ConfigManagerTest {
 
     @Test
     fun `отозванный конфиг отличается от истёкшей подписки`() {
-        val revoked = ConfigManager(FailingFetchService(ConfigFetchError.ConfigRevoked), store())
-        val expired = ConfigManager(FailingFetchService(ConfigFetchError.SubscriptionExpired), store())
+        val revoked = ConfigManager(FailingFetchService(ConfigFetchError.ConfigRevoked), store(), FakeProfileMetaStore())
+        val expired = ConfigManager(FailingFetchService(ConfigFetchError.SubscriptionExpired), store(), FakeProfileMetaStore())
 
         assertNotEquals(applyOf(revoked), applyOf(expired))
     }
@@ -112,7 +141,7 @@ class ConfigManagerTest {
 
         // Недоступная сеть даёт типизированный исход, а не сведение к «конфиг
         // плохой»: экран предложит повторить, а не покажет порчу конфига.
-        val manager = ConfigManager(FailingFetchService(ConfigFetchError.NetworkUnavailable), s)
+        val manager = ConfigManager(FailingFetchService(ConfigFetchError.NetworkUnavailable), s, FakeProfileMetaStore())
         expectApply(manager, null, ApplyResult.FetchFailed(ConfigFetchError.NetworkUnavailable))
 
         assertEquals(
@@ -138,13 +167,13 @@ class ConfigManagerTest {
     fun `отсутствие заголовка хеша не считается ошибкой`() {
         // Сверять нечего — это не повод считать конфиг испорченным.
         val fetched = FetchedConfig(raw = valid, version = "v1", hash = "")
-        expectApply(manager(fetched), null, ApplyResult.Applied)
+        expectApply(manager(fetched), null, ApplyResult.Applied("v1"))
     }
 
     @Test
     fun `хеш сравнивается без учёта регистра`() {
         val fetched = FetchedConfig(raw = valid, version = "v1", hash = sha256(valid).uppercase())
-        expectApply(manager(fetched), null, ApplyResult.Applied)
+        expectApply(manager(fetched), null, ApplyResult.Applied("v1"))
     }
 
     /**
@@ -157,9 +186,10 @@ class ConfigManagerTest {
         manager: ConfigManager,
         currentVersion: String?,
         expected: ApplyResult,
-    ) = runTest { assertEquals(expected, manager.apply("nl-ams-1", currentVersion)) }
+        endDate: Long = 1_000_000L,
+    ) = runTest { assertEquals(expected, manager.apply("nl-ams-1", currentVersion, endDate)) }
 
     /** Результат применения для тестов, сравнивающих исходы между собой. */
     private fun applyOf(manager: ConfigManager): ApplyResult =
-        kotlinx.coroutines.runBlocking { manager.apply("nl-ams-1", null) }
+        kotlinx.coroutines.runBlocking { manager.apply("nl-ams-1", null, 1_000_000L) }
 }

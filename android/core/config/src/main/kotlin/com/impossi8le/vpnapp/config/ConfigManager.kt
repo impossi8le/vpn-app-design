@@ -5,6 +5,8 @@ import com.impossi8le.vpnapp.domain.config.ConfigFetchException
 import com.impossi8le.vpnapp.domain.config.ConfigService
 import com.impossi8le.vpnapp.domain.config.FetchedConfig
 import com.impossi8le.vpnapp.domain.config.Profile
+import com.impossi8le.vpnapp.domain.config.ProfileMeta
+import com.impossi8le.vpnapp.domain.config.ProfileMetaStore
 import com.impossi8le.vpnapp.domain.config.ProfileStore
 import java.security.MessageDigest
 
@@ -14,11 +16,11 @@ import java.security.MessageDigest
  * повод сказать пользователю, что конфиг с сервера повреждён.
  */
 sealed interface ApplyResult {
-    /** Записано и проверено. */
-    data object Applied : ApplyResult
+    /** Записано и проверено. `version` — версия установленного профиля. */
+    data class Applied(val version: String) : ApplyResult
 
     /** Версия совпала с текущей — запись пропущена. */
-    data object AlreadyCurrent : ApplyResult
+    data class AlreadyCurrent(val version: String) : ApplyResult
 
     /** Конфиг не прошёл валидацию; старая версия на месте. */
     data object Rejected : ApplyResult
@@ -54,12 +56,19 @@ sealed interface ApplyResult {
 class ConfigManager(
     private val service: ConfigService,
     private val store: ProfileStore,
+    private val meta: ProfileMetaStore,
 ) {
 
     /**
      * @param currentVersion версия уже установленного конфига, если есть.
+     * @param endDateEpochSeconds срок подписки; фиксируется при любом успехе,
+     *   чтобы клиент решал «пора удалять» по локальным данным.
      */
-    suspend fun apply(configId: String, currentVersion: String?): ApplyResult {
+    suspend fun apply(
+        configId: String,
+        currentVersion: String?,
+        endDateEpochSeconds: Long,
+    ): ApplyResult {
         val result = service.fetchConfig(configId)
         if (result.isFailure) {
             // Причина сохраняется, а не сводится к «конфиг плохой»: экран обязан
@@ -70,9 +79,11 @@ class ConfigManager(
         }
         val fetched = result.getOrThrow()
 
-        // Идемпотентность: та же версия — писать нечего.
+        // Идемпотентность: та же версия — писать нечего. Но метаданные всё равно
+        // фиксируем: срок подписки мог сдвинуться, и по нему решается «пора удалять».
         if (currentVersion != null && currentVersion == fetched.version) {
-            return ApplyResult.AlreadyCurrent
+            meta.save(ProfileMeta(configId, fetched.version, endDateEpochSeconds))
+            return ApplyResult.AlreadyCurrent(fetched.version)
         }
 
         val staged = try {
@@ -91,10 +102,13 @@ class ConfigManager(
             return ApplyResult.HashMismatch
         }
 
-        return ApplyResult.Applied
+        meta.save(ProfileMeta(configId, fetched.version, endDateEpochSeconds))
+        return ApplyResult.Applied(fetched.version)
     }
 
     fun current(): Profile? = store.load()
+
+    fun currentMeta(): ProfileMeta? = meta.load()
 
     /**
      * Сверка хеша.
