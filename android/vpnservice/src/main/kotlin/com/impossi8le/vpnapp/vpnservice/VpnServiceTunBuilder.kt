@@ -89,7 +89,21 @@ class VpnServiceTunBuilder(
         }
         descriptor = pfd
         (service as? VpnTunnelService)?.tunDescriptor = pfd
-        return pfd.fd
+        // ВЛАДЕНИЕ ДЕСКРИПТОРОМ ПЕРЕХОДИТ ЯДРУ, и это не деталь.
+        //
+        // Ядро оборачивает возвращённый fd в свой `unique_fd` и само закрывает
+        // его при разборе туннеля. Если оставить `ParcelFileDescriptor` себе и
+        // закрыть его здесь же (а `closeDescriptor` так и делал), один и тот же
+        // fd закроется ДВАЖДЫ, и `fdsan` обрывает процесс:
+        //   Abort message: 'fdsan: attempted to close file descriptor 173,
+        //   expected to be unowned, actually owned by unique_fd'
+        // Именно это и было нативным SIGABRT при нажатии «Отключить»: падало
+        // приложение, а не гас туннель.
+        //
+        // `detachFd()` снимает владение с нашей стороны: дальше `close()` у
+        // этого `ParcelFileDescriptor` — no-op, а настоящий fd закрывает ядро,
+        // когда сессия завершается.
+        return pfd.detachFd()
     }
 
     override fun persist(): Boolean = true
