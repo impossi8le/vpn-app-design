@@ -39,12 +39,9 @@ import com.impossi8le.vpnapp.core.ui.VpnSwitch
 
 const val ACCOUNT_BACK_TAG = "account_back"
 const val ACCOUNT_REVEAL_ID_TAG = "account_reveal_id"
-const val ACCOUNT_AUTO_CONNECT_TAG = "account_auto_connect"
-const val ACCOUNT_FACE_ID_TAG = "account_face_id"
 const val ACCOUNT_CONFIRM_SWITCH_TAG = "account_confirm_switch"
 const val ACCOUNT_SUPPORT_CHAT_TAG = "account_support_chat"
-const val ACCOUNT_SUPPORT_EMAIL_TAG = "account_support_email"
-const val ACCOUNT_COPY_ERROR_TAG = "account_copy_error"
+const val ACCOUNT_SEND_DIAGNOSTICS_TAG = "account_send_diagnostics"
 const val ACCOUNT_ABOUT_TAG = "account_about"
 const val ACCOUNT_DELETE_TAG = "account_delete"
 const val ACCOUNT_LOGOUT_TAG = "account_logout"
@@ -73,8 +70,6 @@ data class AccountScreenState(
     val expiredConnections: Int,
     val buildExpiryDate: String,
     val subscriptionUntil: String,
-    val autoConnect: Boolean,
-    val askFaceId: Boolean,
     val confirmCountrySwitch: Boolean,
 )
 
@@ -93,12 +88,9 @@ fun AccountScreen(
     appVersion: String,
     onBack: () -> Unit,
     onToggleTelegramId: () -> Unit,
-    onAutoConnectChange: (Boolean) -> Unit,
-    onAskFaceIdChange: (Boolean) -> Unit,
     onConfirmCountrySwitchChange: (Boolean) -> Unit,
     onSupportChat: () -> Unit,
-    onSupportEmail: () -> Unit,
-    onCopyErrorCode: () -> Unit,
+    onSendDiagnostics: () -> Unit,
     onOpenAbout: () -> Unit,
     onDeleteAccount: () -> Unit,
     onSignOut: () -> Unit,
@@ -173,28 +165,6 @@ fun AccountScreen(
         VpnCard {
             Column {
                 VpnRow(
-                    key = "Автоподключение",
-                    sub = "Когда появляется сеть, а VPN выключен",
-                    trailing = {
-                        VpnSwitch(
-                            checked = state.autoConnect,
-                            onCheckedChange = onAutoConnectChange,
-                            testTag = ACCOUNT_AUTO_CONNECT_TAG,
-                        )
-                    },
-                )
-                VpnRow(
-                    key = "Запрашивать Face ID",
-                    sub = "При возврате в приложение",
-                    trailing = {
-                        VpnSwitch(
-                            checked = state.askFaceId,
-                            onCheckedChange = onAskFaceIdChange,
-                            testTag = ACCOUNT_FACE_ID_TAG,
-                        )
-                    },
-                )
-                VpnRow(
                     key = "Подтверждать смену страны",
                     sub = "Показывать предупреждение перед переключением",
                     trailing = {
@@ -214,26 +184,23 @@ fun AccountScreen(
             Column {
                 VpnRow(
                     key = "Техподдержка",
-                    sub = "Чат в Telegram или письмо",
+                    sub = "Чат в Telegram",
                     trailing = { LinkAction("Написать ›", onSupportChat, ACCOUNT_SUPPORT_CHAT_TAG) },
-                )
-                VpnRow(
-                    key = "Нет доступа к Telegram?",
-                    sub = "Напишите на почту поддержки",
-                    trailing = { LinkAction("Почта ›", onSupportEmail, ACCOUNT_SUPPORT_EMAIL_TAG) },
                 )
             }
         }
 
+        // Кнопка не «копирует код», а собирает отчёт и открывает бота: подпись
+        // говорит, что произойдёт, а не как это устроено внутри.
         VpnButton(
-            text = "Скопировать код ошибки",
-            onClick = onCopyErrorCode,
+            text = "Отправить отчёт в поддержку",
+            onClick = onSendDiagnostics,
             role = ButtonRole.Ghost,
-            testTag = ACCOUNT_COPY_ERROR_TAG,
+            testTag = ACCOUNT_SEND_DIAGNOSTICS_TAG,
             modifier = Modifier.padding(top = 12.dp),
         )
         Text(
-            text = "Код не содержит личных данных — вставьте его в чат поддержки.",
+            text = "Отчёт без личных данных — вставится в чат поддержки.",
             color = VpnColors.Ash,
             fontSize = 11.5.sp,
             lineHeight = 17.sp,

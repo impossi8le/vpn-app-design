@@ -1,7 +1,13 @@
 package com.impossi8le.vpnapp
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -30,9 +36,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.impossi8le.vpnapp.config.PrepareResult
 import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
+import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
 import com.impossi8le.vpnapp.feature.account.DefaultAccountScreenState
+import com.impossi8le.vpnapp.feature.account.DiagnosticsInput
+import com.impossi8le.vpnapp.feature.account.buildDiagnostics
 import com.impossi8le.vpnapp.feature.account.toAccountScreenState
+import java.time.Instant
 import com.impossi8le.vpnapp.feature.auth.AuthUiState
 import com.impossi8le.vpnapp.feature.auth.AuthViewModel
 import com.impossi8le.vpnapp.feature.home.ConfigRowState
@@ -60,6 +70,51 @@ import kotlinx.coroutines.launch
  * видит «идёт обновление…» с первого нажатия.
  */
 private const val REFRESH_RETRY_DELAY_MS = 15_000L
+
+/**
+ * Бот поддержки. Единственный канал: почту продукт не заводит, а Telegram —
+ * тот же мессенджер, где выдаётся подписка, поэтому у пользователя он уже есть.
+ *
+ * `https://` (а не `tg://`): так ссылка открывается и в приложении Telegram, и
+ * в браузере, если мессенджер не установлен, — один адрес вместо двух веток.
+ */
+private const val SUPPORT_BOT_URL = "https://t.me/FreeVPNHelp_bot"
+
+/** Файл отчёта в кеше приложения: переживает перезапуск, но чистится системой. */
+private const val DIAGNOSTICS_FILE_NAME = "vpnapp-diagnostics.txt"
+
+/**
+ * Короткая подпись состояния туннеля для отчёта.
+ *
+ * Класс [ConnectionStatus] не печатаем как есть: `Protected(evidence=…)` вытянул
+ * бы содержимое evidence в текст отчёта. Нужна метка, а не дамп объекта. Это же
+ * держит границу приватности — отчёт несёт ровно то, что здесь перечислено.
+ */
+private fun ConnectionStatus.label(): String = when (this) {
+    ConnectionStatus.Disconnected -> "отключено"
+    ConnectionStatus.Connecting -> "подключается"
+    ConnectionStatus.VerifyingProtection -> "проверка защиты"
+    is ConnectionStatus.Protected -> "защищено"
+    is ConnectionStatus.ProtectionFailed -> "защита не подтверждена"
+    is ConnectionStatus.Failed -> "ошибка: $reason"
+}
+
+/**
+ * Открыть бота поддержки в Telegram.
+ *
+ * `FLAG_ACTIVITY_NEW_TASK` обязателен: запускаем с application-контекста, у
+ * которого нет своей задачи, — без флага система бросит исключение.
+ * `runCatching` — потому что Telegram (или любой обработчик ссылки) может
+ * отсутствовать: отсутствие мессенджера не повод ронять клиент VPN.
+ */
+private fun openSupportBot(context: Context) {
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, android.net.Uri.parse(SUPPORT_BOT_URL))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+}
 
 /**
  * Точка входа.
@@ -562,6 +617,52 @@ private fun VpnApp() {
                 // а фальшивый статус защиты запрещён инвариантом §6. Смена
                 // страны меняет только выбор в списке.
                 is AppIntent.SwitchCountry -> selectedConfigId = intent.id
+
+                // «Техподдержка»: открыть бота в Telegram. Telegram может не
+                // стоять — тогда `startActivity` бросит ActivityNotFoundException,
+                // и приложение НЕ должно упасть из-за отсутствия мессенджера.
+                AppIntent.OpenSupportChat -> openSupportBot(context)
+
+                // Отчёт поддержке: собрать текст из неличных данных, положить его
+                // в кеш и в буфер обмена, открыть бота. Файл в кеше и буфер — два
+                // способа донести отчёт до чата: глубокой ссылкой Telegram нельзя
+                // приложить файл, а вставить из буфера можно. Ключевой материал и
+                // содержимое `.ovpn` в отчёт не попадают — см. buildDiagnostics.
+                AppIntent.SendDiagnostics -> {
+                    val runningId = graph.configManager.currentMeta()?.configId
+                    val configId = runningId ?: selectedConfigId
+                    val configName = configs.firstOrNull { it.id == configId }?.name
+                    val report = buildDiagnostics(
+                        DiagnosticsInput(
+                            versionName = BuildConfig.VERSION_NAME,
+                            versionCode = BuildConfig.VERSION_CODE,
+                            gitSha = BuildConfig.GIT_SHA,
+                            androidRelease = Build.VERSION.RELEASE,
+                            deviceModel = Build.MODEL,
+                            tunnelState = status.label(),
+                            configId = configId,
+                            configName = configName,
+                            // Хост/порт сервера не читаем: достать его можно только
+                            // из `.ovpn`, а лезть в файл с приватным ключом ради
+                            // строки отчёта — не та цена. Честное «неизвестно».
+                            serverHostPort = null,
+                            timestampIso = Instant.now().toString(),
+                        ),
+                    )
+                    // Файл и буфер — вспомогательные: их провал не должен мешать
+                    // главному действию — открыть бота.
+                    runCatching {
+                        File(context.cacheDir, DIAGNOSTICS_FILE_NAME).writeText(report)
+                    }
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Отчёт поддержке", report))
+                    Toast.makeText(
+                        context,
+                        "Отчёт скопирован — вставьте в чат поддержки",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    openSupportBot(context)
+                }
 
                 else -> Unit
             }

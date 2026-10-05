@@ -33,8 +33,6 @@ val DefaultAccountScreenState = AccountScreenState(
     expiredConnections = 0,
     buildExpiryDate = SUBSCRIPTION_UNKNOWN,
     subscriptionUntil = SUBSCRIPTION_UNKNOWN,
-    autoConnect = false,
-    askFaceId = false,
     confirmCountrySwitch = true,
 )
 

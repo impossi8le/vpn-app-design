@@ -222,12 +222,9 @@ fun AppRoot(
                 appVersion = state.build.versionName,
                 onBack = { back() },
                 onToggleTelegramId = { onIntent(AppIntent.ToggleTelegramId) },
-                onAutoConnectChange = { onIntent(AppIntent.SetAutoConnect(it)) },
-                onAskFaceIdChange = { onIntent(AppIntent.SetAskFaceId(it)) },
                 onConfirmCountrySwitchChange = { onIntent(AppIntent.SetConfirmCountrySwitch(it)) },
                 onSupportChat = { onIntent(AppIntent.OpenSupportChat) },
-                onSupportEmail = { onIntent(AppIntent.OpenSupportEmail) },
-                onCopyErrorCode = { onIntent(AppIntent.CopyErrorCode) },
+                onSendDiagnostics = { onIntent(AppIntent.SendDiagnostics) },
                 onOpenAbout = {
                     go(AppDestination.About)
                 },
@@ -424,10 +421,16 @@ sealed interface AppIntent {
     data object SwitchTelegram : AppIntent
     data object ToggleTelegramId : AppIntent
     data object OpenSupportChat : AppIntent
-    data object OpenSupportEmail : AppIntent
     data object OpenPrivacyPolicy : AppIntent
     data object OpenTerms : AppIntent
-    data object CopyErrorCode : AppIntent
+    /**
+     * Собрать отчёт поддержке, скопировать его и открыть бота.
+     *
+     * Раньше звался `CopyErrorCode` и не был реализован вовсе — кнопка молчала.
+     * Новое имя отражает, что действие делает с отчётом, а не откуда взялось
+     * прежнее.
+     */
+    data object SendDiagnostics : AppIntent
     data object DeleteAccount : AppIntent
     data object SignOut : AppIntent
 
@@ -437,8 +440,6 @@ sealed interface AppIntent {
     data class ConnectionAction(val action: StatusAction) : AppIntent
     data class SelectConfig(val id: String) : AppIntent
     data class SwitchCountry(val id: String) : AppIntent
-    data class SetAutoConnect(val enabled: Boolean) : AppIntent
-    data class SetAskFaceId(val enabled: Boolean) : AppIntent
     data class SetConfirmCountrySwitch(val enabled: Boolean) : AppIntent
     data class SelectDemoConfig(val config: DemoConfig) : AppIntent
 }

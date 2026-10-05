@@ -87,8 +87,6 @@ class AccountMappingTest {
             telegramId = "123456",
             telegramIdRevealed = true,
             buildExpiryDate = "29.12.2026",
-            autoConnect = true,
-            askFaceId = true,
             confirmCountrySwitch = false,
         )
 
@@ -98,8 +96,6 @@ class AccountMappingTest {
         assertEquals("123456", state.telegramId)
         assertEquals(true, state.telegramIdRevealed)
         assertEquals("29.12.2026", state.buildExpiryDate)
-        assertEquals(true, state.autoConnect)
-        assertEquals(true, state.askFaceId)
         assertEquals(false, state.confirmCountrySwitch)
     }
 }
