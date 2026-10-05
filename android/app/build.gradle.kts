@@ -93,6 +93,13 @@ dependencies {
     implementation(project(":vpnservice"))
     implementation(project(":vpnengine"))
 
+    // ApiClient/AuthApi/ConfigApi expose OkHttpClient и Json в ПУБЛИЧНЫХ
+    // сигнатурах (значения по умолчанию в конструкторах), а core:network держит
+    // их как `implementation`. Без этих строк `AppGraph` не скомпилируется:
+    // компилятору нужны типы из сигнатур, а не только используемые внутри.
+    implementation(libs.okhttp)
+    implementation(libs.serialization.json)
+
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
