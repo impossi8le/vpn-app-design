@@ -246,6 +246,10 @@ private fun VpnApp() {
             loginError = (authState as? AuthUiState.Failed)?.reason,
             signedIn = authState is AuthUiState.SignedIn,
             signedOut = signedOut,
+            // Демонстрационный проход — только в отладочной сборке. В release
+            // `BuildConfig.DEBUG` == false, и кнопки на экране ожидания нет.
+            // BuildConfig лежит в этом же пакете, отдельный импорт не нужен.
+            showDemoButton = BuildConfig.DEBUG,
         ),
         onIntent = { intent ->
             when (intent) {

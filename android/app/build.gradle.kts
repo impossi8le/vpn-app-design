@@ -32,7 +32,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        // buildConfig нужен ради BuildConfig.DEBUG: демонстрационный проход
+        // показываем ТОЛЬКО в debug-сборке, в release кнопки быть не должно.
+        buildConfig = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

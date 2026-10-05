@@ -291,9 +291,11 @@ data class AppRootState(
     /**
      * Показывать ли демонстрационный проход мимо входа.
      *
-     * Пока `true` — поведение прежнее. Гейт по debug-сборке ставит Task 11.
+     * По умолчанию `false` — безопасная сторона: кнопка не появится, пока её
+     * явно не включат. Включает её [MainActivity] по `BuildConfig.DEBUG`, так
+     * что в release демонстрационного прохода нет.
      */
-    val showDemoButton: Boolean = true,
+    val showDemoButton: Boolean = false,
     val switchingInProgress: Boolean = false,
     val startProgressText: String? = null,
     /**
