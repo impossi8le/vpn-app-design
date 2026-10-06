@@ -5,7 +5,7 @@ package com.impossi8le.vpnapp
  *
  * Экраны восходят к `docs/design/mockup.html` (исходный макет, 18 состояний,
  * ныне помечен устаревшим — актуальная спека в
- * `docs/design/2026-10-06-implemented-ui-spec.md`). Здесь их одиннадцать,
+ * `docs/design/2026-10-06-implemented-ui-spec.md`). Здесь их десять,
  * включая отказные. Отказные здесь так же важны, как рабочие: без них
  * пользователь упирается в тупик, и именно такие тупики находились на ревью
  * макета (после «Не разрешать» приложение молчало, а системный диалог больше не
@@ -51,9 +51,6 @@ sealed interface AppDestination {
 
     /** Как включить VPN вручную, если в разрешении отказали. */
     data object HowToEnableVpn : AppDestination
-
-    /** Подробнее о сборке: она перестанет работать в указанную дату. */
-    data object BuildExpiry : AppDestination
 
     /** О сервисе. */
     data object About : AppDestination

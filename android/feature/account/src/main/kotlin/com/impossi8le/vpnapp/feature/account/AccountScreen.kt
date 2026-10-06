@@ -68,7 +68,6 @@ data class AccountScreenState(
     val activeConnections: Int,
     val totalConnections: Int,
     val expiredConnections: Int,
-    val buildExpiryDate: String,
     val subscriptionUntil: String,
     val confirmCountrySwitch: Boolean,
 )
@@ -139,17 +138,10 @@ fun AccountScreen(
                 )
                 VpnRow(
                     key = "Версия приложения",
-                    // На Android сборок TestFlight нет: там сборка живёт 90 дней и
-                    // гасится Apple. Здесь тот же смысл — срок жизни тестовой сборки,
-                    // поэтому подпись говорит о тестировании, а не о чужом канале.
+                    // Подпись говорит о том, что это тестовая сборка, а не о
+                    // чужом канале: на Android сборок TestFlight нет.
                     sub = "Сборка для тестирования",
                     value = appVersion,
-                    valueMono = true,
-                )
-                VpnRow(
-                    key = "Перестанет работать",
-                    sub = "Обновите по ссылке из бота",
-                    value = state.buildExpiryDate,
                     valueMono = true,
                 )
                 VpnRow(

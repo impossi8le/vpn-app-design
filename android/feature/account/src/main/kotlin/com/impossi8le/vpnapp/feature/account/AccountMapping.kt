@@ -31,7 +31,6 @@ val DefaultAccountScreenState = AccountScreenState(
     activeConnections = 0,
     totalConnections = 0,
     expiredConnections = 0,
-    buildExpiryDate = SUBSCRIPTION_UNKNOWN,
     subscriptionUntil = SUBSCRIPTION_UNKNOWN,
     confirmCountrySwitch = true,
 )
@@ -52,8 +51,8 @@ val DefaultAccountScreenState = AccountScreenState(
  * только действующими подключениями, и строка «N истекли» должна говорить
  * правду о том, что не работает.
  *
- * @param base состояние, чьи поля о функции не знают (Telegram ID, тумблеры,
- *   срок сборки): они переносятся как есть.
+ * @param base состояние, чьи поля о функции не знают (Telegram ID, тумблеры):
+ *   они переносятся как есть.
  */
 fun ConfigList.toAccountScreenState(base: AccountScreenState): AccountScreenState = base.copy(
     activeConnections = configs.count { it.status == SubscriptionStatus.ACTIVE },

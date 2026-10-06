@@ -219,9 +219,9 @@ gh run watch
 
 ## Экраны
 
-**Экранов (маршрутов) в коде — 11** (`AppDestination.kt`: Startup, Login,
+**Экранов (маршрутов) в коде — 10** (`AppDestination.kt`: Startup, Login,
 LoginWaiting, Connection, Account, NoSubscription, AccessRevoked, HowToEnableVpn,
-BuildExpiry, About, Demo). Один из них, Connection, покрывает восемь состояний
+About, Demo). Один из них, Connection, покрывает восемь состояний
 подключения. Число «восемнадцать» из `docs/design/mockup.html` описывает исходный
 макет, который **помечен устаревшим** — актуальная спека того, что реализовано,
 лежит в `docs/design/2026-10-06-implemented-ui-spec.md`.

@@ -292,7 +292,7 @@ fun AboutScreen(
 
 В `AppRoot.kt` в `AppRootState` убрать поле `appVersion` из тела `AccountScreenState(...)` — версия теперь только в `build`, чтобы не было двух источников истины. Убрать и из `AccountScreenState` в `AccountScreen.kt`:
 
-В `android/feature/account/src/main/kotlin/com/impossi8le/vpnapp/feature/account/AccountScreen.kt` удалить строку `val appVersion: String,` из `AccountScreenState` и строку `value = state.appVersion,` из разметки карточки аккаунта. В `AppRoot.kt` в дефолте `AppRootState` удалить строку `appVersion = "1.0.0",`. Поле `buildExpiryDate` не трогать — оно про другую дату.
+В `android/feature/account/src/main/kotlin/com/impossi8le/vpnapp/feature/account/AccountScreen.kt` удалить строку `val appVersion: String,` из `AccountScreenState` и строку `value = state.appVersion,` из разметки карточки аккаунта. В `AppRoot.kt` в дефолте `AppRootState` удалить строку `appVersion = "1.0.0",`. Поле с датой срока жизни сборки не трогать — оно про другую дату. (Позже, 2026-10-06, это поле удалено вместе с обещанием: у даты не было механизма.)
 
 - [ ] **Step 7: Собрать и проверить, что компилируется**
 

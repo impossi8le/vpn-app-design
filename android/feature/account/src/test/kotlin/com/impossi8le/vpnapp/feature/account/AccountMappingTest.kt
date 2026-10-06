@@ -93,7 +93,6 @@ class AccountMappingTest {
         val base = DefaultAccountScreenState.copy(
             telegramId = "123456",
             telegramIdRevealed = true,
-            buildExpiryDate = "29.12.2026",
             confirmCountrySwitch = false,
         )
 
@@ -102,7 +101,6 @@ class AccountMappingTest {
         // Функция не знает про эти поля и не имеет права их менять.
         assertEquals("123456", state.telegramId)
         assertEquals(true, state.telegramIdRevealed)
-        assertEquals("29.12.2026", state.buildExpiryDate)
         assertEquals(false, state.confirmCountrySwitch)
     }
 

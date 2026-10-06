@@ -18,7 +18,6 @@ import com.impossi8le.vpnapp.feature.account.ForceUpdateScreen
 import com.impossi8le.vpnapp.feature.account.AccessRevokedScreen
 import com.impossi8le.vpnapp.feature.account.AccountScreen
 import com.impossi8le.vpnapp.feature.account.AccountScreenState
-import com.impossi8le.vpnapp.feature.account.BuildExpiryScreen
 import com.impossi8le.vpnapp.feature.account.DefaultAccountScreenState
 import com.impossi8le.vpnapp.feature.account.DemoConfig
 import com.impossi8le.vpnapp.feature.account.DemoScreen
@@ -271,12 +270,6 @@ fun AppRoot(
                 // не сообщает о включении VPN в настройках, узнать можно только
                 // повторной проверкой.
                 onRecheck = { onIntent(AppIntent.RecheckVpnPermission) },
-            )
-
-            AppDestination.BuildExpiry -> BuildExpiryScreen(
-                expiryDate = state.account.buildExpiryDate,
-                onBack = { back() },
-                onHowToUpdate = { onIntent(AppIntent.OpenDownloadPage) },
             )
 
             AppDestination.About -> AboutScreen(
