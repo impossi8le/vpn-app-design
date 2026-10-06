@@ -157,7 +157,10 @@ class VpnTunnelService : VpnService() {
         // Отдельно: тип сервиса в манифесте — `specialUse`, а не `dataSync`.
         // `dataSync` для VPN запрещён: Android 14 обрывает такие сервисы через
         // шесть часов, а туннель должен жить дольше.
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification(notificationTextFor(SystemState.CONNECTING) ?: "Подключение…"),
+        )
 
         notifyState(SystemState.CONNECTING)
         connectCancelled = false
@@ -263,6 +266,21 @@ class VpnTunnelService : VpnService() {
                 .setPackage(packageName)
                 .putExtra(EXTRA_STATE, state.name),
         )
+        updateNotification(state)
+    }
+
+    /**
+     * Привести уведомление в соответствие с состоянием.
+     *
+     * `startForeground` вызывается один раз при старте, и без этого обновления
+     * в шторке навсегда остался бы стартовый текст. В покое уведомление не
+     * снимаем через `cancel` — его снимает `stopForeground` при остановке
+     * сервиса; здесь достаточно не перерисовывать его текстом «подключено».
+     */
+    private fun updateNotification(state: SystemState) {
+        val text = notificationTextFor(state) ?: return
+        val manager = getSystemService(NotificationManager::class.java)
+        manager?.notify(NOTIFICATION_ID, buildNotification(text))
     }
 
     private fun notifyNetworkChanged() {
@@ -296,7 +314,7 @@ class VpnTunnelService : VpnService() {
      * экране блокировки, и в нём не должно быть того, что пользователь не готов
      * показывать.
      */
-    private fun buildNotification(): android.app.Notification {
+    private fun buildNotification(text: String): android.app.Notification {
         val channelId = NOTIFICATION_CHANNEL_ID
         val manager = getSystemService(NotificationManager::class.java)
         if (manager?.getNotificationChannel(channelId) == null) {
@@ -313,7 +331,7 @@ class VpnTunnelService : VpnService() {
 
         return android.app.Notification.Builder(this, channelId)
             .setContentTitle("VPN")
-            .setContentText("Туннель поднимается")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
             .build()
