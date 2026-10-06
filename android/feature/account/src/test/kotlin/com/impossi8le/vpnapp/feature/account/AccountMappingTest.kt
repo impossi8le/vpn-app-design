@@ -30,6 +30,13 @@ class AccountMappingTest {
         status = status,
     )
 
+    private fun emptyConfigList() = ConfigList(
+        chatId = 1L,
+        configs = emptyList(),
+        connectionsLimit = 0,
+        subscriptionUntilEpochSeconds = null,
+    )
+
     @Test
     fun `из me наполняются счётчики и срок подписки`() {
         val until = Instant.parse("2026-11-01T12:45:56Z").epochSecond
@@ -97,5 +104,17 @@ class AccountMappingTest {
         assertEquals(true, state.telegramIdRevealed)
         assertEquals("29.12.2026", state.buildExpiryDate)
         assertEquals(false, state.confirmCountrySwitch)
+    }
+
+    @Test
+    fun `загрузка me не сбрасывает раскрытие id`() {
+        // `toAccountScreenState` переносит поля, которых не знает, из `base`.
+        // Раскрытие — именно такое поле: пользователь нажал «Показать», пришёл
+        // ответ `/me`, и маска не должна вернуться сама.
+        val base = DefaultAccountScreenState.copy(telegramIdRevealed = true)
+
+        val after = emptyConfigList().toAccountScreenState(base)
+
+        assertEquals(true, after.telegramIdRevealed)
     }
 }

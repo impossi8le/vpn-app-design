@@ -705,6 +705,9 @@ private fun VpnApp() {
                     graph.signOut()
                     authViewModel.signOut()
                     signedOut = true
+                    // Раскрытие ID — про конкретную сессию: на экране входа
+                    // чужого аккаунта маска обязана вернуться сама.
+                    account = account.copy(telegramIdRevealed = false)
                 }
 
                 // AppRoot уже вернул на вход — снимаем признак, чтобы следующий
@@ -770,6 +773,14 @@ private fun VpnApp() {
                     confirmCountrySwitch = intent.enabled
                     graph.settings.confirmCountrySwitch = intent.enabled
                 }
+
+                // «Показать/Скрыть» Telegram ID в аккаунте. Интент объявлялся и
+                // пробрасывался из экрана, но ветки не было — нажатие молча
+                // уходило в `else -> Unit`. Раскрытие живёт в состоянии
+                // приложения, а не в маппинге: оно про действие пользователя, а
+                // не про ответ сервера.
+                AppIntent.ToggleTelegramId ->
+                    account = account.copy(telegramIdRevealed = !account.telegramIdRevealed)
 
                 // «Техподдержка»: открыть бота в Telegram. Telegram может не
                 // стоять — тогда `startActivity` бросит ActivityNotFoundException,
