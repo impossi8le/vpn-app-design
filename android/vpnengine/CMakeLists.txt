@@ -128,3 +128,16 @@ target_include_directories(ovpn3 PRIVATE
     ${OPENVPN3_DIR}
     ${OPENVPN3_DIR}/client
 )
+
+# Выравнивание сегментов под 16 КБ — требование Android 15+ для 64-битных
+# библиотек (страницы памяти 16 КБ). Без него система грузит .so через
+# совместимость, а на Android 16 предупреждает при установке APK: «сегмент LOAD
+# не выровнен». NDK 27 выравнивает 16 КБ только при явном флаге — с r28 это
+# поведение по умолчанию, но у нас пришпилен r27.
+#
+# Условие по ANDROID_ABI обязательно: флаг осмыслен лишь для 64-битных целей, а
+# CMakeLists общий для всех ABI, и на 32-битной сборке он либо бессмыслен, либо
+# ломает линковку.
+if(ANDROID_ABI STREQUAL "arm64-v8a" OR ANDROID_ABI STREQUAL "x86_64")
+    target_link_options(ovpn3 PRIVATE "-Wl,-z,max-page-size=16384")
+endif()
