@@ -10,9 +10,12 @@ import com.impossi8le.vpnapp.domain.config.ProfileMetaStore
 import com.impossi8le.vpnapp.domain.config.ProfileStore
 import com.impossi8le.vpnapp.domain.settings.AppSettingsStore
 import com.impossi8le.vpnapp.domain.tunnel.TunnelControlling
+import com.impossi8le.vpnapp.domain.update.FallbackUpdateService
+import com.impossi8le.vpnapp.domain.update.UpdateService
 import com.impossi8le.vpnapp.network.ApiClient
 import com.impossi8le.vpnapp.network.AuthApi
 import com.impossi8le.vpnapp.network.ConfigApi
+import com.impossi8le.vpnapp.network.ServerUpdateApi
 import com.impossi8le.vpnapp.network.UpdateApi
 import com.impossi8le.vpnapp.security.AndroidSecureBackend
 import com.impossi8le.vpnapp.security.SessionStoreImpl
@@ -40,10 +43,16 @@ class AppGraph(
     val configApi = ConfigApi(apiClient)
 
     /**
-     * Источник сведений о новой версии. Внешний — публичный релиз GitHub, а не
-     * бэкенд: серверу сознательно нечего знать о сборках клиента (§10.3).
+     * Источник сведений о новой версии: наш сервер, а GitHub — запасной.
+     *
+     * Сервер первый, потому что `api.github.com` в РФ бывает недоступен, а
+     * обновление не должно зависеть от чужого домена. GitHub оставлен до тех
+     * пор, пока серверные эндпоинты не проверены на устройстве (`docs/api/`).
      */
-    val updateApi = UpdateApi(apiClient)
+    val updateApi: UpdateService = FallbackUpdateService(
+        primary = ServerUpdateApi(apiClient),
+        fallback = UpdateApi(apiClient),
+    )
 
     val sessionStore: SessionStore = SessionStoreImpl(AndroidSecureBackend(context))
 
