@@ -1,7 +1,9 @@
 package com.impossi8le.vpnapp.domain.update
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -53,11 +55,26 @@ class FallbackUpdateServiceTest {
     @Test
     fun `оба отказали — отказ`() = runTest {
         val primary = service(Result.failure(UpdateException(UpdateError.NetworkUnavailable)), null)
-        val fallback = service(Result.failure(UpdateException(UpdateError.NetworkUnavailable)), null)
+        val fallback = service(Result.failure(UpdateException(UpdateError.Unexpected(500))), null)
 
         val result = FallbackUpdateService(primary, fallback).latestRelease()
 
         assertTrue(result.isFailure)
+        val error = (result.exceptionOrNull() as UpdateException).error
+        assertEquals(UpdateError.NetworkUnavailable, error, "при отказе обоих отдаём ошибку основного источника")
+    }
+
+    @Test
+    fun `отмена запасного пробрасывается, а не превращается в Result failure`() {
+        val primary = service(Result.failure(UpdateException(UpdateError.NetworkUnavailable)), null)
+        val fallback = object : UpdateService {
+            override suspend fun latestRelease(): Result<ReleaseInfo> = throw CancellationException("отмена")
+            override suspend fun minSupported(): Int? = null
+        }
+
+        assertThrows(CancellationException::class.java) {
+            kotlinx.coroutines.runBlocking { FallbackUpdateService(primary, fallback).latestRelease() }
+        }
     }
 
     @Test
