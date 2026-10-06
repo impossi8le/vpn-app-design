@@ -33,7 +33,6 @@ class LoginWaitingScreenTest {
     ) {
         compose.setContent {
             LoginWaitingScreen(
-                remainingLabel = "4:59",
                 signingIn = signingIn,
                 errorText = errorText,
                 onSubmitNonce = onSubmitNonce,

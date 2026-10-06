@@ -193,7 +193,6 @@ fun AppRoot(
             )
 
             AppDestination.LoginWaiting -> LoginWaitingScreen(
-                remainingLabel = state.loginRemainingLabel,
                 signingIn = state.signingIn,
                 errorText = state.loginError,
                 onSubmitNonce = { nonce -> onIntent(AppIntent.SubmitNonce(nonce)) },
@@ -395,7 +394,6 @@ data class AppRootState(
     val updateMessage: String? = null,
     /** Баннер обновления закрыт пользователем. */
     val updateBannerDismissed: Boolean = false,
-    val loginRemainingLabel: String = "5:00",
     /** Идёт проверка введённого кода: кнопка подтверждения занята. */
     val signingIn: Boolean = false,
     /** Текст ошибки входа, показываемый под полем кода. `null` — ошибки нет. */

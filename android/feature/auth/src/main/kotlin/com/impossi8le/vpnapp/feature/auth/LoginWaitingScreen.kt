@@ -77,15 +77,6 @@ internal fun formatCountdown(seconds: Int): String {
  */
 @Composable
 fun LoginWaitingScreen(
-    /**
-     * Начальная подпись отсчёта — запасное значение на случай, когда живой
-     * таймер экрану недоступен. Сейчас не читается: цифры считает сам экран и
-     * показывает их в [LOGIN_WAITING_COUNTDOWN_TAG]. Параметр сохранён, чтобы не
-     * менять вызывающую сторону ради косметики и чтобы место для настоящего
-     * срока из челленджа осталось.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    remainingLabel: String,
     signingIn: Boolean,
     errorText: String?,
     onSubmitNonce: (String) -> Unit,
