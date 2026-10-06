@@ -84,6 +84,16 @@ private const val REFRESH_RETRY_DELAY_MS = 15_000L
  */
 private const val SUPPORT_BOT_URL = "https://t.me/FreeVPNHelp_bot"
 
+/**
+ * Страница загрузки приложения — человекочитаемый адрес, а не прямая ссылка на
+ * файл. Пользователь должен видеть, что качает и какой версии, а не получать
+ * APK из ссылки, которая выглядит как фишинг.
+ *
+ * Домен согласует владелец (см. `docs/superpowers/specs/2026-10-06-apk-distribution-and-install-design.md`);
+ * пока используется существующий хост сервиса.
+ */
+private const val DOWNLOAD_PAGE_URL = "https://194-87-252-181.sslip.io/app"
+
 /** Файл отчёта в кеше приложения: переживает перезапуск, но чистится системой. */
 private const val DIAGNOSTICS_FILE_NAME = "vpnapp-diagnostics.txt"
 
@@ -115,6 +125,16 @@ private fun openSupportBot(context: Context) {
     runCatching {
         context.startActivity(
             Intent(Intent.ACTION_VIEW, android.net.Uri.parse(SUPPORT_BOT_URL))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+}
+
+/** Открыть страницу загрузки в браузере. Браузера может не быть — не роняем. */
+private fun openDownloadPage(context: Context) {
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, android.net.Uri.parse(DOWNLOAD_PAGE_URL))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
@@ -786,6 +806,8 @@ private fun VpnApp() {
                 // стоять — тогда `startActivity` бросит ActivityNotFoundException,
                 // и приложение НЕ должно упасть из-за отсутствия мессенджера.
                 AppIntent.OpenSupportChat -> openSupportBot(context)
+
+                AppIntent.OpenDownloadPage -> openDownloadPage(context)
 
                 // Отчёт поддержке: собрать текст из неличных данных, положить его
                 // в кеш и в буфер обмена, открыть бота. Файл в кеше и буфер — два

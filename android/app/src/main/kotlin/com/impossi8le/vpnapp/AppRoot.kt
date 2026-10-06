@@ -274,7 +274,7 @@ fun AppRoot(
             AppDestination.BuildExpiry -> BuildExpiryScreen(
                 expiryDate = state.account.buildExpiryDate,
                 onBack = { back() },
-                onHowToUpdate = { onIntent(AppIntent.OpenSupportChat) },
+                onHowToUpdate = { onIntent(AppIntent.OpenDownloadPage) },
             )
 
             AppDestination.About -> AboutScreen(
@@ -441,6 +441,9 @@ sealed interface AppIntent {
     data object SwitchTelegram : AppIntent
     data object ToggleTelegramId : AppIntent
     data object OpenSupportChat : AppIntent
+
+    /** Открыть страницу загрузки: там версия, APK и как пройти Play Protect. */
+    data object OpenDownloadPage : AppIntent
     data object OpenPrivacyPolicy : AppIntent
     data object OpenTerms : AppIntent
     /**
