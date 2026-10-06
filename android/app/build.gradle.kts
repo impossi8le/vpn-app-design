@@ -103,6 +103,7 @@ dependencies {
     implementation(project(":feature:home"))
     implementation(project(":feature:configs"))
     implementation(project(":feature:account"))
+    implementation(project(":feature:bypass"))
     implementation(project(":vpnservice"))
     implementation(project(":vpnengine"))
 

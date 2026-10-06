@@ -47,6 +47,7 @@ import com.impossi8le.vpnapp.feature.account.toAccountScreenState
 import java.time.Instant
 import com.impossi8le.vpnapp.feature.auth.AuthUiState
 import com.impossi8le.vpnapp.feature.auth.AuthViewModel
+import com.impossi8le.vpnapp.feature.bypass.BypassViewModel
 import com.impossi8le.vpnapp.feature.home.ConfigRowState
 import com.impossi8le.vpnapp.feature.home.ConfigRowStatus
 import com.impossi8le.vpnapp.feature.home.StatusAction
@@ -293,6 +294,15 @@ private fun VpnApp() {
         AuthViewModel(graph.authApi, graph.sessionStore, android.os.Build.MODEL)
     }
     val authState by authViewModel.state.collectAsState()
+
+    // `bypassSupported` нужен экрану «Обходы» так же, как главному: на API < 33
+    // `excludeRoute` не существует, и список обходов там записан, но не применён.
+    // Считаем один раз и передаём в конструктор, чтобы ViewModel не трогала
+    // `Build` и оставалась тестируемой подстановкой флага.
+    val bypassViewModel: BypassViewModel = viewModel {
+        BypassViewModel(graph.bypassControl, supported = Build.VERSION.SDK_INT >= 33)
+    }
+    val bypassState by bypassViewModel.state.collectAsState()
 
     val status by viewModel.status.collectAsState()
     val scope = rememberCoroutineScope()
@@ -800,6 +810,10 @@ private fun VpnApp() {
             // задуман, но не применён»: применённое число на API < 33 всегда 0,
             // и намерение приходится везти отдельным входом.
             bypassConfigured = bypassConfigured,
+            // Экран «Обходы»: каталог РФ-сервисов, поиск, свой обход. Источник —
+            // BypassViewModel, который сам берёт данные из сети; здесь только
+            // передаём состояние вниз.
+            bypass = bypassState,
             // Данные экрана «Аккаунт»: заполняются из `/me` в loadConfigs. Здесь —
             // то, что успело прийти (или умолчание, если ответа ещё нет).
             account = account,
@@ -1095,6 +1109,22 @@ private fun VpnApp() {
                     ).show()
                     openSupportBot(context)
                 }
+
+                // Экран «Обходы» открыт: подтянуть каталог РФ-сервисов и текущий
+                // список. Загрузка идёт в ViewModel; к туннелю не привязана.
+                AppIntent.OpenBypass -> bypassViewModel.start()
+
+                AppIntent.BypassAllServices -> bypassViewModel.bypassAll()
+
+                is AppIntent.BypassQuery -> bypassViewModel.onQueryChange(intent.query)
+
+                is AppIntent.BypassToggle -> bypassViewModel.toggleExpanded(intent.key)
+
+                is AppIntent.BypassCustomInput -> bypassViewModel.onCustomInputChange(intent.text)
+
+                AppIntent.BypassAddCustom -> bypassViewModel.addCustom()
+
+                is AppIntent.BypassRemove -> bypassViewModel.remove(intent.route)
 
                 else -> Unit
             }

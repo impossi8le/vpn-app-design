@@ -25,6 +25,9 @@ import com.impossi8le.vpnapp.feature.account.HowToEnableVpnScreen
 import com.impossi8le.vpnapp.feature.account.NoSubscriptionScreen
 import com.impossi8le.vpnapp.feature.auth.LoginScreen
 import com.impossi8le.vpnapp.feature.auth.LoginWaitingScreen
+import com.impossi8le.vpnapp.feature.bypass.BypassScreen
+import com.impossi8le.vpnapp.feature.bypass.BypassUiState
+import com.impossi8le.vpnapp.domain.tunnel.BypassRoute
 import com.impossi8le.vpnapp.feature.home.ConfigRowState
 import com.impossi8le.vpnapp.feature.home.ConfigRowStatus
 import com.impossi8le.vpnapp.feature.home.ConnectionScreen
@@ -232,6 +235,10 @@ fun AppRoot(
                 onOpenAccount = {
                     go(AppDestination.Account)
                 },
+                onOpenBypass = {
+                    onIntent(AppIntent.OpenBypass)
+                    go(AppDestination.Bypass)
+                },
                 onRefreshConfigs = { onIntent(AppIntent.RefreshConfigs) },
                 onSelectConfig = { id -> onIntent(AppIntent.SelectConfig(id)) },
                 onSwitchCountry = { id -> onIntent(AppIntent.SwitchCountry(id)) },
@@ -240,6 +247,17 @@ fun AppRoot(
                 updateProgress = state.updateProgress,
                 onDownloadUpdate = { onIntent(AppIntent.DownloadUpdate) },
                 onDismissUpdateBanner = { onIntent(AppIntent.DismissUpdateBanner) },
+            )
+
+            AppDestination.Bypass -> BypassScreen(
+                state = state.bypass,
+                onBack = { back() },
+                onBypassAll = { onIntent(AppIntent.BypassAllServices) },
+                onQueryChange = { onIntent(AppIntent.BypassQuery(it)) },
+                onToggleExpanded = { onIntent(AppIntent.BypassToggle(it)) },
+                onCustomInputChange = { onIntent(AppIntent.BypassCustomInput(it)) },
+                onAddCustom = { onIntent(AppIntent.BypassAddCustom) },
+                onRemove = { route -> onIntent(AppIntent.BypassRemove(route)) },
             )
 
             AppDestination.Account -> AccountScreen(
@@ -365,6 +383,15 @@ data class AppRootState(
      * упоминает обход, а не обещает его.
      */
     val bypassConfigured: Boolean = false,
+    /**
+     * Состояние экрана «Обходы»: список РФ-сервисов, поиск, свой обход.
+     *
+     * Источник — [com.impossi8le.vpnapp.feature.bypass.BypassUiState], который
+     * держит BypassViewModel. Класть сюда, а не собирать в разметке: экрану
+     * «Обходы» нужен и каталог (из сети), и флаг «применяет ли это устройство
+     * обходы» — последнее приходит снаружи, как и `bypassSupported` выше.
+     */
+    val bypass: BypassUiState = BypassUiState(),
     /**
      * Данные аккаунта для экрана «Аккаунт». Дефолт — [DefaultAccountScreenState]:
      * до ответа `/me` показывать нечего, а считать тут нечего и подавно.
@@ -508,4 +535,25 @@ sealed interface AppIntent {
     data class SwitchCountry(val id: String) : AppIntent
     data class SetConfirmCountrySwitch(val enabled: Boolean) : AppIntent
     data class SelectDemoConfig(val config: DemoConfig) : AppIntent
+
+    /** Экран «Обходы» открыт: подтянуть каталог и текущий список. */
+    data object OpenBypass : AppIntent
+
+    /** «Обойти все РФ сервисы». */
+    data object BypassAllServices : AppIntent
+
+    /** Текст поиска в каталоге РФ-сервисов. */
+    data class BypassQuery(val query: String) : AppIntent
+
+    /** Развернуть/свернуть домены сервиса. */
+    data class BypassToggle(val key: String) : AppIntent
+
+    /** Текст поля «свой обход». */
+    data class BypassCustomInput(val text: String) : AppIntent
+
+    /** Добавить свой обход по введённому адресу. */
+    data object BypassAddCustom : AppIntent
+
+    /** Удалить подсеть из списка обходов. */
+    data class BypassRemove(val route: BypassRoute) : AppIntent
 }

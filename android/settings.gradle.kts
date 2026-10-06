@@ -38,6 +38,7 @@ include(":feature:auth")
 include(":feature:home")
 include(":feature:configs")
 include(":feature:account")
+include(":feature:bypass")
 
 // --- Точки входа ---
 include(":vpnengine")

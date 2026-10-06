@@ -58,6 +58,13 @@ fun ConnectionScreen(
     configs: List<ConfigRowState>,
     onAction: (StatusAction) -> Unit,
     onOpenAccount: () -> Unit,
+    /**
+     * Открыть экран «Обходы».
+     *
+     * Вход отсюда, с главного экрана, а не из «Аккаунта»: обходы — про то, куда
+     * идёт трафик, то есть про само подключение, и рядом с ним их будут искать.
+     */
+    onOpenBypass: () -> Unit = {},
     onRefreshConfigs: () -> Unit,
     onSelectConfig: (String) -> Unit,
     onSwitchCountry: (String) -> Unit,
@@ -222,6 +229,40 @@ fun ConnectionScreen(
                             accent = presentation.accent,
                             titleTestTag = CONNECTION_TITLE_TAG,
                             detailTestTag = CONNECTION_DETAIL_TAG,
+                        )
+                    }
+                }
+            }
+
+            item {
+                // Вход в «Обходы» — отдельной строкой-карточкой над списком
+                // подключений: видно и не спрятано в «Аккаунт». Счётчик обходов
+                // показываем только когда они реально применены: на API < 33
+                // `appliedBypass` всегда 0, и «0 обходов» здесь читалось бы как
+                // «ничего не настроено», хотя список мог быть записан.
+                VpnCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onOpenBypass)
+                            .heightIn(min = MinTouchTarget)
+                            .testTag(CONNECTION_BYPASS_TAG),
+                    ) {
+                        Text(
+                            "Обходы",
+                            color = VpnColors.Bone,
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            if (bypassCount > 0) {
+                                "Активно обходов: $bypassCount"
+                            } else {
+                                "Сервисы и адреса, которые идут мимо туннеля"
+                            },
+                            color = VpnColors.Ash,
+                            fontSize = 11.5.sp,
+                            modifier = Modifier.padding(top = 3.dp),
                         )
                     }
                 }
@@ -399,6 +440,7 @@ const val CONNECTION_REFRESHING_TAG = "connection_refreshing"
 const val HOME_UPDATE_TAG = "home_update"
 const val HOME_UPDATE_DISMISS_TAG = "home_update_dismiss"
 const val HOME_UPDATE_PROGRESS_TAG = "home_update_progress"
+const val CONNECTION_BYPASS_TAG = "connection_bypass"
 
 /**
  * Плашка «доступна новая версия».
