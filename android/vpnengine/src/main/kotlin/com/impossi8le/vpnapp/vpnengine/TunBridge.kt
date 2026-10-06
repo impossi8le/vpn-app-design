@@ -41,6 +41,15 @@ interface TunBridge {
 
     fun addRoute(address: String, prefixLength: Int, ipv6: Boolean): Boolean
 
+    /**
+     * Исключить подсеть из туннеля: её трафик пойдёт напрямую.
+     *
+     * `false` — исключить не удалось (например, платформа не поддерживает).
+     * Возвращать `true` при неумении нельзя: вызывающий решил бы, что трафик
+     * уходит мимо, а он пошёл бы в туннель — молчаливая ложь о маршрутизации.
+     */
+    fun excludeRoute(address: String, prefixLength: Int, ipv6: Boolean): Boolean
+
     fun addDns(address: String): Boolean
 
     /** Перехват трафика по умолчанию — `redirect-gateway` из профиля. */

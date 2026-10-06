@@ -58,6 +58,20 @@ class VpnServiceTunBuilder(
             builder.addRoute(InetAddress.getByName(address), prefixLength)
         }.isSuccess
 
+    /**
+     * Исключение подсети из туннеля. `VpnService.Builder.excludeRoute` появился
+     * только в API 33; ниже возвращаем `false` честно — обход там недоступен, и
+     * вызывающий обязан это учесть, а не притвориться, что обход работает.
+     */
+    override fun excludeRoute(address: String, prefixLength: Int, ipv6: Boolean): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 33) return false
+        return runCatching {
+            builder.excludeRoute(
+                android.net.IpPrefix(InetAddress.getByName(address), prefixLength),
+            )
+        }.isSuccess
+    }
+
     override fun addDns(address: String): Boolean = runCatching {
         builder.addDnsServer(address)
     }.isSuccess

@@ -8,6 +8,7 @@ import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import com.impossi8le.vpnapp.vpnengine.EngineState
 import com.impossi8le.vpnapp.vpnengine.OpenVpn3Session
+import com.impossi8le.vpnapp.domain.tunnel.parseBypassCidr
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -134,7 +135,7 @@ class VpnTunnelService : VpnService() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                startTunnel(path)
+                startTunnel(path, intent.getStringExtra(EXTRA_BYPASS_FILE))
             }
 
             ACTION_DISCONNECT -> stopTunnel()
@@ -142,7 +143,7 @@ class VpnTunnelService : VpnService() {
         return START_NOT_STICKY
     }
 
-    private fun startTunnel(profilePath: String) {
+    private fun startTunnel(profilePath: String, bypassFilePath: String?) {
         // Идемпотентно: повторный CONNECT не должен поднимать второй туннель.
         // Проверяем и сессию, и незавершённое подключение: во время чтения файла
         // сессия ещё null, и без второй проверки второй CONNECT стартовал бы
@@ -192,6 +193,11 @@ class VpnTunnelService : VpnService() {
                 .setMtu(DEFAULT_MTU)
 
             val tun = VpnServiceTunBuilder(this@VpnTunnelService, builder)
+
+            // Обходы применяются ДО establish(): маршрут добавляется к уже
+            // существующему списку исключений интерфейса.
+            applyBypassRoutes(tun, bypassFilePath)
+
             val newSession = OpenVpn3Session(tun)
             // Состояние ядра переводим в SystemState и отдаём слушателю: домен
             // получит его через toConnectionStatus(), который зелёного не вернёт.
@@ -240,6 +246,22 @@ class VpnTunnelService : VpnService() {
         // Снимаем карточку сами: сервис живёт до остановки системы, а `stopForeground`
         // здесь не вызывался — уведомление висело бы, обещая связь, которой нет.
         stopForeground(STOP_FOREGROUND_REMOVE)
+    }
+
+    /**
+     * Исключить из туннеля подсети обхода.
+     *
+     * Файла нет или строки битые — просто меньше исключений: подключение и
+     * защита от этого не страдают. Неудача исключения (API < 33) сообщается
+     * экрану отдельно — здесь только факт.
+     */
+    private fun applyBypassRoutes(tun: VpnServiceTunBuilder, path: String?) {
+        if (path == null) return
+        val lines = runCatching { File(path).readLines() }.getOrDefault(emptyList())
+        for (line in lines) {
+            val route = parseBypassCidr(line.trim()) ?: continue
+            tun.excludeRoute(route.network, route.prefixLength, ipv6 = false)
+        }
     }
 
     /**
@@ -365,6 +387,9 @@ class VpnTunnelService : VpnService() {
          * секретов, поэтому передаётся путь, а читает файл уже сервис.
          */
         const val EXTRA_PROFILE = "profile"
+
+        /** Путь к файлу со списком обходов (по строке `network/prefix`). */
+        const val EXTRA_BYPASS_FILE = "bypass_file"
 
         // Контракт широковещательных сообщений.
         //
