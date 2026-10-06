@@ -311,18 +311,39 @@ private fun VpnApp() {
     // каждом повороте — неожиданно для пользователя. Запоминаем код через
     // `rememberSaveable`, чтобы пережить пересоздание активности.
     var openedPublicCode by rememberSaveable { mutableStateOf<String?>(null) }
+
+    /**
+     * Ссылка на ОСНОВНОЙ бот входа — то, что открывает кнопка «Открыть Telegram
+     * ещё раз».
+     *
+     * Храним отдельно от состояния входа: после ошибки кода или потери связи
+     * состояние уходит в `Failed`, `challenge` пропадает, и кнопка без этой
+     * памяти открыла бы что-то не то. Раньше она в таком случае открывала бот
+     * ПОДДЕРЖКИ — для входа это тупик: там нет кнопки «Подтвердить вход».
+     *
+     * `rememberSaveable`, чтобы пережить пересоздание активности: иначе после
+     * поворота экрана ссылка терялась бы.
+     */
+    var loginDeepLink by rememberSaveable { mutableStateOf<String?>(null) }
+
     LaunchedEffect(authState) {
-        val challenge = (authState as? AuthUiState.AwaitingNonce)?.challenge ?: return@LaunchedEffect
+        val challenge = when (val state = authState) {
+            is AuthUiState.AwaitingNonce -> state.challenge
+            // Опрос уже идёт — ссылка та же, и запоминать её тоже надо: кнопка
+            // «Открыть Telegram ещё раз» живёт ровно на этом экране.
+            is AuthUiState.Polling -> state.challenge
+            else -> null
+        } ?: return@LaunchedEffect
+
+        loginDeepLink = challenge.deepLink
+
+        // Автоматически открываем бота только НА ПЕРВОМ кадре ожидания. Дальше
+        // это делает кнопка: сам по себе повторный уход в Telegram при каждой
+        // смене состояния раздражал бы, а при ошибке кода — уводил бы от поля
+        // ввода, которое пользователю и нужно.
         if (challenge.publicCode == openedPublicCode) return@LaunchedEffect
         openedPublicCode = challenge.publicCode
-        runCatching {
-            context.startActivity(
-                android.content.Intent(
-                    android.content.Intent.ACTION_VIEW,
-                    android.net.Uri.parse(challenge.deepLink),
-                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }
+        openTelegramLink(context, challenge.deepLink)
     }
 
     // Токен сессии держим и в Compose-состоянии, и в общем ApiClient. Именно
@@ -889,16 +910,24 @@ private fun VpnApp() {
 
                 // «Открыть Telegram ещё раз» — показать бот, где пользователь
                 // читает код. Это НЕ изменение состояния входа, поэтому кнопка
-                // работает и во время опроса. Ссылку берём из текущего челленджа
-                // (`deep_link` из `/auth/link`), а если челленджа нет — ведём на
-                // бота поддержки: так кнопка всегда что-то открывает.
+                // работает и во время опроса.
+                //
+                // Открываем ОСНОВНОЙ бот входа, а не поддержку: в боте поддержки
+                // нет кнопки «Подтвердить вход», и вход там не завершить — тупик.
+                // Ссылку помним в [loginDeepLink], потому что после ошибки кода
+                // состояние уходит в `Failed` и `challenge` пропадает.
                 AppIntent.OpenTelegram -> {
-                    val challenge = when (val state = authViewModel.state.value) {
-                        is AuthUiState.AwaitingNonce -> state.challenge
-                        is AuthUiState.Polling -> state.challenge
-                        else -> null
+                    val link = loginDeepLink
+                        ?: ((authViewModel.state.value as? AuthUiState.AwaitingNonce)?.challenge
+                            ?: (authViewModel.state.value as? AuthUiState.Polling)?.challenge)
+                            ?.deepLink
+                    if (link != null) {
+                        openTelegramLink(context, link)
+                    } else {
+                        // Ссылки ещё нет (сбой до старта входа). Сказать об этом
+                        // честно лучше, чем увести человека в чужой чат.
+                        prepareMessage = "Ссылка на вход ещё не готова. Нажмите «Войти» заново."
                     }
-                    openTelegramLink(context, challenge?.deepLink ?: SUPPORT_BOT_URL)
                 }
 
                 AppIntent.SignOut -> scope.launch {
