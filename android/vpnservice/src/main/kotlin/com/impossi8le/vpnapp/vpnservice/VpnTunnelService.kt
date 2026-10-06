@@ -29,6 +29,23 @@ import kotlinx.coroutines.launch
 enum class SystemState { IDLE, CONNECTING, ESTABLISHED, LOST, FAILED }
 
 /**
+ * Текст уведомления по системному состоянию.
+ *
+ * `null` — «уведомление снять»: в покое держать его не за чем, а висящее
+ * «Подключено» после отключения было бы ложью в шторке.
+ *
+ * Функция чистая и живёт вне сервиса: уведомление нельзя показать в тесте без
+ * устройства, а правило «какое состояние — какой текст» проверить можно и нужно.
+ */
+internal fun notificationTextFor(state: SystemState): String? = when (state) {
+    SystemState.IDLE -> null
+    SystemState.CONNECTING -> "Подключение…"
+    SystemState.ESTABLISHED -> "Подключено"
+    SystemState.LOST -> "Соединение потеряно"
+    SystemState.FAILED -> "Не удалось подключиться"
+}
+
+/**
  * Сервис туннеля.
  *
  * Здесь живёт `VpnService` и мост к ядру OpenVPN 3. Разделение с `core:tunnel`
