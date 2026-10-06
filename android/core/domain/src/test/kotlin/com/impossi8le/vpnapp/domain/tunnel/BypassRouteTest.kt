@@ -5,8 +5,11 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
 /**
- * Разбор адресов обхода. Два формата: CIDR (как отдаёт сервер) и маска (как
- * привычно в конфигах). Оба — в один тип, чтобы ниже был один механизм.
+ * Разбор адресов обхода. Формат — CIDR (как отдаёт сервер). Раньше был ещё
+ * формат «route … маска … net_gateway», но у него не осталось ни одного
+ * боевого потребителя (сервис читает CIDR), и держать два парсера там, где
+ * работает один, значило бы приглашать будущую путаницу. Он удалён вместе с
+ * тестами.
  */
 class BypassRouteTest {
 
@@ -27,11 +30,24 @@ class BypassRouteTest {
     }
 
     @Test
+    fun `слишком широкая подсеть обходом не становится — это была бы утечка всего`() {
+        // `/0` и `/7` означали бы «пусти весь интернет мимо туннеля» — ровно
+        // противоположное смыслу обхода и полная молчаливая утечка. Такие
+        // записи обязаны отбрасываться, а не превращаться в маршрут.
+        assertNull(parseBypassCidr("0.0.0.0/0"))
+        assertNull(parseBypassCidr("10.0.0.0/7"))
+        // Граница сохранена: /8 — уже настоящая подсеть, её терять нельзя.
+        assertEquals(BypassRoute("10.0.0.0", 8), parseBypassCidr("10.0.0.0/8"))
+    }
+
+    @Test
     fun `маска переводится в длину префикса`() {
         assertEquals(24, maskToPrefixLength("255.255.255.0"))
         assertEquals(16, maskToPrefixLength("255.255.0.0"))
         assertEquals(32, maskToPrefixLength("255.255.255.255"))
-        assertEquals(0, maskToPrefixLength("0.0.0.0"))
+        // `0.0.0.0` — маска в ноль бит, то есть «весь интернет мимо туннеля».
+        // Как и `/0` в CIDR, это не обход, а утечка: возвращаем null.
+        assertNull(maskToPrefixLength("0.0.0.0"))
     }
 
     @Test
@@ -42,25 +58,5 @@ class BypassRouteTest {
         assertNull(maskToPrefixLength("255.0.255.0"))
         assertNull(maskToPrefixLength("255.255.255"))
         assertNull(maskToPrefixLength("не-маска"))
-    }
-
-    @Test
-    fun `строка route в формате владельца разбирается`() {
-        assertEquals(
-            BypassRoute("155.212.204.0", 24),
-            parseBypassRouteLine("route 155.212.204.0 255.255.255.0 net_gateway"),
-        )
-        assertEquals(
-            BypassRoute("87.240.129.0", 24),
-            parseBypassRouteLine("route 87.240.129.0 255.255.255.0 net_gateway"),
-        )
-    }
-
-    @Test
-    fun `чужие строки и комментарии не разбираются`() {
-        assertNull(parseBypassRouteLine("# vk.com"))
-        assertNull(parseBypassRouteLine(""))
-        assertNull(parseBypassRouteLine("route 10.0.0.0 255.0.0.0"))
-        assertNull(parseBypassRouteLine("redirect-gateway def1"))
     }
 }

@@ -14,7 +14,12 @@ fun parseBypassCidr(text: String): BypassRoute? {
     if (slash <= 0 || slash == text.lastIndex) return null
     val host = text.substring(0, slash)
     val prefix = text.substring(slash + 1).toIntOrNull() ?: return null
-    if (prefix !in 0..32) return null
+    // Отклоняем слишком широкие префиксы (0…7). Запись обхода НЕ может значить
+    // «пусти мимо туннеля весь интернет»: `0.0.0.0/0` (или опечатка `/1`) — это
+    // ПОЛНАЯ утечка трафика, причём молчаливая: туннель поднят, а идёт мимо него
+    // всё. Наименьшее осмысленное выделение в этой задаче куда крупнее /8,
+    // поэтому границы — 8..32; всё шире — не подсеть, а ошибка в данных.
+    if (prefix !in 8..32) return null
     if (!isIpv4(host)) return null
     return BypassRoute(host, prefix)
 }
@@ -43,19 +48,11 @@ fun maskToPrefixLength(mask: String): Int? {
             }
         }
     }
+    // Слишком широкая маска (меньше 8 бит) — та же полная утечка, что и `/0` в
+    // [parseBypassCidr]: `0.0.0.0` значило бы «весь интернет мимо туннеля».
+    // Отдаём `null`, а не число: иначе вызывающий принял бы это за настоящий обход.
+    if (bits < 8) return null
     return bits
-}
-
-/** Формат владельца: `"route 87.240.129.0 255.255.255.0 net_gateway"`. */
-fun parseBypassRouteLine(line: String): BypassRoute? {
-    val tokens = line.trim().split(Regex("\\s+"))
-    if (tokens.size < 4) return null
-    if (tokens[0] != "route") return null
-    if (tokens[3] != "net_gateway") return null
-    val host = tokens[1]
-    if (!isIpv4(host)) return null
-    val prefix = maskToPrefixLength(tokens[2]) ?: return null
-    return BypassRoute(host, prefix)
 }
 
 private fun isIpv4(text: String): Boolean {

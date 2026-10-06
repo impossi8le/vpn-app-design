@@ -44,6 +44,7 @@ include(":vpnengine")
 include(":vpnservice")
 include(":app")
 
-// Вендорится как git submodule (GPLv2), подключается в vpnservice.
-// Раскомментировать после `git submodule add` — см. docs/architecture/2026-10-03-android-architecture.md §4.7.
+// Вендорить ics-openvpn (GPLv2) — ОТКЛОНЁННЫЙ путь: заразил бы всё приложение
+// копилефтом. Ядро — OpenVPN 3 (MPL 2.0) в модуле `:vpnengine`. Модуль оставлен
+// только как указатель на разбор: docs/architecture/2026-10-03-android-architecture.md §4.7.
 // include(":vendor:ics-openvpn")

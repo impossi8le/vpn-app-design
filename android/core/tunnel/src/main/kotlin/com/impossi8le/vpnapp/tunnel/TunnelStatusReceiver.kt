@@ -26,7 +26,12 @@ class TunnelStatusReceiver(
                 val state = intent.getStringExtra(EXTRA_STATE)
                     ?.let { runCatching { SystemState.valueOf(it) }.getOrNull() }
                     ?: return
-                controller.onServiceState(state)
+                // Число применённых обходов едет вместе с состоянием. Старый
+                // сервис (или чужое намерение) мог его не прислать — тогда 0:
+                // «обходов применено ноль» — честнее, чем показать число,
+                // которого никто не подтверждал.
+                val appliedBypass = intent.getIntExtra(EXTRA_BYPASS_APPLIED, 0)
+                controller.onServiceState(state, appliedBypass)
             }
 
             ACTION_NETWORK_CHANGED -> controller.onNetworkChanged()
@@ -37,5 +42,14 @@ class TunnelStatusReceiver(
         const val ACTION_STATE = "com.impossi8le.vpnapp.tunnel.STATE"
         const val ACTION_NETWORK_CHANGED = "com.impossi8le.vpnapp.tunnel.NETWORK_CHANGED"
         const val EXTRA_STATE = "state"
+
+        /**
+         * Число применённых обходов в широковещании состояния.
+         *
+         * Строка обязана совпадать с `VpnTunnelService.EXTRA_BYPASS_APPLIED`
+         * дословно: `:vpnservice` не зависит от `core:tunnel`, и строки контракта
+         * продублированы на обеих сторонах (см. комментарий в сервисе).
+         */
+        const val EXTRA_BYPASS_APPLIED = "bypass_applied"
     }
 }

@@ -4,8 +4,8 @@ import com.impossi8le.vpnapp.domain.protection.ProtectionEvidence
 import com.impossi8le.vpnapp.domain.protection.ProtectionVerdict
 
 /**
- * Состояние соединения — НАША модель, а не состояние VpnService и не строка
- * статуса из ics-openvpn. Системное состояние переводится сюда явным маппингом
+ * Состояние соединения — НАША модель, а не состояние VpnService и не сырое
+ * состояние ядра OpenVPN. Системное состояние переводится сюда явным маппингом
  * в core:tunnel и в домен не протекает.
  */
 sealed interface ConnectionStatus {

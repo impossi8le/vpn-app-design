@@ -223,8 +223,8 @@
   <h1>VPN-клиент — экраны, состояния, переходы</h1>
 
   <div style="margin:14px 0 22px;padding:13px 16px;background:rgba(255,180,84,.06);border:.5px solid rgba(255,180,84,.32);border-left:2px solid var(--wait);border-radius:8px;color:var(--mist);font-size:13px;line-height:1.65;max-width:980px">
-    <b style="color:var(--wait);font-weight:590">Этот макет старше реализации и частично устарел.</b>
-    Уже изменено и проверено на устройстве: с главного экрана убраны карточка «Защита» и зелёные статусы «защищено»/«не защищено»; в аккаунте убраны «Автоподключение», «Запрашивать Face ID» и ряд поддержки по email (поддержка — бот <span class="mono">@FreeVPNHelp_bot</span>); «Скопировать код ошибки» стало диагностическим отчётом; смена страны подтверждается тумблером «Подтверждать смену страны» и галочкой «Больше не спрашивать».
+    <b style="color:var(--wait);font-weight:590">Макет приведён в соответствие с реализацией 2026-10-06.</b>
+    С главного экрана убраны карточка «Защита» и зелёный «защищено»: проба защиты — заглушка, и выводить зелёное без замера нельзя. В аккаунте убраны «Автоподключение», «Запрашивать Face ID» и поддержка по email (поддержка — бот <span class="mono">@FreeVPNHelp_bot</span>); «Скопировать код ошибки» стало диагностическим отчётом. Галочка «Больше не спрашивать» подавляет вопрос, но тумблер «Подтверждать смену страны» остаётся включённым — его можно вернуть в аккаунте.
     Источник истины по тому, что реально поставляется, — <b style="color:var(--bone)">2026-10-06-implemented-ui-spec.md</b>. Где макет расходится с ним, верна спецификация.
   </div>
 
@@ -234,7 +234,7 @@
   <div class="rule"></div>
 
   <h2>Экраны</h2>
-  <p class="hint">12 состояний. Главное действие вынесено в фиксированный нижний бар и меняется вместе с состоянием. Кольца неинтерактивны.</p>
+  <p class="hint">19 кадров (11 маршрутов; часть показана в нескольких состояниях). Главное действие вынесено в фиксированный нижний бар и меняется вместе с состоянием. Кольца неинтерактивны.</p>
 
   <div class="rail">
 
@@ -365,7 +365,7 @@
       <p class="cap"><b>3б. Ошибка подключения</b><span>Этого состояния не было. <em>Поддержка здесь контекстная</em> — из неё сразу видно, что у человека не встало соединение</span></p>
     </div>
 
-    <!-- 5. VERIFYING -->
+    <!-- 6. ON -->
     <div>
       <div class="dev"><div class="notch"></div><div class="scr">
         <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
@@ -376,42 +376,8 @@
               <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
               <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
             </div>
-            <div class="st wv">Туннель поднят</div>
-            <div class="sb2">Проверяем, что трафик идёт через него…</div>
-          </div>
-          <div class="prot">
-            <div class="hd"><span class="k">Соединение</span><span class="a">не проверено</span></div>
-            <div class="prow"><span class="k">Сервер</span><span class="v mono">185.…​.42:1194 · NL</span></div>
-            <div class="prow"><span class="k">IPv6</span><span class="v">—</span></div>
-            <div class="prow"><span class="k">DNS</span><span class="v">—</span></div>
-            <div class="prow"><span class="k">Kill switch</span><span class="v">—</span></div>
-          </div>
-        </div>
-        <div class="bar"><div class="btn btn-g">Отключить</div></div>
-      </div></div>
-      <p class="cap"><b>4. Проверка защиты</b><span><em>Ключевая правка.</em> Зелёное нельзя показывать по системному статусу — только после подтверждения, что трафик реально идёт через туннель</span></p>
-    </div>
-
-    <!-- 6. ON -->
-    <div>
-      <div class="dev"><div class="notch"></div><div class="scr">
-        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
-        <div class="scroll">
-          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
-          <div class="ind">
-            <div class="rings on">
-              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
-              <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
-            </div>
-            <div class="st on">Подключено и защищено</div>
-            <div class="sb2"><span class="mono">Нидерланды · сессия 04:12:38</span></div>
-          </div>
-          <div class="prot">
-            <div class="hd"><span class="k">Соединение</span><span class="a">проверено 14:03</span></div>
-            <div class="prow"><span class="k">Сервер</span><span class="v mono">185.…​.42:1194 · NL</span></div>
-            <div class="prow"><span class="k">IPv6</span><span class="v">закрыт</span></div>
-            <div class="prow"><span class="k">DNS</span><span class="v">через туннель</span></div>
-            <div class="prow"><span class="k">Kill switch</span><span class="v">включён</span></div>
+            <div class="st wv">Подключено</div>
+            <div class="sb2"><span class="mono">Нидерланды</span></div>
           </div>
           <div class="sect"><span class="l">Подключения</span><span class="r">Обновить список</span></div>
           <div class="cfg sel">
@@ -422,7 +388,7 @@
         </div>
         <div class="bar"><div class="btn btn-g">Отключить</div></div>
       </div></div>
-      <p class="cap"><b>5. Подключено</b><span>Зелёный — только после проверки. Блок «Защита» отвечает на вопрос «а оно правда работает?». Таймер подписан</span></p>
+      <p class="cap"><b>4. Подключено</b><span>Зелёного нет: проба защиты — заглушка, а зелёный обещал бы больше, чем мы знаем. Показаны два честно выводимых факта — подключено/нет и какой конфиг работает</span></p>
     </div>
 
     <!-- 7. SWITCHING -->
@@ -455,7 +421,7 @@
         </div>
         <div class="bar"><div class="btn btn-g">Отменить</div></div>
       </div></div>
-      <p class="cap"><b>6. Смена страны</b><span>Окно без защиты было немым. Теперь это <em>единственное место, где красный оправдан</em> — риск реален</span></p>
+      <p class="cap"><b>5. Смена страны</b><span>Окно без защиты было немым. Теперь это <em>единственное место, где красный оправдан</em> — риск реален</span></p>
     </div>
 
     <!-- 8. PRIMING SHEET -->
@@ -481,7 +447,7 @@
           </div>
         </div></div>
       </div></div>
-      <p class="cap"><b>7. Подготовка к системному диалогу</b><span>Самая частая точка безвозвратной потери. Диалог обойти нельзя, но можно объяснить заранее</span></p>
+      <p class="cap"><b>6. Подготовка к системному диалогу</b><span>Самая частая точка безвозвратной потери. Диалог обойти нельзя, но можно объяснить заранее</span></p>
     </div>
 
     <!-- 9. PERMISSION DENIED -->
@@ -506,7 +472,7 @@
           <div class="note">Этот запрос показывается только один раз. Если отказали — путь выше</div>
         </div>
       </div></div>
-      <p class="cap"><b>8. Отказ в разрешении</b><span>После «Не разрешать» диалог больше не появится. Раньше это был тупик без объяснения</span></p>
+      <p class="cap"><b>7. Отказ в разрешении</b><span>После «Не разрешать» диалог больше не появится. Раньше это был тупик без объяснения</span></p>
     </div>
 
     <!-- 10. ONE EXPIRED -->
@@ -540,7 +506,7 @@
         </div>
         <div class="bar"><div class="btn btn-g">Отключить</div></div>
       </div></div>
-      <p class="cap"><b>9. Один истёк, переключились</b><span>Истёкший не может быть активным — раньше экран одновременно писал «подключение» и «истёк»</span></p>
+      <p class="cap"><b>8. Один истёк, переключились</b><span>Истёкший не может быть активным — раньше экран одновременно писал «подключение» и «истёк»</span></p>
     </div>
 
     <!-- 11. ALL EXPIRED -->
@@ -562,7 +528,7 @@
           <div class="note">Продление оформляется в Telegram-боте сервиса</div>
         </div>
       </div></div>
-      <p class="cap"><b>10. Всё истекло</b><span><em>Главная кнопка больше не ведёт к покупке</em> — это была анти-стиринг 3.1.1. Теперь она обновляет, а о продлении сообщает нейтральный текст</span></p>
+      <p class="cap"><b>9. Всё истекло</b><span><em>Главная кнопка больше не ведёт к покупке</em> — это была анти-стиринг 3.1.1. Теперь она обновляет, а о продлении сообщает нейтральный текст</span></p>
     </div>
 
     <!-- 12. ACCOUNT -->
@@ -583,22 +549,16 @@
           </div>
           <div class="sect" style="padding-top:12px"><span class="l">Подключение</span></div>
           <div class="card" style="margin-bottom:8px">
-            <div class="row"><div><div class="k">Автоподключение</div><div class="sub">Когда появляется сеть, а VPN выключен</div></div><span class="sw"><i></i></span></div>
-            <div class="row"><div><div class="k">Запрашивать Face ID</div><div class="sub">При возврате в приложение</div></div><span class="sw"><i></i></span></div>
             <div class="row"><div><div class="k">Подтверждать смену страны</div><div class="sub">Показывать предупреждение перед переключением</div></div><span class="sw on"><i></i></span></div>
           </div>
           <div class="card" style="margin-bottom:8px">
             <div class="row">
-              <div><div class="k">Техподдержка</div><div class="sub">Чат в Telegram или письмо</div></div>
+              <div><div class="k">Техподдержка</div><div class="sub">Чат в Telegram</div></div>
               <span class="v" style="color:var(--ice)">Написать ›</span>
             </div>
-            <div class="row">
-              <div><div class="k">Нет доступа к Telegram?</div><div class="sub">Напишите на почту поддержки</div></div>
-              <span class="v" style="color:var(--ice)">Почта ›</span>
-            </div>
           </div>
-          <div class="btn btn-g btn-sm" style="margin-top:4px">Скопировать код ошибки</div>
-          <p class="sub" style="margin-top:7px">Код не содержит личных данных — вставьте его в чат поддержки.</p>
+          <div class="btn btn-g btn-sm" style="margin-top:4px">Отправить отчёт в поддержку</div>
+          <p class="sub" style="margin-top:7px">Отчёт без личных данных — вставится в чат поддержки.</p>
           <div class="btn btn-g btn-sm" style="margin-top:12px">О сервисе</div>
           <div class="danger">
             <div class="lbl">Опасное действие</div>
@@ -607,7 +567,7 @@
           </div>
         </div>
       </div></div>
-      <p class="cap"><b>11. Аккаунт</b><span>ID замаскирован, дата смерти сборки на виду, выход убран под разделитель и перекрашен в нейтральный</span></p>
+      <p class="cap"><b>10. Аккаунт</b><span>ID замаскирован, дата смерти сборки на виду, выход убран под разделитель и перекрашен в нейтральный</span></p>
     </div>
 
     <!-- 13. SWITCH CONFIRM -->
@@ -617,12 +577,12 @@
         <div class="scroll">
           <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
           <div class="ind">
-            <div class="rings on">
+            <div class="rings wv">
               <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
               <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
             </div>
-            <div class="st on">Подключено и защищено</div>
-            <div class="sb2 mono">Нидерланды · сессия 04:12:38</div>
+            <div class="st wv">Подключено</div>
+            <div class="sb2 mono">Нидерланды</div>
           </div>
         </div>
         <div class="veil"><div class="sheet">
@@ -635,7 +595,7 @@
           <div class="chk"><span class="bx"></span><span>Больше не спрашивать</span></div>
         </div></div>
       </div></div>
-      <p class="cap"><b>12. Подтверждение смены страны</b><span>Чекбокс отвязан от необратимого флага: он выключает тумблер «Подтверждать смену страны» в аккаунте и его можно вернуть</span></p>
+      <p class="cap"><b>11. Подтверждение смены страны</b><span>Чекбокс лишь подавляет вопрос, а не выключает тумблер навсегда: сам тумблер «Подтверждать смену страны» остаётся включённым и его можно вернуть в аккаунте</span></p>
     </div>
 
     <!-- 14. NO SUBSCRIPTION -->
@@ -657,7 +617,7 @@
           <div class="btn btn-g btn-sm" style="margin-top:8px">Войти другим Telegram</div>
         </div>
       </div></div>
-      <p class="cap"><b>13. Подписки нет</b><span>Серое, не красное — это не ошибка. Главная кнопка <em>обновляет, а не продаёт</em>. Есть выход, если вошли не тем аккаунтом</span></p>
+      <p class="cap"><b>12. Подписки нет</b><span>Серое, не красное — это не ошибка. Главная кнопка <em>обновляет, а не продаёт</em>. Есть выход, если вошли не тем аккаунтом</span></p>
     </div>
 
     <!-- 15. ACCESS REVOKED -->
@@ -680,36 +640,7 @@
           <div class="btn btn-g btn-sm" style="margin-top:8px">Войти другим Telegram</div>
         </div>
       </div></div>
-      <p class="cap"><b>14. Доступ отозван</b><span><em>Единственный реальный выключатель продукта.</em> Раньше выглядел как «сервер не отвечает» и предлагал бесконечно повторять</span></p>
-    </div>
-
-    <!-- 14b. VERIFICATION FAILED -->
-    <div>
-      <div class="dev"><div class="notch"></div><div class="scr">
-        <div class="sb"><span>9:41</span><span class="mono" style="font-size:11px">5G</span></div>
-        <div class="scroll">
-          <div class="nav"><span class="t">Подключение</span><span class="lnk">Аккаунт</span></div>
-          <div class="ind">
-            <div class="rings dn">
-              <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
-              <div class="core" style="border-color:rgba(255,180,84,.4)"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#ffb454" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
-            </div>
-            <div class="st wait">Трафик не идёт через туннель</div>
-            <div class="sb2">Соединение установлено, но проверка не прошла. Возможна утечка — не открывайте важные сайты.</div>
-          </div>
-          <div class="prot">
-            <div class="hd"><span class="k">Соединение</span><span class="a">не пройдено</span></div>
-            <div class="prow"><span class="k">Сервер</span><span class="v mono">185.…​.42:1194 · NL</span></div>
-            <div class="prow"><span class="k">Проверка</span><span class="v" style="color:var(--wait)">не удалась</span></div>
-          </div>
-          <div class="btn btn-g btn-sm" style="margin-top:12px">Написать в поддержку</div>
-        </div>
-        <div class="bar">
-          <div class="btn btn-p">Проверить снова</div>
-          <div class="btn btn-g btn-sm" style="margin-top:8px">Отключить</div>
-        </div>
-      </div></div>
-      <p class="cap"><b>14б. Проверка не пройдена</b><span>Третий исход гейта, которого не было. Без него остаются только два плохих поведения: вечное «проверяем» или ложный зелёный</span></p>
+      <p class="cap"><b>13. Доступ отозван</b><span><em>Единственный реальный выключатель продукта.</em> Раньше выглядел как «сервер не отвечает» и предлагал бесконечно повторять</span></p>
     </div>
 
     <!-- 16. ESCALATION -->
@@ -735,7 +666,7 @@
           <div class="btn btn-g btn-sm" style="margin-top:8px">Выбрать другое</div>
         </div>
       </div></div>
-      <p class="cap"><b>15. Эскалация ожидания</b><span>Пороги 10 / 20 / 30 секунд. Дольше 30 — не «идёт подключение», а честная ошибка с выходом</span></p>
+      <p class="cap"><b>14. Эскалация ожидания</b><span>Пороги 10 / 20 / 30 секунд. Дольше 30 — не «идёт подключение», а честная ошибка с выходом</span></p>
     </div>
 
     <!-- 17. HOW TO ENABLE VPN -->
@@ -755,7 +686,7 @@
         </div>
         <div class="bar"><div class="btn btn-g">Проверить снова</div></div>
       </div></div>
-      <p class="cap"><b>16. Инструкция по разрешению</b><span>Свой экран вместо скрытой схемы настроек <span class="mono">App-Prefs</span> — та рискованна на ревью. «Проверить снова» перечитывает состояние</span></p>
+      <p class="cap"><b>15. Инструкция по разрешению</b><span>Свой экран вместо скрытой схемы настроек <span class="mono">App-Prefs</span> — та рискованна на ревью. «Проверить снова» перечитывает состояние</span></p>
     </div>
 
     <!-- 18. TESTFLIGHT BANNER -->
@@ -769,22 +700,17 @@
             <p><b style="color:var(--ice)">Сборка приложения перестанет работать 29.12.2026.</b> Обновите приложение по ссылке из бота — иначе оно не запустится. <span style="color:var(--ice)">Как обновить ›</span></p>
           </div>
           <div class="ind" style="padding-top:10px">
-            <div class="rings on">
+            <div class="rings wv">
               <div class="rg r1"></div><div class="rg r2"></div><div class="rg r3"></div>
               <div class="core"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 8.6-4.1-1-7-4.4-7-8.6V7l7-4z" stroke="#e8ecf2" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
             </div>
-            <div class="st on">Подключено и защищено</div>
-            <div class="sb2 mono">Нидерланды · сессия 04:12:38</div>
-          </div>
-          <div class="prot">
-            <div class="hd"><span class="k">Соединение</span><span class="a">проверено 14:03</span></div>
-            <div class="prow"><span class="k">Сервер</span><span class="v mono">185.…​.42:1194 · NL</span></div>
-            <div class="prow"><span class="k">IPv6</span><span class="v">закрыт</span></div>
+            <div class="st wv">Подключено</div>
+            <div class="sb2 mono">Нидерланды</div>
           </div>
         </div>
         <div class="bar"><div class="btn btn-g">Отключить</div></div>
       </div></div>
-      <p class="cap"><b>17. Предупреждение о сборке</b><span>TestFlight гасит сборку каждые 90 дней — у всех 1000 клиентов одновременно. За 21 день, <em>ледовым</em>, без тревоги</span></p>
+      <p class="cap"><b>16. Предупреждение о сборке</b><span>TestFlight гасит сборку каждые 90 дней — у всех 1000 клиентов одновременно. За 21 день, <em>ледовым</em>, без тревоги</span></p>
     </div>
 
     <!-- 19. DEMO MODE -->
@@ -820,7 +746,7 @@
           <div class="note">В демо-режиме туннель не поднимается</div>
         </div>
       </div></div>
-      <p class="cap"><b>18. Демо-режим</b><span><em>Критично для канала.</em> У ревьюера Apple нет подписки — без демо он не пройдёт дальше первого экрана и отклонит вслепую. Никогда не показывает «защищено» как факт</span></p>
+      <p class="cap"><b>17. Демо-режим</b><span><em>Критично для канала.</em> У ревьюера Apple нет подписки — без демо он не пройдёт дальше первого экрана и отклонит вслепую. Никогда не показывает «защищено» как факт</span></p>
     </div>
 
   </div>
@@ -845,7 +771,7 @@
   <h3 style="font-size:15px;font-weight:590;margin:20px 0 8px;color:var(--bone)">Исправлено по смыслу</h3>
   <ul class="clean">
     <li><span class="num">1</span><div><b>Ложный зелёный на экране проверки.</b> Четыре независимые методики сошлись на одном дефекте: заголовок «Туннель поднят» был зелёным <span class="mono">#3ddc97</span> при том, что рядом стояло «не проверено». Теперь нейтральный, зелёное заблокировано до успешного замера.</div></li>
-    <li><span class="num">2</span><div><b>Гейт зелёного без ветки отказа.</b> Арбитр назвал это дырой: если проверка не прошла, остаются только два плохих поведения — вечное «проверяем» или ложный зелёный. Добавлен третий исход: «Трафик не идёт через туннель» с предупреждением о возможной утечке.</div></li>
+    <li><span class="num">2</span><div><b>Гейт зелёного без ветки отказа.</b> Арбитр назвал это дырой: если проверка не прошла, остаются только два плохих поведения — вечное «проверяем» или ложный зелёный. Тогда добавили третий исход — «Трафик не идёт через туннель». <b>Позже этот исход тоже снят:</b> проба защиты оказалась заглушкой, различать исходы честно нельзя, и теперь все три состояния туннеля показываются как «Подключено» без зелёного.</div></li>
     <li><span class="num">3</span><div><b>Матрица кнопки противоречила экрану.</b> В матрице осталось «Продлить в Telegram», хотя на экране уже «Обновить доступ». Матрица приведена в соответствие, добавлены строки для новых состояний.</div></li>
     <li><span class="num">4</span><div><b>Инструкция входа была невыполнима.</b> Текст «Отправьте боту <span class="mono">/start</span>» — у платящего клиента Start заменён полем ввода, а целевая аудитория именно платящие. Заменено на кнопку подтверждения.</div></li>
     <li><span class="num">5</span><div><b>«Обновится до 29.12.2026» обещало автообновление.</b> Приложение не обновляет себя само. Переформулировано в «Перестанет работать — обновите по ссылке из бота».</div></li>
@@ -868,9 +794,7 @@
     <tr><th style="width:22%">Состояние</th><th style="width:26%">Кнопка</th><th>Что делает</th></tr>
     <tr><td>Не подключено</td><td><span class="pill p-p">Подключить</span></td><td>Поднимает туннель на выбранной стране. Перед первым разом — прайминг-шит</td></tr>
     <tr><td>Подключение</td><td><span class="pill p-g">Отменить</span></td><td>Прерывает попытку. Раньше здесь было «Отключить» — про то, чего ещё нет</td></tr>
-    <tr><td>Проверка защиты</td><td><span class="pill p-g">Отключить</span></td><td>Туннель уже поднят, отключать есть что</td></tr>
-    <tr><td>Проверка не пройдена</td><td><span class="pill p-g">Отключить</span></td><td>Рядом «Проверить снова». Зелёное заблокировано до успеха</td></tr>
-    <tr><td>Подключено</td><td><span class="pill p-g">Отключить</span></td><td>Опускает туннель, профиль остаётся</td></tr>
+    <tr><td>Подключено (все три состояния туннеля)</td><td><span class="pill p-g">Отключить</span></td><td>Туннель поднят — отключать есть что; профиль остаётся. «Проверяем / защищено / не защищено» визуально не различаются: проба защиты — заглушка, различать честно нельзя</td></tr>
     <tr><td>Ошибка / эскалация</td><td><span class="pill p-p">Повторить</span></td><td>Рядом ghost «Выбрать другое». Белая = движение вперёд</td></tr>
     <tr><td>Нет разрешения VPN</td><td><span class="pill p-p">Открыть Настройки</span></td><td>Ведёт в системные настройки. Обойти нельзя</td></tr>
     <tr><td>Всё истекло</td><td><span class="pill p-p">Обновить доступ</span></td><td>Обновляет данные. <em>Не ведёт к покупке</em> — продление только нейтральным текстом</td></tr>
@@ -894,14 +818,14 @@
     <div class="fnode"><div class="id"></div><div class="ar">↓</div><div class="bx" style="border:none;background:none;padding:0"><div class="ds" style="padding-top:12px">подтверждение в боте · проверка возобновляется при возврате в foreground</div></div></div>
 
     <div class="fnode"><div class="id">Э2</div>
-      <div class="bx"><div class="ttl">Подключение — 8 состояний</div>
-      <div class="ds">Не подключено · Подключение · Проверка защиты · Подключено · Ошибка · Нет разрешения · Переключение · Всё истекло<br>
+      <div class="bx"><div class="ttl">Подключение — 7 состояний</div>
+      <div class="ds">Не подключено · Подключение · Подключено · Ошибка · Нет разрешения · Переключение · Всё истекло<br>
       Список стран скроллится, бар закреплён. Смена страны → шит подтверждения. Обрыв → Ошибка с причиной</div></div></div>
 
     <div class="fnode"><div class="id"></div><div class="ar">↓</div><div class="bx" style="border:none;background:none;padding:0"><div class="ds" style="padding-top:12px">«Аккаунт» · безвозвратных переходов нет</div></div></div>
 
     <div class="fnode"><div class="id">Э3</div>
-      <div class="bx"><div class="ttl">Аккаунт</div><div class="ds">Telegram ID (маскирован, по кнопке) · версия и дата смерти сборки · два тумблера · <b style="color:var(--bone)">техподдержка (постоянное место)</b> · диагностика · Выход через подтверждение</div></div></div>
+      <div class="bx"><div class="ttl">Аккаунт</div><div class="ds">Telegram ID (маскирован, по кнопке) · версия и дата смерти сборки · один тумблер (подтверждать смену страны) · <b style="color:var(--bone)">техподдержка (постоянное место)</b> · диагностика · Выход через подтверждение</div></div></div>
 
     <div class="fnode"><div class="id">Наружу</div>
       <div class="bx ext"><div class="ttl">Telegram</div><div class="ds">Наружу ведут только сервисные действия: <b style="color:var(--bone)">поддержка</b> (аккаунт и ошибка подключения), <b style="color:var(--bone)">«Войти другим Telegram»</b> (нет подписки, доступ отозван) и обновление приложения по ссылке из бота. <em>Призывов к покупке в интерфейсе нет</em> — это была анти-стиринг 3.1.1</div></div></div>
@@ -918,8 +842,8 @@
   <h2>Что изменилось против первой версии</h2>
   <ul class="clean">
     <li><span class="num">1</span><div><b>Появилось состояние «Не подключено».</b> Главное действие продукта — поднять туннель — не было представлено вообще. После обрыва пользователь застревал.</div></li>
-    <li><span class="num">2</span><div><b>Зелёный больше не врёт.</b> «Подключено» показывалось по системному статусу, а не по факту прохождения трафика. Для VPN ложная уверенность в защите хуже отсутствия защиты — теперь зелёный только после проверки.</div></li>
-    <li><span class="num">3</span><div><b>Появился блок «Защита».</b> Kill switch, IPv6 и выходной адрес не были видны нигде. Утечка в обход туннеля деанонимизирует клиента.</div></li>
+    <li><span class="num">2</span><div><b>Зелёный больше не врёт.</b> «Подключено» показывалось по системному статусу, а не по факту прохождения трафика. Для VPN ложная уверенность в защите хуже отсутствия защиты. <b>По ходу реализации выяснилось, что и замер невозможен</b> — проба защиты заглушка, — поэтому карточка «Защита» и зелёный сняты с экрана совсем: показываем только честно выводимое «подключено/нет».</div></li>
+    <li><span class="num">3</span><div><b>Появился блок «Защита»</b> (kill switch, IPv6, выходной адрес). <b>Позже удалён:</b> все эти строки были бы заглушкой без движка и замера, то есть той же ложной уверенностью. Kill switch у ОС, к тому же, пользователь включает сам — Always-on VPN.</div></li>
     <li><span class="num">4</span><div><b>Отказ в разрешении VPN перестал быть тупиком.</b> После «Не разрешать» системный диалог не повторяется, а приложение молчало.</div></li>
     <li><span class="num">5</span><div><b>Смена страны показывает окно без защиты.</b> Соединение рвалось молча, в момент загрузки или звонка.</div></li>
     <li><span class="num">6</span><div><b>Список скроллится.</b> При четырёх странах и в горизонтальной ориентации кнопка и нижние карточки обрезались.</div></li>
@@ -952,12 +876,12 @@
   <p class="hint">В макете не решается — нужен движок и телефон.</p>
   <table>
     <tr><th style="width:44%">Что проверить</th><th>Почему критично</th></tr>
-    <tr><td>Реальное прохождение трафика через туннель</td><td>Гейт для зелёного «Подключено и защищено». Без движка не проверить</td></tr>
+    <tr><td>Реальное прохождение трафика через туннель</td><td>Условие, без которого нельзя вернуть на экран зелёный «защищено». На Android туннель уже поднимается (2026-10-04), но проба защиты — заглушка, поэтому зелёного пока нет</td></tr>
     <tr><td>Фактическое состояние kill switch и IPv6</td><td>Что вообще доступно через API расширения туннеля</td></tr>
     <tr><td>Поведение системного диалога VPN и путь после отказа</td><td>Различается между версиями iOS</td></tr>
     <tr><td>Скорость срабатывания kill switch при смене страны</td><td>От этого зависит момент появления красной строки</td></tr>
     <tr><td>Тайм-аут подключения в сетях РФ</td><td>Под ТСПУ порог может быть совсем другим, нужен адаптивный</td></tr>
-    <tr><td>Автоподключение и расход батареи</td><td>Влияние на батарею неочевидно</td></tr>
+    <tr><td>Расход батареи на постоянном туннеле</td><td>Влияние на батарею неочевидно. (Автоподключение из продукта убрано — тумблера в аккаунте нет)</td></tr>
     <tr><td>Увеличенный шрифт и горизонтальная ориентация</td><td>Проверить обрезку при максимуме и 4–6 странах</td></tr>
   </table>
 

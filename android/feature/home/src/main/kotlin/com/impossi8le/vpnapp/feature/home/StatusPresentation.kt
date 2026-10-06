@@ -91,11 +91,16 @@ enum class StatusAction {
  * туннель. Сказать «часть трафика идёт напрямую» там значило бы соврать в
  * обратную сторону. Поэтому при `bypassCount > 0 && !bypassSupported`
  * подзаголовок честно сообщает о недоступности обхода, а не о его работе.
+ *
+ * Дефолт `bypassSupported = false` — безопасная сторона: неизвестность склоняем
+ * в сторону «обход не действует». Обратный дефолт (`true`) заставлял бы
+ * забывшего аргумент вызывающего обещать работающий обход, которого может не
+ * быть, — недоказанное утверждение, запрещённое §6.
  */
 fun ConnectionStatus.presentation(
     runningConfigName: String? = null,
     bypassCount: Int = 0,
-    bypassSupported: Boolean = true,
+    bypassSupported: Boolean = false,
 ): StatusPresentation = when (this) {
     ConnectionStatus.Disconnected -> StatusPresentation(
         title = "Не подключено",

@@ -1,7 +1,8 @@
-// VpnService, foreground-сервис, JNI-мост к ics-openvpn.
+// VpnService, foreground-сервис, мост к ядру OpenVPN 3.
 //
-// ЗАВИСИМОСТЬ ОТ vendor:ics-openvpn (GPLv2) раскомментируется после
-// `git submodule add` — см. docs/architecture/2026-10-03-android-architecture.md §4.7.
+// Ядро приходит из `:vpnengine` (нативная `libovpn3.so` + Java-биндинг), а не из
+// вендорённого ics-openvpn: этот путь отклонён в §4.7 архитектуры (GPLv2 заразил бы
+// приложение). См. docs/architecture/2026-10-03-android-architecture.md §4.7.
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)

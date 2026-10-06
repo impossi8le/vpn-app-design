@@ -97,6 +97,17 @@ class VpnTunnelService : VpnService() {
     /** Туннель остановлен: поздние события ядра не должны оживлять уведомление. */
     private var stopped = false
 
+    /**
+     * Сколько исключений обходов РЕАЛЬНО применено.
+     *
+     * Не число строк в файле обходов: часть строк может быть битой, а на
+     * API < 33 `excludeRoute` не существует вовсе. Экран обязан показать именно
+     * применённое число, иначе он заявит об обходе, которого нет, — недоказанное
+     * утверждение в обход инварианта §6. Сбрасывается в 0 при остановке, как
+     * [stopped].
+     */
+    private var appliedBypassCount = 0
+
     private lateinit var connectivity: ConnectivityManager
 
     /**
@@ -195,8 +206,10 @@ class VpnTunnelService : VpnService() {
             val tun = VpnServiceTunBuilder(this@VpnTunnelService, builder)
 
             // Обходы применяются ДО establish(): маршрут добавляется к уже
-            // существующему списку исключений интерфейса.
-            applyBypassRoutes(tun, bypassFilePath)
+            // существующему списку исключений интерфейса. Число применённых
+            // исключений запоминаем: экран обязан показать именно его, а не
+            // количество строк в файле (см. [appliedBypassCount]).
+            appliedBypassCount = applyBypassRoutes(tun, bypassFilePath)
 
             val newSession = OpenVpn3Session(tun)
             // Состояние ядра переводим в SystemState и отдаём слушателю: домен
@@ -232,6 +245,10 @@ class VpnTunnelService : VpnService() {
         // синхронно вернуть Disconnected, и без этого флага в шторке осталась бы
         // карточка уже остановленного туннеля.
         stopped = true
+        // Обходов после остановки нет: счётчик обязан обнулиться вместе со
+        // всем остальным, иначе экран при следующем подключении подхватил бы
+        // число от прошлого туннеля и заявил об обходе, которого нет.
+        appliedBypassCount = 0
         // Отменяем незавершённое подключение, иначе оно поднимет туннель уже
         // после отключения. Синхронный флаг взводим ДО cancel(): он виден
         // корутине даже там, где точек приостановки нет.
@@ -254,14 +271,23 @@ class VpnTunnelService : VpnService() {
      * Файла нет или строки битые — просто меньше исключений: подключение и
      * защита от этого не страдают. Неудача исключения (API < 33) сообщается
      * экрану отдельно — здесь только факт.
+     *
+     * Возвращает число исключений, которые `excludeRoute` принял (`true`).
+     * Строка может не разобраться ([parseBypassCidr] вернёт `null` на мусоре и
+     * на чрезмерно широких подсетях), а сам `excludeRoute` — отказать (API < 33
+     * или отказ системы), и тогда исключения нет. Экран, показавший число строк
+     * файла, заявил бы об обходе, которого на устройстве нет: это недоказанное
+     * утверждение, запрещённое §6. Поэтому считаем именно состоявшиеся вызовы.
      */
-    private fun applyBypassRoutes(tun: VpnServiceTunBuilder, path: String?) {
-        if (path == null) return
+    private fun applyBypassRoutes(tun: VpnServiceTunBuilder, path: String?): Int {
+        if (path == null) return 0
         val lines = runCatching { File(path).readLines() }.getOrDefault(emptyList())
+        var applied = 0
         for (line in lines) {
             val route = parseBypassCidr(line.trim()) ?: continue
-            tun.excludeRoute(route.network, route.prefixLength, ipv6 = false)
+            if (tun.excludeRoute(route.network, route.prefixLength, ipv6 = false)) applied++
         }
+        return applied
     }
 
     /**
@@ -298,7 +324,11 @@ class VpnTunnelService : VpnService() {
         sendBroadcast(
             Intent(ACTION_STATE)
                 .setPackage(packageName)
-                .putExtra(EXTRA_STATE, state.name),
+                .putExtra(EXTRA_STATE, state.name)
+                // Число РЕАЛЬНО применённых обходов едет вместе с состоянием:
+                // экран показывает его вместо количества строк в файле, чтобы не
+                // заявить об обходе, которого на устройстве нет (§6).
+                .putExtra(EXTRA_BYPASS_APPLIED, appliedBypassCount),
         )
         if (!stopped) updateNotification(state)
     }
@@ -401,6 +431,15 @@ class VpnTunnelService : VpnService() {
         const val ACTION_STATE = "com.impossi8le.vpnapp.tunnel.STATE"
         const val ACTION_NETWORK_CHANGED = "com.impossi8le.vpnapp.tunnel.NETWORK_CHANGED"
         const val EXTRA_STATE = "state"
+
+        /**
+         * Число применённых обходов, приложенное к широковещанию состояния.
+         *
+         * Дублирует строку в `TunnelStatusReceiver.EXTRA_BYPASS_APPLIED` — по
+         * той же причине, что и остальные строки контракта (см. выше): приёмник
+         * живёт в `core:tunnel`, а этот модуль от него не зависит.
+         */
+        const val EXTRA_BYPASS_APPLIED = "bypass_applied"
 
         private const val SESSION_NAME = "VPN"
         private const val TAG = "VpnTunnel"

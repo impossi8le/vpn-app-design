@@ -107,8 +107,12 @@ fun ConnectionScreen(
      * Применяет ли это устройство исключения обходов (API 33+). `false` — обход
      * записан, но не действует; экран обязан сказать это, а не притворяться,
      * что часть трафика идёт напрямую.
+     *
+     * Дефолт `false` — безопасная сторона: умолчание не должно обещать
+     * работающий обход, которого может не быть. Настоящее значение передаёт
+     * [AppRoot] из `MainActivity`.
      */
-    bypassSupported: Boolean = true,
+    bypassSupported: Boolean = false,
 ) {
     val presentation = status.presentation(runningConfigName, bypassCount, bypassSupported)
 

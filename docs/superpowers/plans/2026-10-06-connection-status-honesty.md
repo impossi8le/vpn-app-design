@@ -56,8 +56,10 @@
 
 - [ ] **Step 2: Прогнать тест**
 
-Run: `cd android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :core:tunnel:test --tests "com.impossi8le.vpnapp.tunnel.StatusMappingTest" --no-daemon`
+Run: `cd android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :core:tunnel:testDebugUnitTest --tests "com.impossi8le.vpnapp.tunnel.StatusMappingTest" --no-daemon`
 Expected: PASS (правило уже держится кодом — тест его закрепляет).
+
+**Про задачу:** `:core:tunnel` — Android-библиотека, у неё `test` не принимает `--tests`; фильтр по классу работает только на `testDebugUnitTest`.
 
 - [ ] **Step 3: Прогнать тест с намеренной поломкой (проверка, что тест ловит)**
 
@@ -137,7 +139,7 @@ class NotificationTextTest {
 
 - [ ] **Step 2: Прогнать — убедиться, что не компилируется/падает**
 
-Run: `cd android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :vpnservice:test --tests "com.impossi8le.vpnapp.vpnservice.NotificationTextTest" --no-daemon`
+Run: `cd android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :vpnservice:testDebugUnitTest --tests "com.impossi8le.vpnapp.vpnservice.NotificationTextTest" --no-daemon`
 Expected: FAIL — `notificationTextFor` не найдена (Unresolved reference).
 
 - [ ] **Step 3: Реализовать функцию**
@@ -165,7 +167,7 @@ internal fun notificationTextFor(state: SystemState): String? = when (state) {
 
 - [ ] **Step 4: Прогнать — убедиться, что зелено**
 
-Run: `cd android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :vpnservice:test --tests "com.impossi8le.vpnapp.vpnservice.NotificationTextTest" --no-daemon`
+Run: `cd android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :vpnservice:testDebugUnitTest --tests "com.impossi8le.vpnapp.vpnservice.NotificationTextTest" --no-daemon`
 Expected: PASS (5 тестов).
 
 - [ ] **Step 5: Commit**
@@ -311,7 +313,7 @@ git commit -m "Обновлять уведомление в шторке при 
 
 - [ ] **Step 2: Прогнать тест**
 
-Run: `cd android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :feature:account:test --tests "com.impossi8le.vpnapp.feature.account.AccountMappingTest" --no-daemon`
+Run: `cd android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :feature:account:testDebugUnitTest --tests "com.impossi8le.vpnapp.feature.account.AccountMappingTest" --no-daemon`
 Expected: PASS (маппинг и так переносит поле — тест это закрепляет).
 
 - [ ] **Step 3: Добавить обработчик интента**

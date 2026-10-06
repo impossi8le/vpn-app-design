@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Управление туннелем со стороны приложения.
@@ -55,6 +56,19 @@ class AppTunnelController(
 
     private val _status = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
     override val status: StateFlow<ConnectionStatus> = _status
+
+    /**
+     * Сколько обходов сервис РЕАЛЬНО применил (исключений `excludeRoute`,
+     * вернувших `true`).
+     *
+     * Экран показывает именно это число, а не количество строк в файле обходов:
+     * строка может не разобраться, а на API < 33 исключения невозможны вовсе.
+     * Показать число строк значило бы заявить об обходе, которого на устройстве
+     * нет, — недоказанное утверждение, запрещённое §6. Дефолт `0` — безопасная
+     * сторона: пока сервис не подтвердил обход, «применено ноль».
+     */
+    private val _appliedBypass = MutableStateFlow(0)
+    val appliedBypass: StateFlow<Int> = _appliedBypass.asStateFlow()
 
     /**
      * Смена сети.
@@ -126,9 +140,16 @@ class AppTunnelController(
         _networkChanges.tryEmit(Unit)
     }
 
-    /** Обновление состояния из сервиса. */
-    internal fun onServiceState(state: SystemState) {
+    /**
+     * Обновление состояния из сервиса.
+     *
+     * [appliedBypass] — число исключений, которые сервис реально применил. Едет
+     * вместе с состоянием: экран обязан показать применённое, а не число строк
+     * в файле (см. [_appliedBypass]).
+     */
+    internal fun onServiceState(state: SystemState, appliedBypass: Int) {
         _status.value = state.toConnectionStatus()
+        _appliedBypass.value = appliedBypass
     }
 
     private fun connectIntent(): Intent =

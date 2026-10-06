@@ -61,9 +61,12 @@ class StatusPresentationTest {
     fun `при активных обходах подробность говорит, что часть трафика идёт напрямую`() {
         // «Подключено» при обходах означает «не всё через туннель» — молчать об
         // этом значит повторять ту ложную уверенность, против которой §6.
+        // bypassSupported задаём явно: дефолт теперь `false` (безопасная
+        // сторона), а этот тест проверяет как раз случай работающего обхода.
         val p = ConnectionStatus.VerifyingProtection.presentation(
             runningConfigName = "Нидерланды",
             bypassCount = 6,
+            bypassSupported = true,
         )
 
         assertEquals("Подключено", p.title)
