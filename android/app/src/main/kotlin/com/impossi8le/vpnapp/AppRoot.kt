@@ -220,6 +220,7 @@ fun AppRoot(
                 status = state.status,
                 configs = state.configs,
                 runningConfigName = state.runningConfigName,
+                bypassCount = state.bypassCount,
                 refreshing = state.refreshingConfigs,
                 switchingWarning = state.switchingInProgress,
                 startProgressText = state.startProgressText,
@@ -331,6 +332,12 @@ data class AppRootState(
      * сопоставленные со списком подключений; заполняет [MainActivity].
      */
     val runningConfigName: String? = null,
+    /**
+     * Число активных обходов. Больше нуля — часть трафика идёт мимо туннеля, и
+     * экран подключения говорит об этом прямо, а не прячет за «Подключено».
+     * Источник — файл обходов в `filesDir`, заполняемый [MainActivity].
+     */
+    val bypassCount: Int = 0,
     /**
      * Данные аккаунта для экрана «Аккаунт». Дефолт — [DefaultAccountScreenState]:
      * до ответа `/me` показывать нечего, а считать тут нечего и подавно.

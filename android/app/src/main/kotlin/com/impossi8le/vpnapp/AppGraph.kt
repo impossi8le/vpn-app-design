@@ -9,11 +9,13 @@ import com.impossi8le.vpnapp.domain.auth.SessionStore
 import com.impossi8le.vpnapp.domain.config.ProfileMetaStore
 import com.impossi8le.vpnapp.domain.config.ProfileStore
 import com.impossi8le.vpnapp.domain.settings.AppSettingsStore
+import com.impossi8le.vpnapp.domain.tunnel.BypassRoutesService
 import com.impossi8le.vpnapp.domain.tunnel.TunnelControlling
 import com.impossi8le.vpnapp.domain.update.FallbackUpdateService
 import com.impossi8le.vpnapp.domain.update.UpdateService
 import com.impossi8le.vpnapp.network.ApiClient
 import com.impossi8le.vpnapp.network.AuthApi
+import com.impossi8le.vpnapp.network.BypassRoutesApi
 import com.impossi8le.vpnapp.network.ConfigApi
 import com.impossi8le.vpnapp.network.ServerUpdateApi
 import com.impossi8le.vpnapp.network.UpdateApi
@@ -41,6 +43,15 @@ class AppGraph(
     val apiClient = ApiClient(baseUrl = API_BASE_URL)
     val authApi = AuthApi(apiClient)
     val configApi = ConfigApi(apiClient)
+
+    /**
+     * Список сервисов, чей трафик идёт мимо туннеля.
+     *
+     * Неудача загрузки — пустой список, а не ошибка: отсутствие обходов не
+     * должно мешать подключению (см. [BypassRoutesApi]). Загружается перед
+     * `connect()` и пишется в файл, путь к которому уезжает сервису.
+     */
+    val bypassRoutes: BypassRoutesService = BypassRoutesApi(apiClient)
 
     /**
      * Источник сведений о новой версии: наш сервер, а GitHub — запасной.

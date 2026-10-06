@@ -39,6 +39,7 @@ import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
+import com.impossi8le.vpnapp.domain.tunnel.BypassRoute
 import com.impossi8le.vpnapp.feature.account.DefaultAccountScreenState
 import com.impossi8le.vpnapp.feature.account.DiagnosticsInput
 import com.impossi8le.vpnapp.feature.account.buildDiagnostics
@@ -61,9 +62,11 @@ import com.impossi8le.vpnapp.update.UpdateVerdictStore
 import com.impossi8le.vpnapp.update.restoredUpdateState
 import com.impossi8le.vpnapp.vpnservice.VpnTunnelService
 import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Через сколько после «Обновить список» повторить запрос «ещё раз потом».
@@ -96,6 +99,15 @@ private const val DOWNLOAD_PAGE_URL = "https://194-87-252-181.sslip.io/app"
 
 /** Файл отчёта в кеше приложения: переживает перезапуск, но чистится системой. */
 private const val DIAGNOSTICS_FILE_NAME = "vpnapp-diagnostics.txt"
+
+/**
+ * Файл со списком обходов в приватном каталоге приложения.
+ *
+ * По строке `network/prefix` на обход — тот же формат, что читает сервис
+ * (`applyBypassRoutes`). Путь к файлу, а не его содержимое, уезжает сервису:
+ * файл живёт в приватном каталоге и недоступен другим приложениям.
+ */
+private const val BYPASS_FILE_NAME = "bypass-routes.txt"
 
 /**
  * Короткая подпись состояния туннеля для отчёта.
@@ -137,6 +149,21 @@ private fun openDownloadPage(context: Context) {
             Intent(Intent.ACTION_VIEW, android.net.Uri.parse(DOWNLOAD_PAGE_URL))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
+    }
+}
+
+/**
+ * Загрузить список обходов и записать его в файл перед подключением.
+ *
+ * Отсутствие списка не мешает подключению: неудача загрузки — пустой список
+ * (см. [BypassRoutesApi]), и тогда файл просто пуст, а сервис поднимает туннель
+ * без исключений. Формат строки — `network/prefix`, тот же, что читает сервис.
+ * Запись — на IO: домашний каталог приложения читается/пишется не мгновенно.
+ */
+private suspend fun writeBypassFile(context: Context, routes: List<BypassRoute>) {
+    val body = routes.joinToString("\n") { "${it.network}/${it.prefixLength}" }
+    withContext(Dispatchers.IO) {
+        runCatching { File(context.filesDir, BYPASS_FILE_NAME).writeText(body) }
     }
 }
 
@@ -208,6 +235,10 @@ private fun VpnApp() {
             // Путь к профилю в приватном каталоге приложения: сам текст с
             // приватным ключом через намерение не передаётся (см. сервис).
             profilePath = File(context.filesDir, "profile.ovpn").absolutePath,
+            extraBypass = VpnTunnelService.EXTRA_BYPASS_FILE,
+            // Тот же файл, что наполняет connectThroughBypass перед подключением.
+            // Путь передаём всегда — пустой файл сервис читает как «обходов нет».
+            bypassPath = File(context.filesDir, BYPASS_FILE_NAME).absolutePath,
         )
     }
     val viewModel: HomeViewModel = viewModel {
@@ -557,6 +588,22 @@ private fun VpnApp() {
     }
 
     /**
+     * Число активных обходов — по числу строк в записанном файле.
+     *
+     * Источник — сам файл, а не только что полученный список: при перезапуске
+     * приложения в памяти его нет, а файл с обходами уже лежит, и «Подключено»
+     * обязано честно сказать о частичном обходе и после перезапуска. Пересчёт —
+     * по смене статуса: файл пишется перед подключением; чтение — на IO.
+     */
+    var bypassCount by remember { mutableStateOf(0) }
+    LaunchedEffect(status) {
+        val bypassFile = File(context.filesDir, BYPASS_FILE_NAME)
+        bypassCount = withContext(Dispatchers.IO) {
+            runCatching { bypassFile.readLines().count { it.isNotBlank() } }.getOrDefault(0)
+        }
+    }
+
+    /**
      * Подтверждённое переключение на другое подключение.
      *
      * Порядок обязателен и повторяет ручной путь: подготовить профиль целевого
@@ -582,6 +629,9 @@ private fun VpnApp() {
                         // Опускаем текущий туннель, чтобы он не читал файл, который
                         // вот-вот подменится новым профилем.
                         viewModel.disconnect()
+                        // Обходы к новому профилю: файл пишем перед connect по той
+                        // же причине, что и в ветке Connect (см. ниже).
+                        writeBypassFile(context, graph.bypassRoutes.routes())
                         viewModel.connect()
                         selectedConfigId = targetId
                     }
@@ -610,6 +660,10 @@ private fun VpnApp() {
             // подключения, чтобы подзаголовком показать «какой конфиг работает»
             // при поднятом туннеле.
             runningConfigName = runningConfigName,
+            // Число активных обходов: см. LaunchedEffect выше. Нужно экрану
+            // подключения, чтобы при активных обходах честно сказать, что часть
+            // трафика идёт мимо туннеля, а не молчать под «Подключено».
+            bypassCount = bypassCount,
             // Данные экрана «Аккаунт»: заполняются из `/me` в loadConfigs. Здесь —
             // то, что успело прийти (или умолчание, если ответа ещё нет).
             account = account,
@@ -691,7 +745,14 @@ private fun VpnApp() {
                             // Прошлая причина не должна пережить новую попытку.
                             prepareMessage = null
                             when (val prepared = graph.preparer.ensureProfile()) {
-                                PrepareResult.Ready -> viewModel.connect()
+                                PrepareResult.Ready -> {
+                                    // Обходы тянем ПЕРЕД connect: файл должен
+                                    // быть на диске к моменту, когда сервис
+                                    // начнёт его читать. Неудача загрузки даёт
+                                    // пустой список — подключение не блокируется.
+                                    writeBypassFile(context, graph.bypassRoutes.routes())
+                                    viewModel.connect()
+                                }
                                 PrepareResult.NoActiveConfig -> prepareMessage =
                                     "Нет активных подключений"
                                 PrepareResult.SubscriptionExpired -> prepareMessage =

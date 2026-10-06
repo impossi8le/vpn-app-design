@@ -97,8 +97,14 @@ fun ConnectionScreen(
      * `null` — имени нет, тогда подзаголовок нейтрален.
      */
     runningConfigName: String? = null,
+    /**
+     * Число активных обходов. Больше нуля — часть трафика идёт мимо туннеля, и
+     * подзаголовок обязан об этом сказать: иначе «Подключено» читается как
+     * «защищено всё» (см. §6 и [presentation]).
+     */
+    bypassCount: Int = 0,
 ) {
-    val presentation = status.presentation(runningConfigName)
+    val presentation = status.presentation(runningConfigName, bypassCount)
 
     Column(modifier = modifier.fillMaxSize().background(VpnColors.Void)) {
         // Шапка: заголовок и вход в аккаунт. Кнопка «назад» тут не нужна —

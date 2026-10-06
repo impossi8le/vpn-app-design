@@ -78,8 +78,16 @@ enum class StatusAction {
  * [runningConfigName] — имя работающего подключения, если известно. Показывается
  * подзаголовком в состояниях «туннель поднят», потому что пользователь просил
  * знать, какой конфиг работает. `null` — имени нет, подзаголовок нейтрален.
+ *
+ * [bypassCount] — сколько сервисов обходится мимо туннеля. Обходы означают, что
+ * «Подключено» не значит «защищено всё»: часть трафика уходит напрямую. Молчать
+ * об этом — та же ложная уверенность, против которой написан §6. Поэтому при
+ * `bypassCount > 0` подзаголовок прямо говорит о частичном обходе.
  */
-fun ConnectionStatus.presentation(runningConfigName: String? = null): StatusPresentation = when (this) {
+fun ConnectionStatus.presentation(
+    runningConfigName: String? = null,
+    bypassCount: Int = 0,
+): StatusPresentation = when (this) {
     ConnectionStatus.Disconnected -> StatusPresentation(
         title = "Не подключено",
         detail = "Выберите подключение и нажмите «Подключить»",
@@ -108,7 +116,13 @@ fun ConnectionStatus.presentation(runningConfigName: String? = null): StatusPres
     is ConnectionStatus.ProtectionFailed,
     -> StatusPresentation(
         title = "Подключено",
-        detail = runningConfigName ?: "Соединение установлено",
+        detail = if (bypassCount > 0) {
+            // Обходы означают, что часть трафика идёт мимо туннеля. Молчать об
+            // этом нельзя: «Подключено» иначе читается как «защищено всё».
+            "Подключено, часть трафика идёт напрямую: сервисов — $bypassCount"
+        } else {
+            runningConfigName ?: "Соединение установлено"
+        },
         accent = VpnColors.Mist,
         ring = RingTone.Verifying,
         actionLabel = "Отключить",

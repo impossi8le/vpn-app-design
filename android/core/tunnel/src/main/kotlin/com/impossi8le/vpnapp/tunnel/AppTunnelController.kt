@@ -40,6 +40,17 @@ class AppTunnelController(
      * логах и истории. Сервис читает файл сам.
      */
     private val profilePath: String,
+    /** Ключ extra, под которым сервис ждёт путь к файлу обходов. */
+    private val extraBypass: String,
+    /**
+     * Абсолютный путь к файлу обходов (по строке `network/prefix`), или `null`,
+     * если обходов нет.
+     *
+     * Именно путь, а не содержимое: сервис читает файл сам. `null` — сервису
+     * не передаётся ничего, и он поднимает туннель без исключений: отсутствие
+     * обходов не повод не подключаться.
+     */
+    private val bypassPath: String? = null,
 ) : TunnelControlling {
 
     private val _status = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
@@ -126,5 +137,9 @@ class AppTunnelController(
             // Путь к профилю, а не сам профиль: содержимое содержит приватный
             // ключ и не должно попадать в extras намерения.
             putExtra(extraProfile, profilePath)
+            // Путь к файлу обходов кладём ТОЛЬКО когда он есть: пустой extra
+            // сервису ничего не добавит, а `null`-путь он и так трактует как
+            // «обходов нет».
+            bypassPath?.let { putExtra(extraBypass, it) }
         }
 }

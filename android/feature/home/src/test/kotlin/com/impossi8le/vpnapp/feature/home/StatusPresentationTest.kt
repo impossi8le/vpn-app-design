@@ -58,6 +58,28 @@ class StatusPresentationTest {
     }
 
     @Test
+    fun `при активных обходах подробность говорит, что часть трафика идёт напрямую`() {
+        // «Подключено» при обходах означает «не всё через туннель» — молчать об
+        // этом значит повторять ту ложную уверенность, против которой §6.
+        val p = ConnectionStatus.VerifyingProtection.presentation(
+            runningConfigName = "Нидерланды",
+            bypassCount = 6,
+        )
+
+        assertEquals("Подключено", p.title)
+        assertTrue(
+            p.detail.contains("напрямую") || p.detail.contains("обход"),
+            "подробность должна сказать о частичном обходе, было: ${p.detail}",
+        )
+    }
+
+    @Test
+    fun `без обходов подробность как прежде`() {
+        val p = ConnectionStatus.VerifyingProtection.presentation("Нидерланды", bypassCount = 0)
+        assertEquals("Нидерланды", p.detail)
+    }
+
+    @Test
     fun `янтарный только у идущего процесса`() {
         assertEquals(VpnColors.Amber, ConnectionStatus.Connecting.presentation().accent)
 
