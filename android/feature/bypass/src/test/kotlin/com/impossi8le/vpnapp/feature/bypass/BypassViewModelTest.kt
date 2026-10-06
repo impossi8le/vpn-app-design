@@ -249,6 +249,27 @@ class BypassViewModelTest {
     }
 
     @Test
+    fun `адрес и название — два независимых состояния`() = runTest(scheduler) {
+        // На телефоне симптом выглядел так: текст, набранный в названии,
+        // оказывался в поле адреса. Причина была в разметке (второе поле
+        // уезжало под клавиатуру), но проверить независимость состояний
+        // дёшево именно здесь: если бы оба поля писали в одну переменную,
+        // правка одного затирала бы другое — и никакой `imePadding()` не спас.
+        val vm = BypassViewModel(FakeBypassControl(), supported = true)
+
+        vm.onCustomInputChange("vk.com")
+        vm.onCustomNameChange("Работа")
+
+        assertEquals("vk.com", vm.state.value.customInput)
+        assertEquals("Работа", vm.state.value.customName)
+
+        // Правка адреса не трогает название, и наоборот.
+        vm.onCustomInputChange("ok.ru")
+        assertEquals("ok.ru", vm.state.value.customInput)
+        assertEquals("Работа", vm.state.value.customName)
+    }
+
+    @Test
     fun `свой обход без названия уходит без подписи`() = runTest(scheduler) {
         val fake = FakeBypassControl(
             resolveResult = BypassResolve.Resolved(listOf(BypassRoute("87.240.132.0", 24))),

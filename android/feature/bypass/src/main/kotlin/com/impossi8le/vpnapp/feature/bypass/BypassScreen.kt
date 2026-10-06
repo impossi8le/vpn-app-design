@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -116,7 +117,17 @@ fun BypassScreen(
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                // Клавиатура прижимает контент, а не накрывает его. Хост
+                // (`MainActivity`) отступает только `safeDrawing` — это системные
+                // панели и вырез, но НЕ IME, и `windowSoftInputMode` в манифесте
+                // не выставлен. Поэтому без `imePadding()` поле «Свой обход» и
+                // кнопка «Добавить обход» уезжают под клавиатуру и до них не
+                // дотянуться. `imePadding()` стоит на прокручиваемом контейнере,
+                // а не на внешней колонке: так шапка остаётся на месте, а список
+                // сжимается и прокручивается к полю и кнопке. Если хост когда-то
+                // начнёт гасить IME сам, отступ станет нулевым — двойного не будет.
+                .imePadding(),
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             // Обход на этом устройстве не действует (Android < 13, нет
