@@ -72,4 +72,14 @@ class LoginWaitingScreenTest {
 
         compose.onNodeWithText("введите код из Telegram").assertIsDisplayed()
     }
+
+    @Test
+    fun countdownDigitsAreShown() {
+        setScreen()
+
+        // Цифры отсчёта живут в отдельном `Text` со своим тегом — именно по нему
+        // видно, что таймер отрисован и обновляем, а не спрятан в общей фразе.
+        // Начальное значение — полный срок (5:00); дальше оно тикает само.
+        compose.onNodeWithTag(LOGIN_WAITING_COUNTDOWN_TAG).assertIsDisplayed()
+    }
 }
