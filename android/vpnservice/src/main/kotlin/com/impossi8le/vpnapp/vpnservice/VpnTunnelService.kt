@@ -93,6 +93,9 @@ class VpnTunnelService : VpnService() {
     @Volatile
     private var connectCancelled = false
 
+    /** Туннель остановлен: поздние события ядра не должны оживлять уведомление. */
+    private var stopped = false
+
     private lateinit var connectivity: ConnectivityManager
 
     /**
@@ -145,6 +148,8 @@ class VpnTunnelService : VpnService() {
         // сессия ещё null, и без второй проверки второй CONNECT стартовал бы
         // параллельно.
         if (session != null || connectJob?.isActive == true) return
+
+        stopped = false
 
         // startForeground ОБЯЗАТЕЛЕН и вызывается ПЕРВЫМ делом.
         //
@@ -217,6 +222,10 @@ class VpnTunnelService : VpnService() {
         // Запоминаем ДО обнуления: иначе проверка «было что останавливать»
         // всегда ложна.
         val wasActive = session != null || connectJob?.isActive == true
+        // Гасим уведомление от поздних событий ядра: `session.stop()` ниже может
+        // синхронно вернуть Disconnected, и без этого флага в шторке осталась бы
+        // карточка уже остановленного туннеля.
+        stopped = true
         // Отменяем незавершённое подключение, иначе оно поднимет туннель уже
         // после отключения. Синхронный флаг взводим ДО cancel(): он виден
         // корутине даже там, где точек приостановки нет.
@@ -228,6 +237,9 @@ class VpnTunnelService : VpnService() {
         // IDLE сообщаем только если было что останавливать: иначе onDestroy
         // после честного FAILED прислал бы IDLE и стёр бы причину отказа.
         if (wasActive) notifyState(SystemState.IDLE)
+        // Снимаем карточку сами: сервис живёт до остановки системы, а `stopForeground`
+        // здесь не вызывался — уведомление висело бы, обещая связь, которой нет.
+        stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
     /**
@@ -266,7 +278,7 @@ class VpnTunnelService : VpnService() {
                 .setPackage(packageName)
                 .putExtra(EXTRA_STATE, state.name),
         )
-        updateNotification(state)
+        if (!stopped) updateNotification(state)
     }
 
     /**
@@ -274,8 +286,9 @@ class VpnTunnelService : VpnService() {
      *
      * `startForeground` вызывается один раз при старте, и без этого обновления
      * в шторке навсегда остался бы стартовый текст. В покое уведомление не
-     * снимаем через `cancel` — его снимает `stopForeground` при остановке
-     * сервиса; здесь достаточно не перерисовывать его текстом «подключено».
+     * снимаем через `cancel` — его снимает `stopTunnel` своим
+     * `stopForeground(STOP_FOREGROUND_REMOVE)`; здесь достаточно не
+     * перерисовывать его текстом «подключено».
      */
     private fun updateNotification(state: SystemState) {
         val text = notificationTextFor(state) ?: return
