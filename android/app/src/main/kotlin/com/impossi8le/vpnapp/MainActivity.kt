@@ -158,6 +158,25 @@ private fun openDownloadPage(context: Context) {
 }
 
 /**
+ * Открыть системные настройки VPN.
+ *
+ * `ACTION_VPN_SETTINGS` есть не на всякой прошивке; общий экран настроек —
+ * честный запасной вариант, а не молчание.
+ */
+private fun openVpnSettings(context: Context) {
+    val intent = Intent(android.provider.Settings.ACTION_VPN_SETTINGS)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }.onFailure {
+        runCatching {
+            context.startActivity(
+                Intent(android.provider.Settings.ACTION_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+}
+
+/**
  * Загрузить список обходов и записать его в файл перед подключением.
  *
  * Отсутствие списка не мешает подключению: неудача загрузки — пустой список
@@ -335,6 +354,16 @@ private fun VpnApp() {
         sessionToken = signedIn.token
     }
 
+    // Причина, по которой подключение не началось: профиль не готов. Показывается
+    // на экране подключения отдельным блоком, а не молчанием кнопки — «нажал, и
+    // ничего» читается как поломка.
+    //
+    // Объявлено здесь, а не рядом с остальными полями экрана: на эту переменную
+    // пишет и лямбда согласия ниже (отказ в системном диалоге), а локальное
+    // объявление обязано стоять ДО первого чтения/записи — иначе компилятор
+    // отвергнет ссылку вперёд.
+    var prepareMessage by remember { mutableStateOf<String?>(null) }
+
     // Диалог согласия на VPN показывает система, и показать его может только
     // активность. Контроллер живёт в application-контексте, поэтому отдаёт
     // намерение сюда, а экран запускает его и сообщает о полученном согласии.
@@ -347,6 +376,11 @@ private fun VpnApp() {
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             tunnel.onConsentGranted()
+        } else {
+            // Пользователь закрыл системный диалог согласия. Без него туннель не
+            // поднять, и молчание выглядело бы как «кнопка не работает».
+            prepareMessage =
+                "Нужно разрешить подключение VPN. Нажмите «Подключить» ещё раз или откройте настройки."
         }
     }
 
@@ -406,11 +440,6 @@ private fun VpnApp() {
      */
     var switchToken by remember { mutableStateOf(0) }
     var switchingJob by remember { mutableStateOf<Job?>(null) }
-
-    // Причина, по которой подключение не началось: профиль не готов. Показывается
-    // на экране подключения отдельным блоком, а не молчанием кнопки — «нажал, и
-    // ничего» читается как поломка.
-    var prepareMessage by remember { mutableStateOf<String?>(null) }
 
     // Список подключений — из живого /me. Держим его в обычном состоянии, а не
     // в `produceState`: список обязан перезагружаться не только при смене
@@ -811,7 +840,7 @@ private fun VpnApp() {
 
                         StatusAction.Retry -> viewModel.reverify()
 
-                        StatusAction.OpenSettings -> Unit
+                        StatusAction.OpenSettings -> openVpnSettings(context)
 
                         StatusAction.RefreshAccess -> Unit
                     }
