@@ -5,12 +5,18 @@ import android.content.Intent
 import android.net.VpnService
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.tunnel.TunnelControlling
+import kotlin.time.Duration
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+
 
 /**
  * Управление туннелем со стороны приложения.
@@ -52,10 +58,36 @@ class AppTunnelController(
      * обходов не повод не подключаться.
      */
     private val bypassPath: String? = null,
+    /**
+     * Чем проверяем, что туннель ещё существует. По умолчанию — системное чтение
+     * через [AndroidTunnelPresence]; в тестах подставляется фейк.
+     */
+    presenceProbe: TunnelPresenceProbe? = null,
+    /** Как часто перепроверять существование туннеля, пока он «поднят». */
+    presenceInterval: Duration = TunnelPresenceWatcher.DEFAULT_INTERVAL,
 ) : TunnelControlling {
 
     private val _status = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
     override val status: StateFlow<ConnectionStatus> = _status
+
+    /**
+     * Сторож существования туннеля.
+     *
+     * Пока состояние описывает поднятый туннель, раз в [presenceInterval]
+     * спрашивает систему, есть ли VPN-интерфейс, и при исчезновении гасит
+     * состояние в [ConnectionStatus.Disconnected]. Собственный скоуп, а не чужой:
+     * контроллер — долгоживущий объект без своего жизненного цикла, а задания
+     * короткие и завершаются сами.
+     */
+    private val watchScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val presenceWatcher = TunnelPresenceWatcher(
+        probe = presenceProbe
+            ?: AndroidTunnelPresence(
+                context.getSystemService(android.net.ConnectivityManager::class.java)
+                    ?: error("ConnectivityManager недоступен"),
+            ),
+        interval = presenceInterval,
+    )
 
     /**
      * Сколько обходов сервис РЕАЛЬНО применил (исключений `excludeRoute`,
@@ -127,6 +159,9 @@ class AppTunnelController(
     override suspend fun disconnect() {
         context.startService(Intent(context, serviceClass).setAction(actionDisconnect))
         _status.value = ConnectionStatus.Disconnected
+        // Гасим сторож сразу, а не ждём, пока он заметит смену на следующем шаге:
+        // живой цикл после отключения — это лишние опросы системы.
+        presenceWatcher.stop()
     }
 
     override suspend fun reverifyProtection() {
@@ -150,6 +185,39 @@ class AppTunnelController(
     internal fun onServiceState(state: SystemState, appliedBypass: Int) {
         _status.value = state.toConnectionStatus()
         _appliedBypass.value = appliedBypass
+        // Состояние сменилось — пересобрать сторож существования туннеля. Именно
+        // здесь, а не в `TunnelStatusReceiver`: сервис может прислать `ESTABLISHED`
+        // и умолкнуть навсегда, и тогда единственный признак жизни — наш опрос.
+        restartPresenceWatch()
+    }
+
+    /**
+     * Перезапустить сторож существования туннеля под текущее состояние.
+     *
+     * Решение и цикл живут в [TunnelPresenceWatcher] — там же, где их проверяет
+     * тест на виртуальном времени. Здесь только вкручиваем источник состояния и
+     * приёмник вердикта.
+     */
+    private fun restartPresenceWatch() {
+        presenceWatcher.restart(
+            scope = watchScope,
+            current = { _status.value },
+            onTunnelLost = { _status.value = it },
+        )
+    }
+
+    /**
+     * Отпустить ресурсы контроллера: экран ушёл, опрашивать систему дальше не за
+     * чем.
+     *
+     * Без этого сторож жил бы до смерти процесса. При пересоздании активности
+     * (поворот экрана) создаётся новый контроллер и новый сторож, а старый так и
+     * продолжал бы дёргать `ConnectivityManager` каждые несколько секунд —
+     * по одному висящему циклу на каждый поворот.
+     */
+    fun release() {
+        presenceWatcher.stop()
+        watchScope.cancel()
     }
 
     private fun connectIntent(): Intent =

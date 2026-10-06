@@ -465,6 +465,11 @@ private fun VpnApp() {
         onDispose {
             context.unregisterReceiver(receiver)
             viewModel.stop()
+            // Сторож существования туннеля живёт в контроллере, а не во
+            // ViewModel: `viewModel.stop()` его не гасит. Без этой строки при
+            // пересоздании активности (поворот экрана) старый сторож продолжал
+            // бы опрашивать систему — по одному висящему циклу на каждый поворот.
+            tunnel.release()
         }
     }
 
