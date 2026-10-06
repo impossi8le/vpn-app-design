@@ -228,6 +228,7 @@ fun AppRoot(
                 bypassSupported = state.bypassSupported,
                 bypassConfigured = state.bypassConfigured,
                 refreshing = state.refreshingConfigs,
+                configsStaleNote = state.configsStaleNote,
                 switchingWarning = state.switchingInProgress,
                 startProgressText = state.startProgressText,
                 notice = state.prepareError,
@@ -454,6 +455,18 @@ data class AppRootState(
      * кнопку вообще не давало видимой реакции.
      */
     val refreshingConfigs: Boolean = false,
+    /**
+     * Пометка о том, что список подключений показан из локального кэша, а не из
+     * только что пришедшего ответа. `null` — список свежий (или показывать
+     * нечего), и говорить не о чем.
+     *
+     * Отдельным входом, а не выведенная из [refreshingConfigs]: «идёт обновление»
+     * и «данные сохранённые» — это два разных факта о списке, и свести их к
+     * одному значит потерять один из них. Считает её чистая `stalenessNote` в
+     * `feature:home`, чтобы решение «когда признаваться в кэше» проверялось
+     * тестом, а не рендером (§6).
+     */
+    val configsStaleNote: String? = null,
     val switchingInProgress: Boolean = false,
     val startProgressText: String? = null,
     /**

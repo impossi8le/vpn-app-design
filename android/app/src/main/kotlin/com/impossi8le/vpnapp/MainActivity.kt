@@ -34,6 +34,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.impossi8le.vpnapp.config.PrepareResult
+import com.impossi8le.vpnapp.config.cacheAfterRefresh
+import com.impossi8le.vpnapp.domain.config.cachedConfigSelection
 import com.impossi8le.vpnapp.domain.settings.askBeforeCountrySwitch
 import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
@@ -53,6 +55,7 @@ import com.impossi8le.vpnapp.feature.home.ConfigRowStatus
 import com.impossi8le.vpnapp.feature.home.StatusAction
 import com.impossi8le.vpnapp.feature.home.SwitchCountrySheet
 import com.impossi8le.vpnapp.feature.home.HomeViewModel
+import com.impossi8le.vpnapp.feature.home.stalenessNote
 import com.impossi8le.vpnapp.feature.home.toRowStates
 import com.impossi8le.vpnapp.network.ApiClient
 import com.impossi8le.vpnapp.tunnel.AppTunnelController
@@ -512,17 +515,55 @@ private fun VpnApp() {
     var switchToken by remember { mutableStateOf(0) }
     var switchingJob by remember { mutableStateOf<Job?>(null) }
 
-    // Список подключений — из живого /me. Держим его в обычном состоянии, а не
-    // в `produceState`: список обязан перезагружаться не только при смене
-    // токена, но и по кнопке «Обновить список», и по таймеру после неё, а
-    // `produceState` перезапускается лишь по смене ключа.
-    var configs by remember { mutableStateOf(emptyList<ConfigRowState>()) }
+    // Список подключений. Держим его в обычном состоянии, а не в `produceState`:
+    // список обязан перезагружаться не только при смене токена, но и по кнопке
+    // «Обновить список», и по таймеру после неё, а `produceState` перезапускается
+    // лишь по смене ключа.
+    //
+    // **Первый кадр — из кэша, а не пустой.** Пока идёт `/me`, на экране уже
+    // стоит последний известный список: пользователь заходит и сразу видит, что
+    // выбрать, а сеть догоняет в фоне. Читаем файл синхронно в `remember` — он
+    // крошечный, и это дешевле отдельной асинхронности вокруг первого кадра (та
+    // же причина, что у `verdictStore.read()` ниже). Дату «истекло» считаем
+    // ЛОКАЛЬНО из сохранённого срока (`cachedConfigSelection`), сети для этого не
+    // нужно.
+    val cachedListOnFirstFrame = remember { graph.subscriptionCache.load() }
+    val cacheOnFirstFrame = remember {
+        val now = System.currentTimeMillis() / 1000
+        cachedConfigSelection(cachedListOnFirstFrame, now)
+            .configs
+            .toRowStates(now)
+            .filter { it.status == ConfigRowStatus.Available }
+    }
+    var configs by remember { mutableStateOf(cacheOnFirstFrame) }
+
+    /**
+     * Показан ли список из кэша прямо сейчас — то есть свежий ответ ещё не
+     * пришёл. `true` взводится стартовым кэшем и снимается первым успешным
+     * обновлением. Пока `true`, экран обязан сказать, что данные сохранённые
+     * (§6): молча выдать кэш за текущее состояние нельзя.
+     *
+     * Пустой кэш не взводит флаг: показывать нечего, значит и «сохранённых
+     * данных» на экране нет. Условие `isNotEmpty` — ровно про это.
+     */
+    var configsFromCache by remember {
+        mutableStateOf(cachedListOnFirstFrame != null && cacheOnFirstFrame.isNotEmpty())
+    }
 
     // Данные экрана «Аккаунт» — та же природа, что у списка: приходят из `/me`
     // и перезагружаются вместе с ним. Хранятся отдельным состоянием, потому что
     // экран аккаунта показывает их в другом месте и в другом виде, а не строкой
-    // подключения. Стартуем с умолчания экрана, пока ответа нет.
-    var account by remember { mutableStateOf(DefaultAccountScreenState) }
+    // подключения. Стартуем с кэша, если он был: счётчики аккаунта выводятся из
+    // того же списка, и показать «0 из 0» при живом кэше значило бы соврать в
+    // сторону «подписки нет». Пустой кэш — умолчание экрана.
+    var account by remember {
+        mutableStateOf(
+            cachedListOnFirstFrame
+                ?.takeIf { cacheOnFirstFrame.isNotEmpty() }
+                ?.toAccountScreenState(DefaultAccountScreenState)
+                ?: DefaultAccountScreenState,
+        )
+    }
 
     /**
      * Тумблер «Подтверждать смену страны».
@@ -647,14 +688,31 @@ private fun VpnApp() {
         val token = sessionToken ?: return
         graph.apiClient.sessionToken = token
         val list = graph.configApi.listConfigs().getOrNull()
+        // Кэш обновляется тем же правилом, что и экран: успех — новый список,
+        // неудача — прежний остаётся целым (`cacheAfterRefresh`). Неудачное
+        // обновление НЕ должно стирать сохранённое, иначе одна сетевая ошибка
+        // на холодном старте оставит экран пустым — то, от чего кэш и заведён.
+        val merged = cacheAfterRefresh(graph.subscriptionCache.load(), list)
+        if (list != null) {
+            graph.subscriptionCache.save(list)
+        }
+        // Признак «данные из кэша» снимается ТОЛЬКО успешным ответом: пока сеть
+        // не подтвердила список, на экране либо прежний кэш, либо он же после
+        // неудачи — и то и другое честно помечать как сохранённое.
+        if (list != null) configsFromCache = false
         // Экран «Аккаунт» питается тем же ответом `/me`, что и список: сервер
         // отдаёт там лимит устройств и срок подписки, и без этого экран показывал
-        // «0 из 0» и «—». Считаем ДО фильтра — «N истекли» должно видеть и
-        // истёкшие строки, которые из списка подключений убраны.
-        if (list != null) {
-            account = list.toAccountScreenState(account)
+        // «0 из 0» и «—». Считаем от `merged`, а не от `list`: при неудачном
+        // обновлении показываем данные кэша, и счётчики обязаны описывать ТО ЖЕ,
+        // что видит пользователь. Считаем ДО фильтра — «N истекли» должно видеть
+        // и истёкшие строки, которые из списка подключений убраны.
+        //
+        // `merged == null` (ни кэша, ни свежего ответа) оставляет account
+        // прежним: «не знаем» не превращается в «0 из 0» повторно.
+        if (merged != null) {
+            account = merged.toAccountScreenState(account)
         }
-        configs = list
+        configs = merged
             ?.configs
             ?.toRowStates(System.currentTimeMillis() / 1000)
             ?.filter { it.status == ConfigRowStatus.Available }
@@ -818,6 +876,9 @@ private fun VpnApp() {
             // то, что успело прийти (или умолчание, если ответа ещё нет).
             account = account,
             refreshingConfigs = refreshingConfigs,
+            // Пометка «данные из кэша». `null`, когда список свежий (или когда
+            // показывать нечего) — тогда экран молчит и §6 не нарушен.
+            configsStaleNote = stalenessNote(configsFromCache, refreshingConfigs),
             switchingInProgress = switching,
             prepareError = prepareMessage,
             // Состояние входа приходит от AuthViewModel: экран ожидания показывает

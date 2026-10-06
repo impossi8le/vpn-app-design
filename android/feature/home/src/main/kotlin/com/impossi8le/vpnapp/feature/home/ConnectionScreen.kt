@@ -78,6 +78,16 @@ fun ConnectionScreen(
      * отсюда и живёт на подписи раздела, а не рядом с кольцами.
      */
     refreshing: Boolean = false,
+    /**
+     * Подпись о том, что список подключений показан из кэша, а не из свежего
+     * ответа. `null` — говорить нечего.
+     *
+     * Считается снаружи чистой `stalenessNote`. Отдельно от [refreshing]:
+     * «идёт обновление» (процесс) и «данные сохранённые» (качество данных) —
+     * разные факты, и §6 требует показывать второй явно, а не выдавать кэш за
+     * текущее состояние.
+     */
+    configsStaleNote: String? = null,
     /** Предупреждение об окне без защиты: показывается при переключении страны. */
     switchingWarning: Boolean = false,
     /** Показывать ли системный запрос разрешения перед первым подключением. */
@@ -293,6 +303,24 @@ fun ConnectionScreen(
                 }
             }
 
+            // Честность о кэше (§6): пока список показан из сохранённого, экран
+            // прямо говорит это — сохранённые данные не выдаём за текущие.
+            // Раскладка рядом со списком, а не у колец: это свойство СПИСКА, а
+            // не состояния защиты, и на кольца влиять не может.
+            if (configsStaleNote != null) {
+                item {
+                    Text(
+                        configsStaleNote,
+                        color = VpnColors.Ash,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                            .testTag(CONNECTION_STALE_TAG),
+                    )
+                }
+            }
+
             items(configs, key = { it.id }) { config ->
                 ConfigRow(
                     config = config,
@@ -437,6 +465,7 @@ const val CONNECTION_PROGRESS_TAG = "connection_progress"
 const val CONNECTION_SWITCH_WARNING_TAG = "connection_switch_warning"
 const val CONNECTION_NOTICE_TAG = "connection_notice"
 const val CONNECTION_REFRESHING_TAG = "connection_refreshing"
+const val CONNECTION_STALE_TAG = "connection_stale"
 const val HOME_UPDATE_TAG = "home_update"
 const val HOME_UPDATE_DISMISS_TAG = "home_update_dismiss"
 const val HOME_UPDATE_PROGRESS_TAG = "home_update_progress"

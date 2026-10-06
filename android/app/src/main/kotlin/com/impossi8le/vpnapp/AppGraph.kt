@@ -4,10 +4,12 @@ import android.content.Context
 import com.impossi8le.vpnapp.config.ConfigManager
 import com.impossi8le.vpnapp.config.FileProfileMetaStore
 import com.impossi8le.vpnapp.config.FileProfileStore
+import com.impossi8le.vpnapp.config.FileSubscriptionCache
 import com.impossi8le.vpnapp.config.ProfilePreparer
 import com.impossi8le.vpnapp.domain.auth.SessionStore
 import com.impossi8le.vpnapp.domain.config.ProfileMetaStore
 import com.impossi8le.vpnapp.domain.config.ProfileStore
+import com.impossi8le.vpnapp.domain.config.SubscriptionCache
 import com.impossi8le.vpnapp.domain.settings.AppSettingsStore
 import com.impossi8le.vpnapp.domain.tunnel.BypassControl
 import com.impossi8le.vpnapp.domain.tunnel.BypassRoutesService
@@ -87,6 +89,15 @@ class AppGraph(
     val profileStore: ProfileStore = FileProfileStore(filesDir)
     val metaStore: ProfileMetaStore = FileProfileMetaStore(filesDir)
 
+    /**
+     * Кэш последнего успешного списка подключений.
+     *
+     * Лежит рядом с профилем, чтобы выход из аккаунта уносил и его (см.
+     * [signOut]): сохранённый список — это данные ПРЕЖНЕГО аккаунта, и показать
+     * их после входа другим значило бы выдать чужое за своё.
+     */
+    val subscriptionCache: SubscriptionCache = FileSubscriptionCache(filesDir)
+
     val configManager = ConfigManager(configApi, profileStore, metaStore)
     val preparer = ProfilePreparer(configApi, configManager, profileStore, metaStore)
 
@@ -112,12 +123,14 @@ class AppGraph(
      *
      * Ядро не должно держать удаляемый профиль; сессия не должна исчезнуть
      * раньше поднятого соединения. Профиль уходит вместе с сессией — иначе
-     * следующая сессия подхватила бы чужой профиль.
+     * следующая сессия подхватила бы чужой профиль. Кэш списка — по той же
+     * причине: это данные прежнего аккаунта.
      */
     suspend fun signOut() {
         tunnel.disconnect()
         profileStore.clear()
         metaStore.clear()
+        subscriptionCache.clear()
         sessionStore.clear()
         apiClient.sessionToken = null
     }
