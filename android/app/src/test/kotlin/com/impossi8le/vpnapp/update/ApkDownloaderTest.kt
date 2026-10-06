@@ -7,6 +7,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -78,5 +79,19 @@ class ApkDownloaderTest {
 
         assertTrue(!part.exists(), ".part должен быть удалён")
         assertTrue(kept.exists(), "посторонние файлы не трогаем")
+    }
+
+    @Test
+    fun `клиент скачивания не ограничивает весь вызов по времени`() {
+        // Прямая проверка причины поломки: с callTimeout 45 с стомегабайтный APK
+        // не успевает скачаться, и обновление обрывается на середине. Тест
+        // падает, если кто-то вернёт сюда общий клиент API.
+        val client = com.impossi8le.vpnapp.network.ApiClient.downloadClient()
+
+        assertNull(
+            client.callTimeoutMillis.takeIf { it > 0 },
+            "у клиента скачивания не должно быть callTimeout: он обрывает долгую закачку",
+        )
+        assertTrue(client.readTimeoutMillis > 0, "пауза без данных всё же должна быть ограничена")
     }
 }

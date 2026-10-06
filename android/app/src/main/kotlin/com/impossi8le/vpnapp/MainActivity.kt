@@ -53,6 +53,7 @@ import com.impossi8le.vpnapp.feature.home.StatusAction
 import com.impossi8le.vpnapp.feature.home.SwitchCountrySheet
 import com.impossi8le.vpnapp.feature.home.HomeViewModel
 import com.impossi8le.vpnapp.feature.home.toRowStates
+import com.impossi8le.vpnapp.network.ApiClient
 import com.impossi8le.vpnapp.tunnel.AppTunnelController
 import com.impossi8le.vpnapp.tunnel.TunnelStatusReceiver
 import com.impossi8le.vpnapp.update.ApkDownloader
@@ -529,7 +530,7 @@ private fun VpnApp() {
             enforceMinSupported = !BuildConfig.DEBUG,
         )
     }
-    val apkDownloader = remember { ApkDownloader(graph.apiClient.http, context.cacheDir) }
+    val apkDownloader = remember { ApkDownloader(ApiClient.downloadClient(), context.cacheDir) }
     val apkInstaller = remember { ApkInstaller(context) }
 
     val verdictStore = remember { UpdateVerdictStore(File(context.filesDir, "update-verdict.txt")) }

@@ -22,6 +22,19 @@ class ApiClient(
             .readTimeout(30, TimeUnit.SECONDS)
             .callTimeout(45, TimeUnit.SECONDS)
             .build()
+
+        /**
+         * Клиент для скачивания больших файлов (APK обновления, ~100 МБ).
+         *
+         * Без `callTimeout`: он ограничивает ВЕСЬ вызов, а не паузу между
+         * пакетами, поэтому 45 секунд обрывают закачку на середине — именно так
+         * и ломалось обновление. Паузы без данных по-прежнему ограничены
+         * `readTimeout`, так что зависшее соединение не держится вечно.
+         */
+        fun downloadClient(): OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
     }
 }
 
