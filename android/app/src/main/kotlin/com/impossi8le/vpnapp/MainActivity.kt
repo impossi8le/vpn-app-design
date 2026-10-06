@@ -418,6 +418,28 @@ private fun VpnApp() {
         }
     }
 
+    /**
+     * Разрешение на уведомления. С Android 13 система не показывает ни одного
+     * уведомления приложения, пока оно не попросит — в том числе постоянную
+     * карточку foreground-сервиса, по которой видно, что туннель поднят.
+     * Приложение уже объявляет `POST_NOTIFICATIONS` в манифесте, но объявления
+     * недостаточно: нужен запрос в рантайме.
+     */
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* отказ ничего не ломает: уведомление — удобство, не защита */ }
+
+    fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.POST_NOTIFICATIONS,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     DisposableEffect(tunnel) {
         tunnel.onConsentRequired = { intent -> consentLauncher.launch(intent) }
         onDispose { tunnel.onConsentRequired = null }
@@ -873,6 +895,13 @@ private fun VpnApp() {
                         StatusAction.Connect -> {
                             // Прошлая причина не должна пережить новую попытку.
                             prepareMessage = null
+                            // Разрешение на уведомления спрашиваем ЗДЕСЬ, перед
+                            // первым подключением: на Android 13+ без него
+                            // система молча прячет и постоянную карточку
+                            // foreground-сервиса, и пользователь не видит, что
+                            // туннель поднят. Отказ подключение не блокирует —
+                            // уведомление это удобство, а не защита.
+                            ensureNotificationPermission()
                             when (val prepared = graph.preparer.ensureProfile()) {
                                 PrepareResult.Ready -> {
                                     // Обходы тянем ПЕРЕД connect: файл должен
