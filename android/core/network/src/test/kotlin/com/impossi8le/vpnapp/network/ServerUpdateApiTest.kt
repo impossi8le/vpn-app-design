@@ -86,4 +86,32 @@ class ServerUpdateApiTest {
         server.enqueue(MockResponse().setResponseCode(500).setBody(""))
         assertNull(api.minSupported())
     }
+
+    @Test
+    fun `версия строкой тоже принимается`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"version":"95","apk_url":"https://example.com/vpn-95.apk"}""",
+            ),
+        )
+
+        val info = api.latestRelease().getOrThrow()
+        assertEquals("android-v95", info.tagName)
+    }
+
+    @Test
+    fun `не-404 и не-2xx — неожиданный сбой, а не отсутствие релиза`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(500).setBody("""{"error":"boom"}"""))
+
+        val error = (api.latestRelease().exceptionOrNull() as UpdateException).error
+        assertEquals(UpdateError.Unexpected(statusCode = 500), error)
+    }
+
+    @Test
+    fun `тело не JSON — неожиданный ответ, а не обновление`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("<html>oops</html>"))
+
+        val error = (api.latestRelease().exceptionOrNull() as UpdateException).error
+        assertTrue(error is UpdateError.Unexpected, "не JSON => предлагать нечего, было $error")
+    }
 }

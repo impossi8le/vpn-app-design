@@ -9,6 +9,8 @@ import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import okhttp3.Request
 
@@ -36,6 +38,8 @@ class ServerUpdateApi(
                 if (!response.isSuccessful) return@withContext null
                 parseMinSupported(response.body?.string().orEmpty())
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             // Нет порога — блокировать нечем. См. isVersionSupported.
             null
@@ -64,6 +68,8 @@ class ServerUpdateApi(
             Result.failure(e)
         } catch (e: IOException) {
             Result.failure(UpdateException(UpdateError.NetworkUnavailable))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(UpdateException(UpdateError.Unexpected(statusCode = 0)))
         }
@@ -71,8 +77,8 @@ class ServerUpdateApi(
 
     private fun parseLatest(body: String): ReleaseInfo {
         val root = json.parseToJsonElement(body).jsonObject
-        val version = root["version"]?.toString()?.trim('"')?.toIntOrNull()
-        val apkUrl = root["apk_url"]?.toString()?.trim('"')
+        val version = (root["version"] as? kotlinx.serialization.json.JsonPrimitive)?.intOrNull
+        val apkUrl = (root["apk_url"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
         if (version == null || apkUrl.isNullOrEmpty()) {
             // Обновление без ссылки предложить нельзя: кнопка «Скачать» молчала бы.
             throw UpdateException(UpdateError.Unexpected(statusCode = 200))
