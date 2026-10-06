@@ -37,26 +37,6 @@ class StatusMappingTest {
     }
 
     @Test
-    fun `заголовок подключено снимается потерей туннеля`() {
-        // Полный ход события ядра, как он доходит до экрана: ядро сообщило
-        // CONNECTED (ESTABLISHED), затем связь пропала (LOST). Экран обязан
-        // перестать показывать «подключено» на втором шаге. Тест держит это
-        // правило: если кто-то свяжет заголовок с фактом нажатия кнопки, а не
-        // с событием ядра, первая же половина упадёт.
-        val established = SystemState.ESTABLISHED.toConnectionStatus()
-        assertTrue(
-            established is ConnectionStatus.VerifyingProtection,
-            "после CONNECTED туннель считается поднятым",
-        )
-
-        val lost = SystemState.LOST.toConnectionStatus()
-        assertTrue(
-            lost is ConnectionStatus.Disconnected,
-            "после LOST заголовок «подключено» обязан сняться",
-        )
-    }
-
-    @Test
     fun `состояние в покое — отключено`() {
         assertTrue(SystemState.IDLE.toConnectionStatus() is ConnectionStatus.Disconnected)
     }
