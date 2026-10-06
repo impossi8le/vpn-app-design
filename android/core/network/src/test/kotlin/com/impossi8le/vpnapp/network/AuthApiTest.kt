@@ -1,5 +1,7 @@
 package com.impossi8le.vpnapp.network
 
+import com.impossi8le.vpnapp.domain.auth.AuthPollError
+import com.impossi8le.vpnapp.domain.auth.AuthPollException
 import com.impossi8le.vpnapp.domain.auth.PollOutcome
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
@@ -105,16 +107,18 @@ class AuthApiTest {
                 """{"error":{"code":"nonce_mismatch","message":"код не совпал","retryable":false}}""",
             ),
         )
-        val nonceError = (api.pollSession("c", "s", "0000").exceptionOrNull() as ApiException).error
-        assertEquals(ApiError.NonceMismatch, nonceError)
+        val nonceError =
+            (api.pollSession("c", "s", "0000").exceptionOrNull() as AuthPollException).error
+        assertEquals(AuthPollError.NonceMismatch, nonceError)
 
         server.enqueue(
             MockResponse().setResponseCode(401).setBody(
                 """{"error":{"code":"invalid_secret","message":"секрет не совпал","retryable":false}}""",
             ),
         )
-        val secretError = (api.pollSession("c", "s", "0000").exceptionOrNull() as ApiException).error
-        assertEquals(ApiError.InvalidSecret, secretError)
+        val secretError =
+            (api.pollSession("c", "s", "0000").exceptionOrNull() as AuthPollException).error
+        assertEquals(AuthPollError.InvalidSecret, secretError)
     }
 
     @Test
@@ -134,8 +138,8 @@ class AuthApiTest {
             ),
         )
 
-        val error = (api.pollSession("c", "s", "n").exceptionOrNull() as ApiException).error
-        assertEquals(ApiError.RateLimited, error)
+        val error = (api.pollSession("c", "s", "n").exceptionOrNull() as AuthPollException).error
+        assertEquals(AuthPollError.RateLimited, error)
     }
 
     @Test

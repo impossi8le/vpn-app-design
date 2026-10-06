@@ -1,5 +1,7 @@
 package com.impossi8le.vpnapp.network
 
+import com.impossi8le.vpnapp.domain.auth.AuthPollError
+import com.impossi8le.vpnapp.domain.auth.AuthPollException
 import com.impossi8le.vpnapp.domain.auth.AuthService
 import com.impossi8le.vpnapp.domain.auth.LoginChallenge
 import com.impossi8le.vpnapp.domain.auth.PollOutcome
@@ -102,7 +104,11 @@ class AuthApi(
                     return@withContext if (error is ApiError.Conflict && error.code == "already_consumed") {
                         Result.success(PollOutcome.AlreadyConsumed)
                     } else {
-                        Result.failure(ApiException(error))
+                        // Доменная ошибка, а не ApiException: feature:auth не
+                        // видит core:network (§1), а различить «не тот код»
+                        // (операция жива) и «нет связи» он обязан — иначе
+                        // неверный код показывается как сбой сети.
+                        Result.failure(AuthPollException(error.toAuthPollError()))
                     }
                 }
 
@@ -124,12 +130,12 @@ class AuthApi(
                         // скажет, если его нет.
                         val expiresAt = root.instantOrNull("expires_at")
                             ?: return@withContext Result.failure(
-                                ApiException(ApiError.Unexpected(response.code, body)),
+                                AuthPollException(AuthPollError.Unexpected),
                             )
                         val token = root.str("session_token").orEmpty()
                         if (token.isBlank()) {
                             return@withContext Result.failure(
-                                ApiException(ApiError.Unexpected(response.code, body)),
+                                AuthPollException(AuthPollError.Unexpected),
                             )
                         }
 
@@ -146,17 +152,20 @@ class AuthApi(
                     "denied" -> PollOutcome.Denied
                     "attempt_limit_exceeded" -> PollOutcome.AttemptLimitExceeded
                     else -> return@withContext Result.failure(
-                        ApiException(ApiError.Unexpected(response.code, body)),
+                        AuthPollException(AuthPollError.Unexpected),
                     )
                 }
                 Result.success(outcome)
             }
-        } catch (e: ApiException) {
+        } catch (e: AuthPollException) {
+            // Результаты уже обёрнуты в доменную ошибку — пропускаем как есть.
             Result.failure(e)
+        } catch (e: ApiException) {
+            Result.failure(AuthPollException(e.error.toAuthPollError()))
         } catch (e: IOException) {
-            Result.failure(ApiException(ApiError.Network(e.message ?: "сеть недоступна")))
+            Result.failure(AuthPollException(AuthPollError.NetworkUnavailable))
         } catch (e: Exception) {
-            Result.failure(ApiException(ApiError.Network(e.message ?: "неожиданный сбой")))
+            Result.failure(AuthPollException(AuthPollError.Unexpected))
         }
     }
 

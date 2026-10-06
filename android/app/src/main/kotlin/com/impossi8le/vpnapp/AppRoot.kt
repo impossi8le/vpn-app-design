@@ -195,7 +195,10 @@ fun AppRoot(
                 signingIn = state.signingIn,
                 errorText = state.loginError,
                 onSubmitNonce = { nonce -> onIntent(AppIntent.SubmitNonce(nonce)) },
-                onReopenTelegram = { onIntent(AppIntent.StartLogin) },
+                // Открыть именно Telegram, а не начинать вход заново: кнопка
+                // подписана «Открыть Telegram ещё раз», и пока идёт опрос,
+                // `StartLogin` молча ничего не делал.
+                onReopenTelegram = { onIntent(AppIntent.OpenTelegram) },
                 showDemoButton = state.showDemoButton,
                 // **Демонстрационный проход дальше.** Настоящий вход ждёт
                 // подтверждения в Telegram, которого в сборке для проверки нет:
@@ -456,6 +459,16 @@ sealed interface AppIntent {
 
     data object SessionChecked : AppIntent
     data object StartLogin : AppIntent
+
+    /**
+     * Открыть Telegram ещё раз — бот, где пользователь читает код.
+     *
+     * Отдельное намерение, а не повторный [StartLogin]: «показать мессенджер» —
+     * это НЕ изменение состояния входа. Раньше кнопка на экране ожидания звала
+     * `startLogin()`, и, пока шёл опрос, тот выходил на первой же строке
+     * (`if (pollJob?.isActive == true) return`) — кнопка не открывала ничего.
+     */
+    data object OpenTelegram : AppIntent
 
     /**
      * Пользователь ввёл код из бота и подтвердил.

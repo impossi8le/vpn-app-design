@@ -139,9 +139,21 @@ private fun ConnectionStatus.label(): String = when (this) {
  * отсутствовать: отсутствие мессенджера не повод ронять клиент VPN.
  */
 private fun openSupportBot(context: Context) {
+    openTelegramLink(context, SUPPORT_BOT_URL)
+}
+
+/**
+ * Открыть произвольную ссылку Telegram (бот или deep link из челленджа).
+ *
+ * Тот же приём, что и у [openSupportBot]: `https://` открывается и в Telegram,
+ * и в браузере, а `runCatching` не даёт отсутствию мессенджера уронить клиент
+ * VPN. Вынесено отдельно, потому что «Открыть Telegram ещё раз» ведёт по ссылке
+ * из челленджа (`deep_link` из `/auth/link`), а не по константе бота поддержки.
+ */
+private fun openTelegramLink(context: Context, url: String) {
     runCatching {
         context.startActivity(
-            Intent(Intent.ACTION_VIEW, android.net.Uri.parse(SUPPORT_BOT_URL))
+            Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
@@ -847,6 +859,20 @@ private fun VpnApp() {
                 }
 
                 AppIntent.StartLogin -> authViewModel.startLogin()
+
+                // «Открыть Telegram ещё раз» — показать бот, где пользователь
+                // читает код. Это НЕ изменение состояния входа, поэтому кнопка
+                // работает и во время опроса. Ссылку берём из текущего челленджа
+                // (`deep_link` из `/auth/link`), а если челленджа нет — ведём на
+                // бота поддержки: так кнопка всегда что-то открывает.
+                AppIntent.OpenTelegram -> {
+                    val challenge = when (val state = authViewModel.state.value) {
+                        is AuthUiState.AwaitingNonce -> state.challenge
+                        is AuthUiState.Polling -> state.challenge
+                        else -> null
+                    }
+                    openTelegramLink(context, challenge?.deepLink ?: SUPPORT_BOT_URL)
+                }
 
                 AppIntent.SignOut -> scope.launch {
                     // Порядок гашения — внутри `AppGraph.signOut()`: туннель →

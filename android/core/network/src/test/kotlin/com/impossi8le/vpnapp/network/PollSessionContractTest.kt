@@ -1,5 +1,7 @@
 package com.impossi8le.vpnapp.network
 
+import com.impossi8le.vpnapp.domain.auth.AuthPollError
+import com.impossi8le.vpnapp.domain.auth.AuthPollException
 import com.impossi8le.vpnapp.domain.auth.PollOutcome
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -100,7 +102,7 @@ class PollSessionContractTest {
             "без срока сессии вход считать состоявшимся нельзя: это скрытая поломка",
         )
         assertTrue(
-            result.exceptionOrNull() is ApiException,
+            result.exceptionOrNull() is AuthPollException,
             "ошибка должна быть типизированной, чтобы экран показал понятный текст",
         )
     }
@@ -153,12 +155,14 @@ class PollSessionContractTest {
         // Пользователю это разные сообщения: код можно ввести заново, а
         // испорченный секрет требует начать вход сначала.
         enqueue(403, """{"error":{"code":"nonce_mismatch","message":"wrong","retryable":true}}""")
-        val mismatch = api.pollSession("code", "secret", "0000").exceptionOrNull() as ApiException
-        assertEquals(ApiError.NonceMismatch, mismatch.error)
+        val mismatch =
+            api.pollSession("code", "secret", "0000").exceptionOrNull() as AuthPollException
+        assertEquals(AuthPollError.NonceMismatch, mismatch.error)
 
         enqueue(401, """{"error":{"code":"invalid_secret","message":"bad","retryable":false}}""")
-        val secret = api.pollSession("code", "secret", "4821").exceptionOrNull() as ApiException
-        assertEquals(ApiError.InvalidSecret, secret.error)
+        val secret =
+            api.pollSession("code", "secret", "4821").exceptionOrNull() as AuthPollException
+        assertEquals(AuthPollError.InvalidSecret, secret.error)
     }
 
     @Test

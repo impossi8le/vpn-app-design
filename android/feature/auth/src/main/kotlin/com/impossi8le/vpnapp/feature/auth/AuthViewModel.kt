@@ -2,6 +2,8 @@ package com.impossi8le.vpnapp.feature.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.impossi8le.vpnapp.domain.auth.AuthPollError
+import com.impossi8le.vpnapp.domain.auth.AuthPollException
 import com.impossi8le.vpnapp.domain.auth.AuthService
 import com.impossi8le.vpnapp.domain.auth.LoginChallenge
 import com.impossi8le.vpnapp.domain.auth.PollOutcome
@@ -97,8 +99,17 @@ class AuthViewModel(
 
             while (true) {
                 val outcome = service.pollSession(challenge.publicCode, challenge.secret, nonce)
-                    .getOrElse {
-                        _state.value = AuthUiState.Failed("нет связи с сервером", retryable = true)
+                    .getOrElse { error ->
+                        // Неверный код — НЕ сбой связи: операция жива, тот же
+                        // public_code и secret ещё годны. Возвращаем к вводу кода
+                        // (nonceRejected), а не показываем «нет связи» и не
+                        // заставляем начинать вход заново. Сбой связи и прочие
+                        // ошибки по-прежнему ведут к общему сообщению с повтором.
+                        if ((error as? AuthPollException)?.error == AuthPollError.NonceMismatch) {
+                            nonceRejected()
+                        } else {
+                            _state.value = AuthUiState.Failed("нет связи с сервером", retryable = true)
+                        }
                         return@launch
                     }
 

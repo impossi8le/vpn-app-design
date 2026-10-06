@@ -1,5 +1,7 @@
 package com.impossi8le.vpnapp.feature.auth
 
+import com.impossi8le.vpnapp.domain.auth.AuthPollError
+import com.impossi8le.vpnapp.domain.auth.AuthPollException
 import com.impossi8le.vpnapp.domain.auth.AuthService
 import com.impossi8le.vpnapp.domain.auth.LoginChallenge
 import com.impossi8le.vpnapp.domain.auth.PollOutcome
@@ -193,6 +195,35 @@ class AuthViewModelTest {
         assertTrue(
             vm.state.value is AuthUiState.AwaitingNonce,
             "операция ещё жива — пользователь должен иметь возможность ввести код снова",
+        )
+    }
+
+    @Test
+    fun `неверный код во время опроса возвращает к вводу, а не показывает сбой сети`() = runTest(scheduler) {
+        // Сервер ответил `403 nonce_mismatch`. Это НЕ сбой связи: операция жива,
+        // тот же public_code и secret годны — пользователь вводит код заново.
+        // Раньше ошибка терялась в getOrElse, и на неверный код показывалось
+        // «нет связи с сервером», а к вводу кода вернуться было нельзя.
+        val service = FakeAuthService(
+            challenge = challenge(),
+            outcomes = mutableListOf(
+                Result.failure(AuthPollException(AuthPollError.NonceMismatch)),
+            ),
+        )
+        val vm = AuthViewModel(service, FakeSessionStore(), "Pixel")
+
+        vm.startLogin()
+        vm.submitNonce("0000")
+        scheduler.advanceUntilIdle()
+
+        val state = vm.state.value
+        assertTrue(
+            state is AuthUiState.AwaitingNonce,
+            "неверный код должен возвращать к вводу, а не запирать экран",
+        )
+        assertFalse(
+            state is AuthUiState.Failed,
+            "неверный код — не сбой сети; сообщения «нет связи с сервером» быть не должно",
         )
     }
 
