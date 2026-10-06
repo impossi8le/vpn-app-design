@@ -548,6 +548,12 @@ private fun VpnApp() {
     var updateMessage by remember { mutableStateOf<String?>(null) }
     var updateBannerDismissed by remember { mutableStateOf(false) }
 
+    // Идёт ли загрузка обновления прямо сейчас. Без этого флага второй тап по
+    // «Обновить» запускал вторую загрузку — сервер видел три параллельных
+    // запроса одного APK. Снимаем его в finally: исключение не должно оставить
+    // флаг взведённым навсегда, иначе кнопка умерла бы — тот же баг, что чиним.
+    var updateDownloading by remember { mutableStateOf(false) }
+
     // Огрызки прошлых закачек не должны переживать запуск: установщик может
     // принять за готовый APK половину файла.
     LaunchedEffect(Unit) { apkDownloader.clearStale() }
@@ -784,32 +790,52 @@ private fun VpnApp() {
                     updateState = updateChecker.check()
                 }
 
-                AppIntent.DownloadUpdate -> scope.launch {
-                    // Ссылку берём заново: между проверкой и нажатием прошло
-                    // время, и релиз мог обновиться.
-                    val info = graph.updateApi.latestRelease().getOrNull()
-                    if (info == null) {
-                        updateMessage = "не удалось получить ссылку на обновление"
-                        return@launch
+                AppIntent.DownloadUpdate -> {
+                    // Второй тап, пока загрузка идёт, ничего не делает: иначе
+                    // один телефон открывал три параллельных запроса одного APK.
+                    // Флаг взводим здесь, до запуска корутины, а не внутри неё —
+                    // иначе между тапом и стартом корутины успел бы пройти второй.
+                    if (!updateDownloading) {
+                        updateDownloading = true
+                        scope.launch {
+                            try {
+                                // Ссылку берём заново: между проверкой и нажатием прошло
+                                // время, и релиз мог обновиться.
+                                val info = graph.updateApi.latestRelease().getOrNull()
+                                if (info == null) {
+                                    updateMessage = "не удалось получить ссылку на обновление"
+                                    return@launch
+                                }
+                                if (!apkInstaller.canInstall()) {
+                                    // Не молчим и не показываем «скачано»: ведём туда, где
+                                    // разрешение включается — иначе пользователь упрётся в
+                                    // диалог, которого не будет.
+                                    updateMessage = "разрешите установку из этого источника"
+                                    runCatching { installLauncher.launch(apkInstaller.unknownSourcesIntent()) }
+                                    return@launch
+                                }
+                                updateMessage = null
+                                updateProgress = 0
+                                val file = apkDownloader.download(info.apkUrl) { updateProgress = it }.getOrNull()
+                                updateProgress = null
+                                if (file == null) {
+                                    updateMessage = "скачивание не удалось"
+                                    return@launch
+                                }
+                                runCatching { installLauncher.launch(apkInstaller.install(file)) }
+                                    .onFailure { updateMessage = "на устройстве нечем установить APK" }
+                            } finally {
+                                // В finally, а не просто в конце: исключение не должно
+                                // оставить флаг взведённым — тогда кнопка стала бы мёртвой
+                                // навсегда, а это и есть баг, который чиним. Прогресс
+                                // гасим здесь же: оставленный непустым, он рисует строку
+                                // без ссылки «Обновить» — тот же мёртвый экран с другой
+                                // стороны.
+                                updateDownloading = false
+                                updateProgress = null
+                            }
+                        }
                     }
-                    if (!apkInstaller.canInstall()) {
-                        // Не молчим и не показываем «скачано»: ведём туда, где
-                        // разрешение включается — иначе пользователь упрётся в
-                        // диалог, которого не будет.
-                        updateMessage = "разрешите установку из этого источника"
-                        runCatching { installLauncher.launch(apkInstaller.unknownSourcesIntent()) }
-                        return@launch
-                    }
-                    updateMessage = null
-                    updateProgress = 0
-                    val file = apkDownloader.download(info.apkUrl) { updateProgress = it }.getOrNull()
-                    updateProgress = null
-                    if (file == null) {
-                        updateMessage = "скачивание не удалось"
-                        return@launch
-                    }
-                    runCatching { installLauncher.launch(apkInstaller.install(file)) }
-                        .onFailure { updateMessage = "на устройстве нечем установить APK" }
                 }
 
                 AppIntent.DismissUpdateBanner -> updateBannerDismissed = true

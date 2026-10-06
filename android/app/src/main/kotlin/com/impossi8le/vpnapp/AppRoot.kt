@@ -237,6 +237,7 @@ fun AppRoot(
                 onSwitchCountry = { id -> onIntent(AppIntent.SwitchCountry(id)) },
                 updateVersionCode = (state.update as? UpdateUiState.Available)
                     ?.takeUnless { state.updateBannerDismissed }?.versionCode,
+                updateProgress = state.updateProgress,
                 onDownloadUpdate = { onIntent(AppIntent.DownloadUpdate) },
                 onDismissUpdateBanner = { onIntent(AppIntent.DismissUpdateBanner) },
             )

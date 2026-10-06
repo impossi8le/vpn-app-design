@@ -35,6 +35,7 @@ import com.impossi8le.vpnapp.core.ui.VpnNavBar
 import com.impossi8le.vpnapp.core.ui.VpnPrimaryButton
 import com.impossi8le.vpnapp.core.ui.MonoFont
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 
 /**
@@ -89,6 +90,14 @@ fun ConnectionScreen(
      * тон, а не жёлтый/красный (ср. [switchingWarning] и [notice]).
      */
     updateVersionCode: Int? = null,
+    /**
+     * Процент скачанного обновления или `null`, если загрузка не идёт.
+     *
+     * Живёт на главном экране, а не только в «Аккаунте»: баннер обновления
+     * стоит именно здесь, и без строки прогресса нажатие «Обновить» выглядит
+     * как молчание — при 106 МБ это минуты на медленной сети.
+     */
+    updateProgress: Int? = null,
     onDownloadUpdate: () -> Unit = {},
     onDismissUpdateBanner: () -> Unit = {},
     /**
@@ -183,6 +192,7 @@ fun ConnectionScreen(
                 item {
                     UpdateBanner(
                         versionCode = updateVersionCode,
+                        progress = updateProgress,
                         onDownload = onDownloadUpdate,
                         onDismiss = onDismissUpdateBanner,
                     )
@@ -388,6 +398,7 @@ const val CONNECTION_NOTICE_TAG = "connection_notice"
 const val CONNECTION_REFRESHING_TAG = "connection_refreshing"
 const val HOME_UPDATE_TAG = "home_update"
 const val HOME_UPDATE_DISMISS_TAG = "home_update_dismiss"
+const val HOME_UPDATE_PROGRESS_TAG = "home_update_progress"
 
 /**
  * Плашка «доступна новая версия».
@@ -396,10 +407,16 @@ const val HOME_UPDATE_DISMISS_TAG = "home_update_dismiss"
  * предупреждение), а обновление — не состояние подключения. Здесь две ссылки —
  * обновиться или отложить, и обе видны сразу: спрятать «Позже» за крестик
  * значило бы заставить пользователя угадывать, как убрать плашку с глаз.
+ *
+ * Пока [progress] не `null`, идёт загрузка: вместо ссылок рисуется строка
+ * прогресса. Ссылку «Обновить» в это время не показываем вовсе — второй тап по
+ * ней запускал вторую загрузку (на телефоне сервер видел три параллельных
+ * запроса одного APK), а тут кнопки просто нет.
  */
 @Composable
 private fun UpdateBanner(
     versionCode: Int,
+    progress: Int?,
     onDownload: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -410,26 +427,43 @@ private fun UpdateBanner(
                 color = VpnColors.Bone,
                 fontSize = 15.sp,
             )
-            Row(modifier = Modifier.padding(top = 6.dp)) {
+            if (progress != null) {
                 Text(
-                    text = "Обновить",
+                    text = "Скачиваем обновление… $progress%",
                     color = VpnColors.Ice,
                     fontSize = 15.sp,
                     modifier = Modifier
-                        .clickable(onClick = onDownload)
-                        .padding(vertical = 6.dp, horizontal = 4.dp)
-                        .testTag(HOME_UPDATE_TAG),
+                        .padding(top = 6.dp)
+                        .testTag(HOME_UPDATE_PROGRESS_TAG),
                 )
-                Spacer(modifier = Modifier.width(16.dp))
-                Text(
-                    text = "Позже",
-                    color = VpnColors.Ash,
-                    fontSize = 15.sp,
+                LinearProgressIndicator(
+                    progress = { progress / 100f },
                     modifier = Modifier
-                        .clickable(onClick = onDismiss)
-                        .padding(vertical = 6.dp, horizontal = 4.dp)
-                        .testTag(HOME_UPDATE_DISMISS_TAG),
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
                 )
+            } else {
+                Row(modifier = Modifier.padding(top = 6.dp)) {
+                    Text(
+                        text = "Обновить",
+                        color = VpnColors.Ice,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .clickable(onClick = onDownload)
+                            .padding(vertical = 6.dp, horizontal = 4.dp)
+                            .testTag(HOME_UPDATE_TAG),
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "Позже",
+                        color = VpnColors.Ash,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 6.dp, horizontal = 4.dp)
+                            .testTag(HOME_UPDATE_DISMISS_TAG),
+                    )
+                }
             }
         }
     }
