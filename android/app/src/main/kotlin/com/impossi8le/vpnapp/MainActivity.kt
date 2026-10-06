@@ -1183,6 +1183,8 @@ private fun VpnApp() {
 
                 is AppIntent.BypassCustomInput -> bypassViewModel.onCustomInputChange(intent.text)
 
+                is AppIntent.BypassCustomName -> bypassViewModel.onCustomNameChange(intent.text)
+
                 AppIntent.BypassAddCustom -> bypassViewModel.addCustom()
 
                 is AppIntent.BypassRemove -> bypassViewModel.remove(intent.route)

@@ -39,6 +39,7 @@ import com.impossi8le.vpnapp.domain.tunnel.BypassCatalog
 import com.impossi8le.vpnapp.domain.tunnel.BypassRoute
 import com.impossi8le.vpnapp.domain.tunnel.BypassService
 import com.impossi8le.vpnapp.domain.tunnel.catalogSummary
+import com.impossi8le.vpnapp.domain.tunnel.displayName
 import com.impossi8le.vpnapp.domain.tunnel.filterServices
 import com.impossi8le.vpnapp.domain.tunnel.label
 
@@ -47,6 +48,7 @@ const val BYPASS_TITLE_TAG = "bypass_title"
 const val BYPASS_BYPASS_ALL_TAG = "bypass_all"
 const val BYPASS_SEARCH_TAG = "bypass_search"
 const val BYPASS_CUSTOM_INPUT_TAG = "bypass_custom_input"
+const val BYPASS_CUSTOM_NAME_TAG = "bypass_custom_name"
 const val BYPASS_CUSTOM_ADD_TAG = "bypass_custom_add"
 const val BYPASS_ROUTES_FAILED_TAG = "bypass_routes_failed"
 const val BYPASS_ROUTES_EMPTY_TAG = "bypass_routes_empty"
@@ -84,6 +86,7 @@ fun BypassScreen(
     onQueryChange: (String) -> Unit,
     onToggleExpanded: (String) -> Unit,
     onCustomInputChange: (String) -> Unit,
+    onCustomNameChange: (String) -> Unit,
     onAddCustom: () -> Unit,
     onRemove: (BypassRoute) -> Unit,
     modifier: Modifier = Modifier,
@@ -93,7 +96,17 @@ fun BypassScreen(
         state.query,
     )
 
-    Column(modifier = modifier.fillMaxSize().background(VpnColors.Void)) {
+    // Отступы шапки заданы здесь, у внешней колонки, а не в `VpnNavBar` — так же
+    // собраны «Аккаунт», «О сервисе» (`.padding(horizontal = 18.dp)` на колонке).
+    // Раньше горизонтальный отступ был только у `LazyColumn`, и заголовок
+    // «Обходы» уезжал влево от остальных экранов, а «‹ Назад» стояла не там же.
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(VpnColors.Void)
+            .padding(horizontal = 18.dp)
+            .padding(top = 8.dp),
+    ) {
         VpnNavBar(
             title = "Обходы",
             onBack = onBack,
@@ -103,8 +116,7 @@ fun BypassScreen(
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp),
+                .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             // Обход на этом устройстве не действует (Android < 13, нет
@@ -254,6 +266,22 @@ fun BypassScreen(
             }
 
             item {
+                // Название необязательно: пусто — в списке будет голый CIDR.
+                // Уходит на сервер `#`-подписью над `route`, поэтому живёт
+                // между запусками, а не только до них.
+                OutlinedTextField(
+                    value = state.customName,
+                    onValueChange = onCustomNameChange,
+                    singleLine = true,
+                    label = { Text("Название (необязательно)") },
+                    colors = darkFieldColors(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(BYPASS_CUSTOM_NAME_TAG),
+                )
+            }
+
+            item {
                 VpnGhostButton(
                     text = "Добавить обход",
                     onClick = { if (!state.applying) onAddCustom() },
@@ -313,7 +341,14 @@ private fun LazyListScope.routesSection(
     }
 }
 
-/** Строка подсети с ссылкой удаления. */
+/**
+ * Строка подсети с ссылкой удаления.
+ *
+ * Главное — [BypassRoute.name] (название сервиса или подпись своего обхода):
+ * голый `87.240.129.0/24` не говорит, чей он. Но адрес при этом не прячем —
+ * держим его второй строкой: обход задаётся подсетью, и её иногда надо сверить
+ * глазами. Без имени показываем только адрес, как раньше.
+ */
 @Composable
 private fun RouteRow(route: BypassRoute, onRemove: () -> Unit) {
     VpnCard(modifier = Modifier.fillMaxWidth()) {
@@ -321,13 +356,21 @@ private fun RouteRow(route: BypassRoute, onRemove: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                route.label(),
-                color = VpnColors.Bone,
-                fontSize = 13.5.sp,
-                fontFamily = MonoFont,
-                modifier = Modifier.weight(1f),
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    route.displayName(),
+                    color = VpnColors.Bone,
+                    fontSize = 13.5.sp,
+                )
+                if (route.name != null) {
+                    Text(
+                        route.label(),
+                        color = VpnColors.Ash,
+                        fontSize = 11.5.sp,
+                        fontFamily = MonoFont,
+                    )
+                }
+            }
             Box(
                 modifier = Modifier
                     .heightIn(min = MinTouchTarget)

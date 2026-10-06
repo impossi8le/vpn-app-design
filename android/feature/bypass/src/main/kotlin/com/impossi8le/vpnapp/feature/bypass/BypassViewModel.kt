@@ -6,9 +6,9 @@ import com.impossi8le.vpnapp.domain.tunnel.BypassCatalog
 import com.impossi8le.vpnapp.domain.tunnel.BypassControl
 import com.impossi8le.vpnapp.domain.tunnel.BypassResolve
 import com.impossi8le.vpnapp.domain.tunnel.BypassRoute
+import com.impossi8le.vpnapp.domain.tunnel.BypassService
 import com.impossi8le.vpnapp.domain.tunnel.BypassWrite
 import com.impossi8le.vpnapp.domain.tunnel.CustomTarget
-import com.impossi8le.vpnapp.domain.tunnel.bypassTargets
 import com.impossi8le.vpnapp.domain.tunnel.classifyCustomTarget
 import com.impossi8le.vpnapp.domain.tunnel.label
 import com.impossi8le.vpnapp.domain.tunnel.mergeRoutes
@@ -44,6 +44,13 @@ data class BypassUiState(
     val query: String = "",
     val expandedKeys: Set<String> = emptySet(),
     val customInput: String = "",
+    /**
+     * Необязательное название своего обхода. Уходит на сервер подписью (`# name`
+     * над `route … net_gateway`), поэтому переживает перезапуск приложения.
+     * Отдельным полем, а не склейкой с адресом: сервер пишет адрес и подпись в
+     * разные строки файла, и склейка сломала бы обе.
+     */
+    val customName: String = "",
     val applying: Boolean = false,
     val supported: Boolean = true,
     val message: String? = null,
@@ -128,6 +135,11 @@ class BypassViewModel(
         _state.value = _state.value.copy(customInput = text, message = null)
     }
 
+    /** Название своего обхода. Пусто — записи имени нет, в списке будет голый CIDR. */
+    fun onCustomNameChange(text: String) {
+        _state.value = _state.value.copy(customName = text, message = null)
+    }
+
     /** Скрыть сообщение вручную (например, после удачной записи). */
     fun clearMessage() {
         _state.value = _state.value.copy(
@@ -140,8 +152,12 @@ class BypassViewModel(
     /**
      * «Обойти все РФ сервисы».
      *
-     * Разбираем ВСЕ домены каталога одним запросом и добавляем результат к тому,
-     * что уже записано. Пустой каталог — честная причина, а не тихая удача.
+     * Разбираем домены КАЖДОГО сервиса отдельно и подписываем подсети названием
+     * сервиса, добавляя результат к тому, что уже записано. Один общий запрос был
+     * бы короче, но вернул бы CIDR без принадлежности — в списке «Обходы сейчас»
+     * тогда не отличить `155.212.204.0/24` от чужого адреса.
+     *
+     * Пустой каталог — честная причина, а не тихая удача.
      */
     fun bypassAll() {
         val catalog = _state.value.catalog as? BypassCatalog.Loaded
@@ -149,29 +165,60 @@ class BypassViewModel(
             fail("Список сервисов не загружен")
             return
         }
-        val targets = bypassTargets(catalog.services)
-        if (targets.isEmpty()) {
+        val services = catalog.services.filter { service ->
+            service.domains.any { it.trim().isNotEmpty() }
+        }
+        if (services.isEmpty()) {
             fail("В списке сервисов нет доменов")
             return
         }
-        apply {
-            when (val resolved = control.resolve(targets)) {
-                is BypassResolve.Resolved -> {
-                    val merged = mergeRoutes(control.fetchRoutes().orEmpty(), resolved.routes)
-                    writeAndReload(merged) { "Обход включён: сервисов — ${resolved.routes.size}" }
-                }
+        apply { applyAllServices(services) }
+    }
 
-                // Сервер отверг часть доменов каталога. Это не вина пользователя,
-                // и молчать нельзя: он нажал «обойти все», а обход не включился.
-                BypassResolve.InvalidTarget -> fail("Сервер отклонил адреса сервисов")
+    /**
+     * Разобрать и записать все сервисы поштучно, чтобы каждый CIDR нёс название
+     * своего сервиса.
+     *
+     * Имя — НАЗВАНИЕ сервиса («ВКонтакте»), а не домен: домен уже виден рядом в
+     * каталоге, а в списке «Обходы сейчас» место принадлежности, не адреса.
+     *
+     * Сервер отвергает ВЕСЬ запрос из-за одной негодной цели, поэтому на отказе
+     * любого сервиса останавливаемся и ничего не пишем — частичный обход выдал бы
+     * себя за полный.
+     */
+    private suspend fun applyAllServices(services: List<BypassService>) {
+        val accumulated = mutableListOf<BypassRoute>()
+        for (service in services) {
+            val targets = service.domains.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            if (targets.isEmpty()) continue
+            when (val resolved = control.resolve(targets)) {
+                is BypassResolve.Resolved ->
+                    accumulated += resolved.routes.map { it.copy(name = service.title) }
+
+                BypassResolve.InvalidTarget -> {
+                    fail("Сервер отклонил адреса сервиса «${service.title}»")
+                    return
+                }
 
                 // Сессия недействительна — ни повторять, ни переписывать адреса
                 // не поможет. Прямо зовём войти заново.
-                BypassResolve.NotAuthorized -> needSignIn()
+                BypassResolve.NotAuthorized -> {
+                    needSignIn()
+                    return
+                }
 
-                BypassResolve.Failed -> fail("Не удалось разобрать адреса сервисов")
+                BypassResolve.Failed -> {
+                    fail("Не удалось разобрать адреса сервисов")
+                    return
+                }
             }
         }
+        if (accumulated.isEmpty()) {
+            fail("Не удалось разобрать адреса сервисов")
+            return
+        }
+        val merged = mergeRoutes(control.fetchRoutes().orEmpty(), accumulated)
+        writeAndReload(merged) { "Обход включён: сервисов — ${services.size}" }
     }
 
     /**
@@ -180,19 +227,24 @@ class BypassViewModel(
      * Домен уходит на сервер как есть; CIDR проверяется локально (широкий
      * префикс — не подсеть, а ошибка). При `400` — прямо говорим, что адрес
      * негоден или слишком широк, и НИЧЕГО не добавляем локально.
+     *
+     * Необязательное название едет подписью записи: сервер пишет его
+     * `#`-строкой над маршрутом, и список показывает имя вместо голого CIDR.
      */
     fun addCustom() {
-        when (val target = classifyCustomTarget(_state.value.customInput)) {
+        val parsed = classifyCustomTarget(_state.value.customInput, _state.value.customName)
+        when (parsed) {
             CustomTarget.Blank -> fail("Введите домен или подсеть")
 
             CustomTarget.InvalidCidr ->
                 fail("Неверная подсеть — проверьте адрес и префикс (не шире /8)")
 
             is CustomTarget.Valid -> apply {
-                when (val resolved = control.resolve(listOf(target.target))) {
+                when (val resolved = control.resolve(listOf(parsed.target))) {
                     is BypassResolve.Resolved -> {
-                        val merged = mergeRoutes(control.fetchRoutes().orEmpty(), resolved.routes)
-                        writeAndReload(merged) { "Добавлено: ${target.target}" }
+                        val named = resolved.routes.map { it.copy(name = parsed.name) }
+                        val merged = mergeRoutes(control.fetchRoutes().orEmpty(), named)
+                        writeAndReload(merged) { "Добавлено: ${parsed.name ?: parsed.target}" }
                     }
 
                     BypassResolve.InvalidTarget ->

@@ -127,6 +127,24 @@ class BypassApiTest {
     }
 
     @Test
+    fun `set шлёт подпись рядом с CIDR, но не выдумывает пустую`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"ok":true,"count":2}"""))
+        api.set(
+            listOf(
+                BypassRoute("87.240.129.0", 24, name = "ВКонтакте"),
+                BypassRoute("77.88.0.0", 16),
+            ),
+        )
+
+        val body = server.takeRequest().body.readUtf8()
+        // Подпись и адрес — РАЗНЫЕ поля: сервер пишет подпись `#`-строкой НАД
+        // `route … net_gateway`, и склейка сломала бы обе строки файла.
+        assertTrue(body.contains("\"label\":\"ВКонтакте\""), "подпись обязана уехать: $body")
+        assertTrue(body.contains("\"cidr\":\"87.240.129.0/24\""), "адрес отдельным полем: $body")
+        assertEquals(1, Regex("\"label\"").findAll(body).count(), "у записи без имени подписи нет: $body")
+    }
+
+    @Test
     fun `400 на set это Invalid, а не частичная запись`() = runTest {
         // Сервер отвергает весь запрос из-за одной записи — исхода «частично» нет.
         server.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":{"code":"invalid_target"}}"""))
@@ -145,6 +163,34 @@ class BypassApiTest {
     fun `текущие обходы читаются`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody("""{"routes":["87.240.129.0/24","не-адрес"]}"""),
+        )
+        assertEquals(listOf(BypassRoute("87.240.129.0", 24)), api.fetchRoutes())
+    }
+
+    @Test
+    fun `подписи из entries доходят до списка`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"entries":[{"cidr":"87.240.129.0/24","label":"ВКонтакте"},""" +
+                    """{"cidr":"155.212.204.0/24"}]}""",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                BypassRoute("87.240.129.0", 24, name = "ВКонтакте"),
+                BypassRoute("155.212.204.0", 24),
+            ),
+            api.fetchRoutes(),
+        )
+    }
+
+    @Test
+    fun `старый ответ без entries читается из routes`() = runTest {
+        // Сервер, ещё не знающий о подписях, отдаёт плоский `routes`: клиент
+        // обязан работать и с ним, иначе обновление клиента ломало бы старый сервер.
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody("""{"routes":["87.240.129.0/24"]}"""),
         )
         assertEquals(listOf(BypassRoute("87.240.129.0", 24)), api.fetchRoutes())
     }

@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import com.impossi8le.vpnapp.domain.tunnel.BypassCatalog
 import com.impossi8le.vpnapp.domain.tunnel.BypassRoute
 import com.impossi8le.vpnapp.domain.tunnel.BypassService
@@ -35,6 +36,7 @@ class BypassScreenTest {
         onRemove: (BypassRoute) -> Unit = {},
         onToggleExpanded: (String) -> Unit = {},
         onAddCustom: () -> Unit = {},
+        onCustomNameChange: (String) -> Unit = {},
     ) {
         compose.setContent {
             BypassScreen(
@@ -44,6 +46,7 @@ class BypassScreenTest {
                 onQueryChange = {},
                 onToggleExpanded = onToggleExpanded,
                 onCustomInputChange = {},
+                onCustomNameChange = onCustomNameChange,
                 onAddCustom = onAddCustom,
                 onRemove = onRemove,
             )
@@ -184,5 +187,39 @@ class BypassScreenTest {
         compose.onNodeWithTag(BYPASS_CUSTOM_ADD_TAG).performClick()
 
         assertEquals(true, added)
+    }
+
+    @Test
+    fun namedRouteShowsNameInsteadOfBareCidr() {
+        // «если известен чей ip — надо написать чей»: в списке видно название
+        // сервиса, а не безликий 87.240.129.0/24.
+        setScreen(
+            state = BypassUiState(
+                routes = listOf(BypassRoute("87.240.129.0", 24, name = "ВКонтакте")),
+            ),
+        )
+
+        compose.onNodeWithText("ВКонтакте").assertIsDisplayed()
+    }
+
+    @Test
+    fun unnamedRouteStillShowsCidr() {
+        // Старые записи без подписи не должны пропасть из списка.
+        setScreen(state = BypassUiState(routes = listOf(BypassRoute("77.88.0.0", 16))))
+
+        compose.onNodeWithText("77.88.0.0/16").assertIsDisplayed()
+    }
+
+    @Test
+    fun customNameFieldReportsTypedName() {
+        var typed: String? = null
+        setScreen(
+            state = BypassUiState(routes = emptyList(), customInput = "1.2.3.0/24"),
+            onCustomNameChange = { typed = it },
+        )
+
+        compose.onNodeWithTag(BYPASS_CUSTOM_NAME_TAG).performTextInput("Работа")
+
+        assertEquals("Работа", typed)
     }
 }

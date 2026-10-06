@@ -9,8 +9,11 @@ import java.util.Locale
  * негодно / отправить на сервер» проверяется тестом без рендера.
  */
 sealed interface CustomTarget {
-    /** Непустой текст. Уходит в `resolve` как есть — окончательное решение за сервером. */
-    data class Valid(val target: String) : CustomTarget
+    /**
+     * Непустой текст. Уходит в `resolve` как есть — окончательное решение за
+     * сервером. [name] — необязательная подпись, которую пользователь дал обходу.
+     */
+    data class Valid(val target: String, val name: String? = null) : CustomTarget
 
     /** Пусто: дёргать сеть нечем. */
     data object Blank : CustomTarget
@@ -30,12 +33,17 @@ sealed interface CustomTarget {
  * Домен на этом шаге НЕ проверяем: его годность решает сервер (`resolve`).
  * CIDR — проверяем, и для этого переиспользуем [parseBypassCidr], а не заводим
  * второй парсер: у него уже есть защита от слишком широких префиксов.
+ *
+ * [name] — то, что введено в поле «Название»: подпись для списка обходов.
+ * Отдельным аргументом, а не склейкой с адресом, потому что имя уходит в файл
+ * сервера `#`-комментарием, а адрес — в строку `route … net_gateway`. Склейка
+ * сломала бы обе строки.
  */
-fun classifyCustomTarget(raw: String): CustomTarget {
+fun classifyCustomTarget(raw: String, name: String? = null): CustomTarget {
     val text = raw.trim()
     if (text.isEmpty()) return CustomTarget.Blank
     if (text.contains('/') && parseBypassCidr(text) == null) return CustomTarget.InvalidCidr
-    return CustomTarget.Valid(text)
+    return CustomTarget.Valid(text, name?.trim()?.takeIf { it.isNotEmpty() })
 }
 
 /**
@@ -56,6 +64,14 @@ fun filterServices(services: List<BypassService>, query: String): List<BypassSer
 
 /** Человекочитаемая подпись подсети: `87.240.129.0/24`. */
 fun BypassRoute.label(): String = "$network/$prefixLength"
+
+/**
+ * Что показывать в списке «Обходы сейчас»: имя записи, а без него — голый CIDR.
+ *
+ * Имя есть у обходов из каталога (название сервиса) и у своих обходов, которым
+ * пользователь дал название; у старых записей без подписи остаётся адрес.
+ */
+fun BypassRoute.displayName(): String = name ?: label()
 
 /**
  * Сводка каталога для шапки: сколько сервисов и сколько доменов всего.

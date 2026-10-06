@@ -78,7 +78,13 @@ interface BypassControl {
     /** Разобрать домены/адреса в подсети. */
     suspend fun resolve(targets: List<String>): BypassResolve
 
-    /** Записать список обходов (заменяет прежний целиком). */
+    /**
+     * Записать список обходов (заменяет прежний целиком).
+     *
+     * Подпись каждой записи — её [BypassRoute.name]: сервер кладёт имя в
+     * `#`-комментарий над `route … net_gateway`, и следующее чтение возвращает
+     * подпись обратно. Без этого имя жило бы только до перезапуска приложения.
+     */
     suspend fun set(routes: List<BypassRoute>): BypassWrite
 }
 
@@ -87,15 +93,24 @@ interface BypassControl {
  *
  * Порядок фиксирован, а не «как получилось»: список уходит на сервер и в файл,
  * и стабильный порядок делает сравнение и отладку осмысленными.
+ *
+ * Повтор — совпадение ПО АДРЕСУ, а не по всему объекту: иначе `87.240.129.0/24`
+ * с именем `vk.com` и он же без имени считались бы разными и ушли бы на сервер
+ * дважды. Имя при этом не теряется: из группы побеждает запись, у которой оно есть.
  */
 fun mergeRoutes(existing: List<BypassRoute>, added: List<BypassRoute>): List<BypassRoute> =
     (existing + added)
-        .distinct()
+        .groupBy { it.network to it.prefixLength }
+        .map { (_, group) -> group.firstOrNull { it.name != null } ?: group.first() }
         .sortedWith(compareBy({ it.network }, { it.prefixLength }))
 
 /** Убрать одну подсеть. Сервер переписывает файл, отдельного удаления у него нет. */
 fun removeRoute(existing: List<BypassRoute>, route: BypassRoute): List<BypassRoute> =
-    existing.filterNot { it == route }
+    existing.filterNot { it.sameSubnet(route) }
+
+/** Совпадают ли подсети. Имя в счёте не участвует: адрес и есть тождество записи. */
+fun BypassRoute.sameSubnet(other: BypassRoute): Boolean =
+    network == other.network && prefixLength == other.prefixLength
 
 /**
  * Все домены каталога — то, что уходит в `resolve` для «обойти все РФ сервисы».

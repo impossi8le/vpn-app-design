@@ -67,6 +67,54 @@ class BypassPresentationTest {
         assertEquals(routes, removeRoute(routes, BypassRoute("1.2.3.0", 24)))
     }
 
+    // --- Имена записей ---
+
+    @Test
+    fun `свежая запись с именем замещает безымянную с тем же адресом`() {
+        // Один и тот же адрес из каталога (с названием сервиса) и добавленный
+        // раньше вручную (без имени) — это ОДНА подсеть. Имя не должно теряться
+        // из-за того, что первая по порядку запись оказалась безымянной.
+        val existing = listOf(BypassRoute("87.240.129.0", 24))
+        val added = listOf(BypassRoute("87.240.129.0", 24, name = "ВКонтакте"))
+
+        assertEquals(listOf(BypassRoute("87.240.129.0", 24, name = "ВКонтакте")), mergeRoutes(existing, added))
+    }
+
+    @Test
+    fun `объединение по адресу не считает именованные записи разными`() {
+        // `distinct()` сравнивал бы и имя тоже и пустил бы на сервер дубль подсети.
+        val merged = mergeRoutes(
+            listOf(BypassRoute("87.240.129.0", 24, name = "ВКонтакте")),
+            listOf(BypassRoute("87.240.129.0", 24, name = "ВК")),
+        )
+        assertEquals(1, merged.size, "адрес один — запись одна: $merged")
+    }
+
+    @Test
+    fun `удаление находит запись по адресу, а не по имени`() {
+        // Список пришёл с именем, а на удаление нажимают по нему же; адрес —
+        // тождество записи. Сравнение по всему объекту промахнулось бы, если
+        // имена разойдутся хотя бы пробелом.
+        val routes = listOf(BypassRoute("87.240.129.0", 24, name = "ВКонтакте"))
+        assertEquals(emptyList<BypassRoute>(), removeRoute(routes, BypassRoute("87.240.129.0", 24)))
+    }
+
+    @Test
+    fun `подпись списка это имя, а без имени — адрес`() {
+        assertEquals("ВКонтакте", BypassRoute("87.240.129.0", 24, name = "ВКонтакте").displayName())
+        assertEquals("87.240.129.0/24", BypassRoute("87.240.129.0", 24).displayName())
+    }
+
+    @Test
+    fun `имя своего обхода обрезается и пустое становится отсутствием`() {
+        assertEquals(
+            CustomTarget.Valid("vk.com", "Работа"),
+            classifyCustomTarget(" vk.com ", "  Работа "),
+        )
+        assertEquals(CustomTarget.Valid("vk.com", null), classifyCustomTarget("vk.com", "   "))
+        assertEquals(CustomTarget.Valid("vk.com", null), classifyCustomTarget("vk.com"))
+    }
+
     // --- Цели для «обойти все» ---
 
     @Test

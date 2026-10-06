@@ -107,34 +107,88 @@ class BypassViewModelTest {
     // --- «Обойти все РФ сервисы» ---
 
     @Test
-    fun `обойти все разбирает все домены и пишет объединение`() = runTest(scheduler) {
+    fun `обойти все разбирает домены сервиса и подписывает подсети его названием`() = runTest(scheduler) {
         val fake = FakeBypassControl(
             catalogResult = BypassCatalog.Loaded(
                 listOf(service("vk", "ВКонтакте", "vk.com", "userapi.com")),
             ),
             resolveResult = BypassResolve.Resolved(listOf(BypassRoute("87.240.129.0", 24))),
-            writeResult = BypassWrite.Applied(1),
+            writeResult = BypassWrite.Applied(2),
             routesResult = listOf(BypassRoute("77.88.0.0", 16)),
         )
-        fake.routesAfterWrite = listOf(BypassRoute("77.88.0.0", 16), BypassRoute("87.240.129.0", 24))
+        fake.routesAfterWrite = listOf(
+            BypassRoute("77.88.0.0", 16),
+            BypassRoute("87.240.129.0", 24, name = "ВКонтакте"),
+        )
         val vm = BypassViewModel(fake, supported = true)
         vm.start()
 
         vm.bypassAll()
 
-        // Разбираем ВСЕ домены каталога одним запросом.
+        // Домены сервиса разбираются вместе; для разных сервисов запросы разные,
+        // чтобы каждый CIDR унёс название своего сервиса.
         assertEquals(listOf("vk.com", "userapi.com"), fake.lastResolveTargets)
-        // Пишем объединение с тем, что было, а не только новое. Порядок —
-        // по возрастанию сети: mergeRoutes сортирует, и это часть контракта.
+        // Подсеть уходит на сервер с НАЗВАНИЕМ сервиса — иначе в списке «Обходы
+        // сейчас» её не отличить от чужого адреса. Порядок — по возрастанию сети.
         assertEquals(
-            listOf(BypassRoute("77.88.0.0", 16), BypassRoute("87.240.129.0", 24)),
+            listOf(
+                BypassRoute("77.88.0.0", 16),
+                BypassRoute("87.240.129.0", 24, name = "ВКонтакте"),
+            ),
             fake.lastSetRoutes,
         )
-        // И показываем перечитанный с сервера список.
+        // И показываем перечитанный с сервера список — уже с подписями.
         assertEquals(
-            listOf(BypassRoute("77.88.0.0", 16), BypassRoute("87.240.129.0", 24)),
+            listOf(
+                BypassRoute("77.88.0.0", 16),
+                BypassRoute("87.240.129.0", 24, name = "ВКонтакте"),
+            ),
             vm.state.value.routes,
         )
+    }
+
+    @Test
+    fun `обойти все разбирает каждый сервис отдельно, чтобы не смешать названия`() = runTest(scheduler) {
+        // Два сервиса — два запроса: общий вернул бы CIDR без принадлежности.
+        val fake = FakeBypassControl(
+            catalogResult = BypassCatalog.Loaded(
+                listOf(
+                    service("vk", "ВКонтакте", "vk.com"),
+                    service("yandex", "Яндекс", "ya.ru"),
+                ),
+            ),
+            resolveResult = BypassResolve.Resolved(listOf(BypassRoute("87.240.129.0", 24))),
+            writeResult = BypassWrite.Applied(1),
+        )
+        val vm = BypassViewModel(fake, supported = true)
+        vm.start()
+
+        vm.bypassAll()
+
+        // Последним разбирался «Яндекс»: у сервиса свой запрос.
+        assertEquals(listOf("ya.ru"), fake.lastResolveTargets)
+    }
+
+    @Test
+    fun `отказ сервера на любом сервисе не пишет частичный обход`() = runTest(scheduler) {
+        // Сервер отвергает весь запрос из-за одной цели. Записать только часть
+        // значило бы выдать частичный обход за полный «обойти все».
+        val fake = FakeBypassControl(
+            catalogResult = BypassCatalog.Loaded(
+                listOf(
+                    service("vk", "ВКонтакте", "vk.com"),
+                    service("yandex", "Яндекс", "ya.ru"),
+                ),
+            ),
+            resolveResult = BypassResolve.InvalidTarget,
+        )
+        val vm = BypassViewModel(fake, supported = true)
+        vm.start()
+
+        vm.bypassAll()
+
+        assertEquals(0, fake.setCount, "негодная цель — ничего не пишем")
+        assertTrue(vm.state.value.messageError)
     }
 
     @Test
@@ -171,6 +225,42 @@ class BypassViewModelTest {
             listOf(BypassRoute("77.88.0.0", 16), BypassRoute("87.240.132.0", 24)),
             fake.lastSetRoutes,
         )
+    }
+
+    @Test
+    fun `свой обход с названием уходит на сервер с подписью`() = runTest(scheduler) {
+        val fake = FakeBypassControl(
+            resolveResult = BypassResolve.Resolved(listOf(BypassRoute("87.240.132.0", 24))),
+            writeResult = BypassWrite.Applied(1),
+        )
+        val vm = BypassViewModel(fake, supported = true)
+        vm.start()
+        vm.onCustomInputChange("vk.com")
+        vm.onCustomNameChange("Работа")
+
+        vm.addCustom()
+
+        // Название едет подписью записи — через сервер, а не только в памяти
+        // экрана: иначе оно пропало бы при перезапуске приложения.
+        assertEquals(
+            listOf(BypassRoute("87.240.132.0", 24, name = "Работа")),
+            fake.lastSetRoutes,
+        )
+    }
+
+    @Test
+    fun `свой обход без названия уходит без подписи`() = runTest(scheduler) {
+        val fake = FakeBypassControl(
+            resolveResult = BypassResolve.Resolved(listOf(BypassRoute("87.240.132.0", 24))),
+            writeResult = BypassWrite.Applied(1),
+        )
+        val vm = BypassViewModel(fake, supported = true)
+        vm.start()
+        vm.onCustomInputChange("vk.com")
+
+        vm.addCustom()
+
+        assertEquals(listOf(BypassRoute("87.240.132.0", 24)), fake.lastSetRoutes)
     }
 
     @Test

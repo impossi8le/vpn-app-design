@@ -257,6 +257,7 @@ fun AppRoot(
                 onQueryChange = { onIntent(AppIntent.BypassQuery(it)) },
                 onToggleExpanded = { onIntent(AppIntent.BypassToggle(it)) },
                 onCustomInputChange = { onIntent(AppIntent.BypassCustomInput(it)) },
+                onCustomNameChange = { onIntent(AppIntent.BypassCustomName(it)) },
                 onAddCustom = { onIntent(AppIntent.BypassAddCustom) },
                 onRemove = { route -> onIntent(AppIntent.BypassRemove(route)) },
             )
@@ -563,6 +564,7 @@ sealed interface AppIntent {
 
     /** Текст поля «свой обход». */
     data class BypassCustomInput(val text: String) : AppIntent
+    data class BypassCustomName(val text: String) : AppIntent
 
     /** Добавить свой обход по введённому адресу. */
     data object BypassAddCustom : AppIntent

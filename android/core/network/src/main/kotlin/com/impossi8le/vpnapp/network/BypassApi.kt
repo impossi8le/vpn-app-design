@@ -109,7 +109,20 @@ class BypassApi(
     override suspend fun set(routes: List<BypassRoute>): BypassWrite = withContext(Dispatchers.IO) {
         try {
             val payload = buildJsonObject {
-                put("routes", JsonArray(routes.map { JsonPrimitive(it.label()) }))
+                put(
+                    "entries",
+                    JsonArray(
+                        routes.map { route ->
+                            buildJsonObject {
+                                put("cidr", JsonPrimitive(route.label()))
+                                // Подпись уходит только когда она есть: сервер
+                                // пишет её `#`-строкой над маршрутом, а без
+                                // подписи строки не нужны.
+                                route.name?.let { put("label", JsonPrimitive(it)) }
+                            }
+                        },
+                    ),
+                )
             }
             val request = Request.Builder()
                 .url("${client.baseUrl}/app/bypass/set")
@@ -145,9 +158,24 @@ class BypassApi(
         return this
     }
 
-    private fun parseRoutes(body: String): List<BypassRoute> =
-        json.parseToJsonElement(body).jsonObject["routes"]?.jsonArray.orEmpty()
+    /**
+     * Подсети ответа. Читаем `entries` — он несёт подписи (`label`), — а если
+     * сервер его не прислал (старая версия), откатываемся на плоский `routes`.
+     * Так клиент работает и с сервером, который ещё не знает о подписях.
+     */
+    private fun parseRoutes(body: String): List<BypassRoute> {
+        val root = json.parseToJsonElement(body).jsonObject
+        val entries = root["entries"]
+        if (entries != null) {
+            return entries.jsonArray.mapNotNull { entry ->
+                val obj = entry.jsonObject
+                val cidr = obj["cidr"]?.stringOrNull()?.let(::parseBypassCidr) ?: return@mapNotNull null
+                cidr.copy(name = obj["label"]?.stringOrNull()?.takeIf { it.isNotBlank() })
+            }
+        }
+        return root["routes"]?.jsonArray.orEmpty()
             .mapNotNull { it.stringOrNull()?.let(::parseBypassCidr) }
+    }
 }
 
 /**
