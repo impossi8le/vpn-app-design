@@ -113,8 +113,24 @@ fun ConnectionScreen(
      * [AppRoot] из `MainActivity`.
      */
     bypassSupported: Boolean = false,
+    /**
+     * Задуманы ли обходы в настройке пользователя вовсе — независимо от того,
+     * сколько применилось и умеет ли это устройство. Экран обязан отличать
+     * «обходов нет» от «обход задуман, но не применён», поэтому намерение идёт
+     * отдельным входом, а не выводится из [bypassCount]: на API < 33 применено
+     * всегда 0, и выведенная из счётчика недоступность стала бы нераспознаваемой.
+     *
+     * Дефолт `false` — безопасная сторона. Настоящее значение передаёт [AppRoot]
+     * из `MainActivity`.
+     */
+    bypassConfigured: Boolean = false,
 ) {
-    val presentation = status.presentation(runningConfigName, bypassCount, bypassSupported)
+    val presentation = status.presentation(
+        runningConfigName = runningConfigName,
+        bypassCount = bypassCount,
+        bypassSupported = bypassSupported,
+        bypassConfigured = bypassConfigured,
+    )
 
     Column(modifier = modifier.fillMaxSize().background(VpnColors.Void)) {
         // Шапка: заголовок и вход в аккаунт. Кнопка «назад» тут не нужна —

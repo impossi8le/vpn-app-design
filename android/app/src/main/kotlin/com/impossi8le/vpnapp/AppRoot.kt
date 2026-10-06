@@ -222,6 +222,7 @@ fun AppRoot(
                 runningConfigName = state.runningConfigName,
                 bypassCount = state.bypassCount,
                 bypassSupported = state.bypassSupported,
+                bypassConfigured = state.bypassConfigured,
                 refreshing = state.refreshingConfigs,
                 switchingWarning = state.switchingInProgress,
                 startProgressText = state.startProgressText,
@@ -353,6 +354,21 @@ data class AppRootState(
      * умолчания для будущих вызывающих.
      */
     val bypassSupported: Boolean = false,
+    /**
+     * Задуманы ли обходы вовсе — независимо от версии Android и от того, сколько
+     * маршрутов применилось. Список обходов пишется в файл сервису; непустой
+     * список означает, что пользователь настроил обход, даже если на API < 33
+     * применить его нечем (тогда [bypassSupported] = `false`).
+     *
+     * Отдельный вход, а не `bypassCount > 0`: применённое число на API < 33
+     * всегда `0`, и выводить из него намерение значило бы снова потерять ветку
+     * «обход задуман, но недоступен». Источник — тот же файл обходов, что и у
+     * счётчика; заполняет [MainActivity].
+     *
+     * **Дефолт `false`** — безопасная сторона: не зная о намерении, экран не
+     * упоминает обход, а не обещает его.
+     */
+    val bypassConfigured: Boolean = false,
     /**
      * Данные аккаунта для экрана «Аккаунт». Дефолт — [DefaultAccountScreenState]:
      * до ответа `/me` показывать нечего, а считать тут нечего и подавно.
