@@ -221,6 +221,7 @@ fun AppRoot(
                 configs = state.configs,
                 runningConfigName = state.runningConfigName,
                 bypassCount = state.bypassCount,
+                bypassSupported = state.bypassSupported,
                 refreshing = state.refreshingConfigs,
                 switchingWarning = state.switchingInProgress,
                 startProgressText = state.startProgressText,
@@ -338,6 +339,14 @@ data class AppRootState(
      * Источник — файл обходов в `filesDir`, заполняемый [MainActivity].
      */
     val bypassCount: Int = 0,
+    /**
+     * Применяет ли это устройство исключения обходов. `false` на API < 33, где
+     * `VpnService.Builder.excludeRoute` не существует: список обходов записан,
+     * но маршруты не исключаются. Экран обязан отличать «обхода нет в списке»
+     * от «обход есть, но не применяется» и не выдавать второе за первое.
+     * Источник — `Build.VERSION.SDK_INT >= 33`, заполняет [MainActivity].
+     */
+    val bypassSupported: Boolean = true,
     /**
      * Данные аккаунта для экрана «Аккаунт». Дефолт — [DefaultAccountScreenState]:
      * до ответа `/me` показывать нечего, а считать тут нечего и подавно.

@@ -80,6 +80,67 @@ class StatusPresentationTest {
     }
 
     @Test
+    fun `при поддерживаемом обходе подробность говорит о части трафика напрямую`() {
+        // API 33+: исключения применяются реально, поэтому «часть идёт напрямую» —
+        // правда. Явно задаём bypassSupported, чтобы проба не опиралась на умолчание.
+        val p = ConnectionStatus.VerifyingProtection.presentation(
+            runningConfigName = "Нидерланды",
+            bypassCount = 6,
+            bypassSupported = true,
+        )
+
+        assertTrue(
+            p.detail.contains("напрямую"),
+            "обход работает — подробность обязана сказать о нём, было: ${p.detail}",
+        )
+    }
+
+    @Test
+    fun `при неподдерживаемом обходе подробность не обещает части трафика напрямую`() {
+        // API 26–32: файл обходов лежит, но excludeRoute не существует и
+        // маршруты НЕ исключаются — обхода нет. Сказать «часть трафика идёт
+        // напрямую» здесь значило бы соврать: трафик целиком идёт через туннель.
+        val p = ConnectionStatus.VerifyingProtection.presentation(
+            runningConfigName = "Нидерланды",
+            bypassCount = 6,
+            bypassSupported = false,
+        )
+
+        assertTrue(
+            !p.detail.contains("напрямую"),
+            "обход не применяется — нельзя утверждать, что трафик идёт напрямую: ${p.detail}",
+        )
+
+        // И не молчим: разница между «обходов нет» и «обход не работает здесь»
+        // для пользователя существенна, поэтому текст обязан её озвучить.
+        assertTrue(
+            p.detail.contains("обход", ignoreCase = true) ||
+                p.detail.contains("недоступ", ignoreCase = true),
+            "подробность обязана сказать, что обход недоступен, а не молчать: ${p.detail}",
+        )
+    }
+
+    @Test
+    fun `неподдерживаемый обход без обходов в списке не упоминается`() {
+        // bypassCount == 0 — обходить нечего, и версия Android тут ни при чём:
+        // текст остаётся прежним (имя конфига либо нейтральное «Соединение
+        // установлено»), упоминания обхода появляться не должно.
+        val named = ConnectionStatus.VerifyingProtection.presentation(
+            runningConfigName = "Нидерланды",
+            bypassCount = 0,
+            bypassSupported = false,
+        )
+        assertEquals("Нидерланды", named.detail)
+
+        val unnamed = ConnectionStatus.VerifyingProtection.presentation(
+            runningConfigName = null,
+            bypassCount = 0,
+            bypassSupported = false,
+        )
+        assertEquals("Соединение установлено", unnamed.detail)
+    }
+
+    @Test
     fun `янтарный только у идущего процесса`() {
         assertEquals(VpnColors.Amber, ConnectionStatus.Connecting.presentation().accent)
 

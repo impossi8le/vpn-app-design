@@ -103,8 +103,14 @@ fun ConnectionScreen(
      * «защищено всё» (см. §6 и [presentation]).
      */
     bypassCount: Int = 0,
+    /**
+     * Применяет ли это устройство исключения обходов (API 33+). `false` — обход
+     * записан, но не действует; экран обязан сказать это, а не притворяться,
+     * что часть трафика идёт напрямую.
+     */
+    bypassSupported: Boolean = true,
 ) {
-    val presentation = status.presentation(runningConfigName, bypassCount)
+    val presentation = status.presentation(runningConfigName, bypassCount, bypassSupported)
 
     Column(modifier = modifier.fillMaxSize().background(VpnColors.Void)) {
         // Шапка: заголовок и вход в аккаунт. Кнопка «назад» тут не нужна —
