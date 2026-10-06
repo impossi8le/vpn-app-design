@@ -274,6 +274,72 @@ class BypassViewModelTest {
         assertTrue(vm.state.value.messageError)
     }
 
+    // --- Недействительная сессия (401) ---
+
+    @Test
+    fun `401 на записи поднимает признак недействительной сессии и не выдаёт успех`() = runTest(scheduler) {
+        val fake = FakeBypassControl(
+            resolveResult = BypassResolve.Resolved(listOf(BypassRoute("87.240.132.0", 24))),
+            writeResult = BypassWrite.NotAuthorized,
+        )
+        val vm = BypassViewModel(fake, supported = true)
+        vm.start()
+        vm.onCustomInputChange("vk.com")
+
+        vm.addCustom()
+
+        assertTrue(vm.state.value.unauthenticated, "401 обязан быть виден экрану отдельно")
+        assertTrue(vm.state.value.messageError)
+        // Список меняется только после успешной записи — иначе он врал бы «сохранено».
+        assertEquals(emptyList<BypassRoute>(), vm.state.value.routes)
+    }
+
+    @Test
+    fun `401 на resolve тоже зовёт войти, а не переписать адрес`() = runTest(scheduler) {
+        val fake = FakeBypassControl(resolveResult = BypassResolve.NotAuthorized)
+        val vm = BypassViewModel(fake, supported = true)
+        vm.start()
+        vm.onCustomInputChange("vk.com")
+
+        vm.addCustom()
+
+        assertTrue(vm.state.value.unauthenticated)
+        assertEquals(0, fake.setCount, "при недействительной сессии писать нечего")
+    }
+
+    @Test
+    fun `обычная неудача не поднимает признак недействительной сессии`() = runTest(scheduler) {
+        val fake = FakeBypassControl(writeResult = BypassWrite.Failed)
+        val vm = BypassViewModel(fake, supported = true)
+        vm.start()
+        vm.onCustomInputChange("vk.com")
+
+        vm.addCustom()
+
+        assertFalse(vm.state.value.unauthenticated, "сбой сети — это не истёкшая сессия")
+        assertTrue(vm.state.value.messageError)
+    }
+
+    @Test
+    fun `новая операция сбрасывает признак недействительной сессии`() = runTest(scheduler) {
+        val fake = FakeBypassControl(
+            resolveResult = BypassResolve.Resolved(listOf(BypassRoute("87.240.132.0", 24))),
+            writeResult = BypassWrite.NotAuthorized,
+        )
+        val vm = BypassViewModel(fake, supported = true)
+        vm.start()
+        vm.onCustomInputChange("vk.com")
+        vm.addCustom()
+        assertTrue(vm.state.value.unauthenticated)
+
+        // Следующая попытка (например, после входа) не должна тащить старую плашку.
+        fake.writeResult = BypassWrite.Applied(1)
+        vm.onCustomInputChange("vk.com")
+        vm.addCustom()
+
+        assertFalse(vm.state.value.unauthenticated)
+    }
+
     @Test
     fun `после записи флаг занятости снят`() = runTest(scheduler) {
         val fake = FakeBypassControl(

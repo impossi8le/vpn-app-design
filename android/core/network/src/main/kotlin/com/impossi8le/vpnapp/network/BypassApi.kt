@@ -92,15 +92,12 @@ class BypassApi(
             val request = Request.Builder()
                 .url("${client.baseUrl}/app/bypass/resolve")
                 .post(payload.toString().toRequestBody(JSON_MEDIA))
+                .applyAuth()
                 .build()
             client.http.newCall(request).execute().use { response ->
-                when {
-                    // 400 invalid_target: адрес неверный ИЛИ слишком широкий. Отдельный
-                    // исход — экран скажет «перепишите адрес», а не «повторите».
-                    response.code == 400 -> BypassResolve.InvalidTarget
-                    !response.isSuccessful -> BypassResolve.Failed
-                    else -> BypassResolve.Resolved(parseRoutes(response.body?.string().orEmpty()))
-                }
+                val outcome = mapResolveStatus(response.code)
+                if (outcome != null) outcome
+                else BypassResolve.Resolved(parseRoutes(response.body?.string().orEmpty()))
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -117,18 +114,17 @@ class BypassApi(
             val request = Request.Builder()
                 .url("${client.baseUrl}/app/bypass/set")
                 .post(payload.toString().toRequestBody(JSON_MEDIA))
+                .applyAuth()
                 .build()
             client.http.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
-                when {
-                    // Сервер отвергает ВЕСЬ запрос из-за одной плохой записи —
-                    // значит исхода два: записано всё или не записано ничего.
-                    response.code == 400 -> BypassWrite.Invalid
-                    !response.isSuccessful -> BypassWrite.Failed
-                    else -> BypassWrite.Applied(
+                when (val outcome = mapSetStatus(response.code)) {
+                    null -> BypassWrite.Applied(
                         json.parseToJsonElement(body).jsonObject["count"]
                             ?.jsonPrimitive?.longOrNull?.toInt() ?: routes.size,
                     )
+
+                    else -> outcome
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -138,9 +134,50 @@ class BypassApi(
         }
     }
 
+    /**
+     * Тот же заголовок, что и у остальных авторизованных вызовов (`ConfigApi`):
+     * токен сессии, если он есть. Без токена запрос уйдёт анонимным — сервер
+     * ответит `401`, и экран скажет, что нужен вход.
+     */
+    private fun Request.Builder.applyAuth(): Request.Builder {
+        val token = client.sessionToken
+        if (token != null) header("Authorization", "Bearer $token")
+        return this
+    }
+
     private fun parseRoutes(body: String): List<BypassRoute> =
         json.parseToJsonElement(body).jsonObject["routes"]?.jsonArray.orEmpty()
             .mapNotNull { it.stringOrNull()?.let(::parseBypassCidr) }
+}
+
+/**
+ * HTTP-код ответа `resolve` → доменный исход, или `null`, если ответ успешный
+ * (тогда тело ещё надо разобрать).
+ *
+ * Отдельная чистая функция, а не `when` внутри сетевого вызова: так три исхода —
+ * «адрес негоден» (400), «нужен вход» (401), «сервер не ответил как надо» — и
+ * четвёртый, «прочитай тело», проверяются тестом без MockWebServer. Слить `401`
+ * с `Failed` значило бы советовать «повторить», когда повторить бесполезно.
+ */
+internal fun mapResolveStatus(code: Int): BypassResolve? = when (code) {
+    400 -> BypassResolve.InvalidTarget
+    401 -> BypassResolve.NotAuthorized
+    in 200..299 -> null
+    else -> BypassResolve.Failed
+}
+
+/**
+ * HTTP-код ответа `set` → доменный исход, или `null`, если запись состоялась
+ * (тогда тело несёт `count`).
+ *
+ * `401` — отдельный исход, а не `Failed`: сессия недействительна, запись НЕ
+ * произошла, и экран обязан сказать это, а не предложить повторить.
+ */
+internal fun mapSetStatus(code: Int): BypassWrite? = when (code) {
+    400 -> BypassWrite.Invalid
+    401 -> BypassWrite.NotAuthorized
+    in 200..299 -> null
+    else -> BypassWrite.Failed
 }
 
 /**

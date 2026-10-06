@@ -52,6 +52,13 @@ data class BypassUiState(
      * на экране; отдельный флаг, потому что текст сообщения тон не выражает.
      */
     val messageError: Boolean = false,
+    /**
+     * Сервер ответил `401`: сессия недействительна. Отдельный флаг, а не только
+     * текст в [message], потому что экран должен не просто показать неудачу, а
+     * прямо позвать войти заново — иначе пользователь будет повторять запись,
+     * которая будет отвергнута столько же раз.
+     */
+    val unauthenticated: Boolean = false,
 )
 
 /**
@@ -123,7 +130,11 @@ class BypassViewModel(
 
     /** Скрыть сообщение вручную (например, после удачной записи). */
     fun clearMessage() {
-        _state.value = _state.value.copy(message = null, messageError = false)
+        _state.value = _state.value.copy(
+            message = null,
+            messageError = false,
+            unauthenticated = false,
+        )
     }
 
     /**
@@ -154,6 +165,10 @@ class BypassViewModel(
                 // и молчать нельзя: он нажал «обойти все», а обход не включился.
                 BypassResolve.InvalidTarget -> fail("Сервер отклонил адреса сервисов")
 
+                // Сессия недействительна — ни повторять, ни переписывать адреса
+                // не поможет. Прямо зовём войти заново.
+                BypassResolve.NotAuthorized -> needSignIn()
+
                 BypassResolve.Failed -> fail("Не удалось разобрать адреса сервисов")
             }
         }
@@ -183,6 +198,8 @@ class BypassViewModel(
                     BypassResolve.InvalidTarget ->
                         fail("Адрес неверен или слишком широк — укажите точнее")
 
+                    BypassResolve.NotAuthorized -> needSignIn()
+
                     BypassResolve.Failed -> fail("Не удалось проверить адрес")
                 }
             }
@@ -208,7 +225,12 @@ class BypassViewModel(
     private fun apply(block: suspend () -> Unit) {
         if (_state.value.applying) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(applying = true, message = null, messageError = false)
+            _state.value = _state.value.copy(
+                applying = true,
+                message = null,
+                messageError = false,
+                unauthenticated = false,
+            )
             try {
                 block()
             } finally {
@@ -233,12 +255,33 @@ class BypassViewModel(
             BypassWrite.Invalid ->
                 fail("Сервер отверг список — ничего не записано")
 
+            // Записи не было: сессия недействительна. Не говорим «повторите» —
+            // повтор будет отвергнут так же. Зовём войти заново.
+            BypassWrite.NotAuthorized -> needSignIn()
+
             BypassWrite.Failed -> fail("Не удалось сохранить обходы")
         }
     }
 
     /** Сообщение о неудаче: тот же [BypassUiState.message], но с тоном предупреждения. */
     private fun fail(text: String) {
-        _state.value = _state.value.copy(message = text, messageError = true)
+        _state.value = _state.value.copy(
+            message = text,
+            messageError = true,
+            unauthenticated = false,
+        )
+    }
+
+    /**
+     * Сессия недействительна (`401`). Записи НЕ было, и повтор её не спасёт:
+     * сообщение говорит прямо, и [BypassUiState.unauthenticated] зовёт экран
+     * предложить вход заново.
+     */
+    private fun needSignIn() {
+        _state.value = _state.value.copy(
+            message = "Сессия недействительна — войдите заново",
+            messageError = true,
+            unauthenticated = true,
+        )
     }
 }

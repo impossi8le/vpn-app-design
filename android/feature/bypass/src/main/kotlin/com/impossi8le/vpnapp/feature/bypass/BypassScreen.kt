@@ -53,6 +53,7 @@ const val BYPASS_ROUTES_EMPTY_TAG = "bypass_routes_empty"
 const val BYPASS_SERVICES_FAILED_TAG = "bypass_services_failed"
 const val BYPASS_SERVICES_EMPTY_TAG = "bypass_services_empty"
 const val BYPASS_MESSAGE_TAG = "bypass_message"
+const val BYPASS_SIGNIN_TAG = "bypass_signin"
 const val BYPASS_UNSUPPORTED_TAG = "bypass_unsupported"
 const val BYPASS_APPLYING_TAG = "bypass_applying"
 
@@ -132,6 +133,21 @@ fun BypassScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag(BYPASS_APPLYING_TAG),
+                    )
+                }
+            }
+
+            // Сессия недействительна: запись не прошла и повтор её не спасёт.
+            // Отдельная плашка со своей формулировкой и тегом, а не общий текст
+            // ошибки — пользователю нужен вход заново, а не «попробуйте ещё раз».
+            if (state.unauthenticated) {
+                item {
+                    VpnNotice(
+                        text = "Сессия недействительна. Обходы не сохранены — " +
+                            "войдите в приложение заново и повторите.",
+                        tone = Tone.Warning,
+                        icon = "!",
+                        testTag = BYPASS_SIGNIN_TAG,
                     )
                 }
             }

@@ -27,10 +27,15 @@ sealed interface BypassCatalog {
  * [InvalidTarget] — это HTTP 400 `invalid_target`: адрес неверный ИЛИ слишком
  * широкий. Отдельно от [Failed], потому что реакция разная: при `400` адрес надо
  * переписать, при [Failed] — повторить запрос.
+ *
+ * [NotAuthorized] — HTTP 401 `unauthorized`: сессия истекла или отозвана. Отдельно
+ * и от [InvalidTarget], и от [Failed]: ни повторить запрос, ни переписать адрес не
+ * поможет — нужен новый вход, и экран обязан сказать это словами.
  */
 sealed interface BypassResolve {
     data class Resolved(val routes: List<BypassRoute>) : BypassResolve
     data object InvalidTarget : BypassResolve
+    data object NotAuthorized : BypassResolve
     data object Failed : BypassResolve
 }
 
@@ -42,6 +47,16 @@ sealed interface BypassResolve {
 sealed interface BypassWrite {
     data class Applied(val count: Int) : BypassWrite
     data object Invalid : BypassWrite
+
+    /**
+     * HTTP 401 `unauthorized`: сессия недействительна, запись НЕ состоялась.
+     *
+     * Отдельно от [Failed] и [Invalid]: [Failed] зовёт повторить, [Invalid] —
+     * переписать список, а здесь бесполезно и то и другое — нужен новый вход.
+     * Слить его с [Failed] значило бы предложить пользователю «повторить» то, что
+     * будет отвергнуто столько же раз, сколько он повторит.
+     */
+    data object NotAuthorized : BypassWrite
     data object Failed : BypassWrite
 }
 

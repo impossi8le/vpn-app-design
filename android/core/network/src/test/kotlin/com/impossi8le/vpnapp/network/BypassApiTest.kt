@@ -27,13 +27,15 @@ import org.junit.jupiter.api.Test
 class BypassApiTest {
 
     private lateinit var server: MockWebServer
+    private lateinit var client: ApiClient
     private lateinit var api: BypassApi
 
     @BeforeEach
     fun setUp() {
         server = MockWebServer()
         server.start()
-        api = BypassApi(ApiClient(baseUrl = server.url("/api/v1").toString().trimEnd('/')))
+        client = ApiClient(baseUrl = server.url("/api/v1").toString().trimEnd('/'))
+        api = BypassApi(client)
     }
 
     @AfterEach
@@ -152,5 +154,71 @@ class BypassApiTest {
         // Пустой список значил бы «обходов нет»; null — «прочитать не удалось».
         server.enqueue(MockResponse().setResponseCode(500).setBody(""))
         assertNull(api.fetchRoutes())
+    }
+
+    // --- Токен сессии в авторизованных вызовах ---
+
+    @Test
+    fun `без токена resolve и set идут без заголовка авторизации`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"routes":[]}"""))
+        api.resolve(listOf("vk.com"))
+        assertNull(server.takeRequest().getHeader("Authorization"))
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"ok":true,"count":0}"""))
+        api.set(emptyList())
+        assertNull(server.takeRequest().getHeader("Authorization"))
+    }
+
+    @Test
+    fun `с токеном resolve и set несут Bearer, а чтение списка остаётся открытым`() = runTest {
+        client.sessionToken = "tok-123"
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"routes":["87.240.129.0/24"]}"""))
+        api.resolve(listOf("vk.com"))
+        assertEquals("Bearer tok-123", server.takeRequest().getHeader("Authorization"))
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"ok":true,"count":1}"""))
+        api.set(listOf(BypassRoute("87.240.129.0", 24)))
+        assertEquals("Bearer tok-123", server.takeRequest().getHeader("Authorization"))
+
+        // /app/bypass-routes открыт по замыслу — заголовок туда не шлём.
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"routes":[]}"""))
+        api.fetchRoutes()
+        assertNull(server.takeRequest().getHeader("Authorization"))
+    }
+
+    // --- 401: сессия недействительна, а не сбой ---
+
+    @Test
+    fun `401 на resolve это NotAuthorized, а не Failed`() = runTest {
+        // Слить с Failed значило бы предложить повторить запрос, который будет
+        // отвергнут столько же раз, сколько его повторят.
+        server.enqueue(
+            MockResponse().setResponseCode(401).setBody("""{"detail":{"error":{"code":"unauthorized"}}}"""),
+        )
+        assertEquals(BypassResolve.NotAuthorized, api.resolve(listOf("vk.com")))
+    }
+
+    @Test
+    fun `401 на set это NotAuthorized, и запись не считается успешной`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(401).setBody("""{"detail":{"error":{"code":"unauthorized"}}}"""),
+        )
+        assertEquals(BypassWrite.NotAuthorized, api.set(listOf(BypassRoute("87.240.129.0", 24))))
+    }
+
+    @Test
+    fun `разбор кодов resolve и set чист от сети`() {
+        // Чистая функция: проверяется без MockWebServer.
+        assertEquals(BypassResolve.InvalidTarget, mapResolveStatus(400))
+        assertEquals(BypassResolve.NotAuthorized, mapResolveStatus(401))
+        assertEquals(BypassResolve.Failed, mapResolveStatus(500))
+        assertNull(mapResolveStatus(200))
+        assertNull(mapResolveStatus(204))
+
+        assertEquals(BypassWrite.Invalid, mapSetStatus(400))
+        assertEquals(BypassWrite.NotAuthorized, mapSetStatus(401))
+        assertEquals(BypassWrite.Failed, mapSetStatus(503))
+        assertNull(mapSetStatus(200))
     }
 }
