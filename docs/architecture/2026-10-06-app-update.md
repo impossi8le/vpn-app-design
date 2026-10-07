@@ -45,11 +45,14 @@
    ├─ 1. читаем ПАМЯТЬ (filesDir/update-verdict.txt)
    │     └─ вердикт есть → блокировка действует СРАЗУ, сеть ещё молчит
    │
-   ├─ 2. GET /releases/latest  →  tag_name: "android-v95"
-   │        разбор тега → 95, сравнение с BuildConfig.VERSION_CODE
+   ├─ 2. GET /app/latest  →  {"version": 102, "apk_url": "..."}
+   │        сравнение с BuildConfig.VERSION_CODE (ниже — запасной путь
+   │        GET /releases/latest, tag_name "android-v<N>")
    │
-   ├─ 3. GET min-supported.txt → 90
+   ├─ 3. GET /app/min-supported → 102
    │        ниже порога → ForceUpdateScreen, внутрь не пускаем
+   │        (запасной путь читает min-supported.txt в корне репозитория;
+   │         2026-10-07 оба источника приведены к 102)
    │
    ├─ 4. записываем вердикт в память (для следующего запуска)
    │
