@@ -906,6 +906,14 @@ private fun VpnApp() {
             updateMessage = updateMessage,
             updateBannerDismissed = updateBannerDismissed,
         ),
+        // Двойной жест «Назад» на главном экране сворачивает приложение, а не
+        // завершает: под туннелем может идти трафик, и случайный свайп не должен
+        // его обрывать. Завершает приложение только система (или явный выход).
+        //
+        // `LocalContext` здесь — это activity (контент рисуется её `setContent`),
+        // поэтому сворачиваем через неё. Приведение безопасно: в ином окружении
+        // сворачивать нечего, и `null`-безопасный вызов просто ничего не сделает.
+        onMinimize = { (context as? android.app.Activity)?.moveTaskToBack(true) },
         onIntent = { intent ->
             when (intent) {
                 AppIntent.CheckForUpdate -> scope.launch {

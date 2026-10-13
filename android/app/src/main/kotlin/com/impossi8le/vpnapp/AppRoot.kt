@@ -1,5 +1,7 @@
 package com.impossi8le.vpnapp
 
+import android.os.SystemClock
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -11,6 +13,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.feature.account.AboutScreen
@@ -56,6 +60,12 @@ import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 fun AppRoot(
     state: AppRootState,
     onIntent: (AppIntent) -> Unit,
+    /**
+     * Свернуть приложение в фон (пришло от двойного жеста «Назад»). Хозяин
+     * окна — `MainActivity`, поэтому действие приходит снаружи: `AppRoot` не
+     * знает про активность и не должен.
+     */
+    onMinimize: () -> Unit = {},
 ) {
     // Стек навигации: собственный, потому что нужен ровно один вид движения.
     //
@@ -88,13 +98,38 @@ fun AppRoot(
         return moved
     }
 
-    // Аппаратная кнопка «Назад» должна работать так же, как «‹ Назад» на экране.
-    // Если возвращаться некуда — отдаём событие системе, а не глотаем его.
+    // Аппаратный жест «Назад».
+    //
+    // Здесь была ошибка: `BackHandler(enabled = true) { back() }` забирал событие
+    // ВСЕГДА, а на корневом экране `back()` ничего не делал — стек пуст. Событие
+    // оказывалось проглоченным, кнопка выглядела сломанной, а комментарий рядом
+    // напрасно обещал, что событие «уйдёт системе»: `BackHandler` так не умеет —
+    // он либо перехватывает жест, либо выключен.
+    //
+    // Правильное поведение: вернуться, если есть куда; иначе — не молчать и не
+    // закрывать приложение случайным свайпом, а объяснить, что оно свернётся,
+    // и свернуть лишь по повторному жесту (см. [decideBack] — чистое правило).
+    val context = LocalContext.current
+    val minimizeNotice = stringResource(R.string.back_minimize_notice)
+    // Монотонное время: `SystemClock.elapsedRealtime()` не «прыгает» при переводе
+    // системных часов, поэтому окно двойного жеста не сломается на смене времени.
+    // `0` — признак «подсказки ещё не было»; монотонное время до нуля не опускается.
+    var lastMinimizeNoticeAtMs by remember { mutableStateOf(0L) }
     BackHandler(enabled = true) {
-        // Если возвращаться некуда — не глотаем событие: система закроет
-        // приложение. Молчаливо ничего не делать хуже всего: кнопка «Назад»
-        // выглядит сломанной.
-        back()
+        when (decideBack(
+            canNavigateBack = stack.canPop(),
+            nowMs = SystemClock.elapsedRealtime(),
+            lastMinimizeNoticeAtMs = lastMinimizeNoticeAtMs,
+        )) {
+            BackDecision.NavigateBack -> back()
+
+            BackDecision.ShowMinimizeNotice -> {
+                lastMinimizeNoticeAtMs = SystemClock.elapsedRealtime()
+                Toast.makeText(context, minimizeNotice, Toast.LENGTH_SHORT).show()
+            }
+
+            BackDecision.Minimize -> onMinimize()
+        }
     }
 
     // Настоящий вход состоялся — уходим на подключение.

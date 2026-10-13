@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VPN</string>
+    <!-- Первый жест «Назад» на главном экране: приложение не закрывается, а сворачивается. -->
+    <string name="back_minimize_notice">Приложение не закрывается — оно свернётся. Нажмите «Назад» ещё раз.</string>
 </resources>
