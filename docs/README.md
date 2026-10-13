@@ -89,6 +89,7 @@
 | [2026-10-06-connection-status-honesty-design.md](superpowers/specs/2026-10-06-connection-status-honesty-design.md) | Честный статус, уведомление в шторке, кнопка «Показать» | на ревью |
 | [2026-10-06-apk-distribution-and-install-design.md](superpowers/specs/2026-10-06-apk-distribution-and-install-design.md) | Раздача APK с нашего сервера, понятная установка, Play Protect | на ревью |
 | [2026-10-06-bypass-routes-design.md](superpowers/specs/2026-10-06-bypass-routes-design.md) | Обход РФ-сервисов: часть трафика мимо туннеля. Реализовано сквозным: сервер отдаёт подсети и каталог из 14 сервисов, пишущие эндпоинты под сессией, телефон применяет `excludeRoute`. **Непроверено: сам `excludeRoute` на устройстве** — что трафик действительно уходит с `tun0` (см. `testing/2026-10-07-session-verification.md`) | реализовано, одно звено не проверено |
+| [2026-10-13-error-reporting-design.md](superpowers/specs/2026-10-13-error-reporting-design.md) | **Логирование и репортинг ошибок**: буфер логов ядра, скраббер секретов, обезличивание `.ovpn`, авто-телеметрия и кнопка «Поделиться багом», приём на MOS, MCP и разбор LLM. **ТЗ для бэкенда** | на ревью |
 
 Служебное: `_pdf_build.html`, `build_pdf.py`, `*.pdf` — сборка PDF из спеки, не читать для работы.
 
@@ -139,6 +140,7 @@
 | Откуда приложение берёт обновления | `architecture/2026-10-06-app-update.md` + `api/README.md` (раздел о раздаче) |
 | Куда раздаётся APK и почему не в Play | `architecture/2026-10-06-distribution-channels.md` |
 | Как работает обход РФ-сервисов | `superpowers/specs/2026-10-06-bypass-routes-design.md` + `api/README.md` |
+| Как устроены логи, отчёты об ошибках и разбор через LLM | `superpowers/specs/2026-10-13-error-reporting-design.md` |
 | Почему выбран OpenVPN 3, а не ics-openvpn | `architecture/2026-10-03-android-architecture.md` §4.7 |
 
 ---
