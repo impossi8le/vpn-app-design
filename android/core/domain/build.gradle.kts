@@ -2,6 +2,9 @@
 // Благодаря этому весь домен тестируется на JVM без эмулятора и Robolectric.
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    // Модель телеметрии сериализуется в JSON — без плагина `@Serializable`
+    // не генерирует код, и `encodeToString` не компилируется.
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -9,8 +12,9 @@ kotlin {
 }
 
 dependencies {
-    // Только корутины. Ни OkHttp, ни Android, ни Compose.
+    // Только корутины и сериализация. Ни OkHttp, ни Android, ни Compose.
     implementation(libs.coroutines.core)
+    implementation(libs.serialization.json)
 
     testImplementation(libs.junit5.api)
     testImplementation(libs.junit5.params)
