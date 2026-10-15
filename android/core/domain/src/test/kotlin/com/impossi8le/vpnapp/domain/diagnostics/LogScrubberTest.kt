@@ -51,6 +51,15 @@ class LogScrubberTest {
     }
 
     @Test
+    fun `tls-crypt-v2 с дефисами в метке вырезается`() {
+        val log = "-----BEGIN OpenVPN tls-crypt-v2 client key-----\nsecretdata123\n-----END OpenVPN tls-crypt-v2 client key-----"
+
+        val scrubbed = LogScrubber.scrub(log)
+
+        assertFalse(scrubbed.contains("secretdata123"), "метка с дефисами обязана попадать под фильтр")
+    }
+
+    @Test
     fun `bearer token вырезается`() {
         val scrubbed = LogScrubber.scrub("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig")
 

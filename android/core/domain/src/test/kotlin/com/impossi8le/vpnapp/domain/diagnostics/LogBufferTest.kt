@@ -56,6 +56,20 @@ class LogBufferTest {
     }
 
     @Test
+    fun `параллельная запись и чтение не ломают буфер`() {
+        val buffer = LogBuffer(maxLines = 500)
+        val threads = (1..8).map { n ->
+            Thread { repeat(200) { buffer.add("строка $n-$it") } }
+        }
+        threads.forEach { it.start() }
+        // Чтение идёт ОДНОВРЕМЕННО с записью — именно здесь ловится гонка.
+        repeat(200) { buffer.snapshot() }
+        threads.forEach { it.join() }
+
+        assertTrue(buffer.snapshot().isNotEmpty(), "буфер обязан пережить параллельный доступ")
+    }
+
+    @Test
     fun `clear опустошает буфер`() {
         val buffer = LogBuffer()
         buffer.add("что-то")

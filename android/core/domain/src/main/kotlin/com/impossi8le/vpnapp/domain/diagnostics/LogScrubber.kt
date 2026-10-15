@@ -21,8 +21,10 @@ object LogScrubber {
 
     // Классы символов включают и строчные: заголовок `tls-auth` —
     // `OpenVPN Static key V1`, и только на `[A-Z0-9 ]` он не ловился бы.
+    // Дефис (последним, чтобы не читался как диапазон) и подчёркивание нужны для
+    // меток вроде `OpenVPN tls-crypt-v2 client key`.
     private val PEM_BLOCK = Regex(
-        "-----BEGIN [A-Za-z0-9 ]+-----[\\s\\S]*?-----END [A-Za-z0-9 ]+-----",
+        "-----BEGIN [A-Za-z0-9 _-]+-----[\\s\\S]*?-----END [A-Za-z0-9 _-]+-----",
         RegexOption.MULTILINE,
     )
     private val BEARER = Regex("(Bearer\\s+)\\S+", RegexOption.IGNORE_CASE)
