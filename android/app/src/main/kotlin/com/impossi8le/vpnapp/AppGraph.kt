@@ -82,11 +82,16 @@ class AppGraph(
     /**
      * Буфер логов ядра — ОДИН на приложение.
      *
-     * Тот же экземпляр пишет сервис и читает экран отчёта; отдельные буферы
-     * означали бы, что кнопка «Отправить отчёт» отдаёт пустоту (см. Task 8/10).
+     * Берём экземпляр у сервиса, а не создаём свой: ядро пишет логи из
+     * `VpnTunnelService`, и если бы граф завёл второй буфер, кнопка «Отправить
+     * отчёт» отдавала бы пустоту — сервис писал бы в один объект, экран читал из
+     * другого. Два независимых агента в изоляции разошлись именно здесь, поэтому
+     * источник истины один: [VpnTunnelService.sharedLogBuffer].
+     *
      * Логи пишутся всегда, включая релиз, — иначе собирать нечего.
      */
-    val logBuffer = com.impossi8le.vpnapp.domain.diagnostics.LogBuffer()
+    val logBuffer: com.impossi8le.vpnapp.domain.diagnostics.LogBuffer =
+        com.impossi8le.vpnapp.vpnservice.VpnTunnelService.sharedLogBuffer
 
     /** Отправка полного отчёта по кнопке: текст + логи ядра + обезличенный профиль. */
     val reportApi = com.impossi8le.vpnapp.network.ReportApi(apiClient)
