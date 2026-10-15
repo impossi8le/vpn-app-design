@@ -75,9 +75,13 @@ class LogScrubberTest {
     }
 
     @Test
-    fun `scrubAll применяется к каждой строке`() {
-        val out = LogScrubber.scrubAll(listOf("ok", "token abc.secret.def", "still ok"))
+    fun `scrubStream склеивает многострочный блок и вырезает его`() {
+        val out = LogScrubber.scrubStream(
+            listOf("до", "-----BEGIN PRIVATE KEY-----", "SECRETLINE", "-----END PRIVATE KEY-----", "после"),
+        )
 
-        assertEquals(listOf("ok", "token abc.secret.def".let { LogScrubber.scrub(it) }, "still ok"), out)
+        val text = out.joinToString("\n")
+        assertFalse(text.contains("SECRETLINE"), "многострочный блок обязан вырезаться целиком")
+        assertTrue(text.contains("до") && text.contains("после"), "обычные строки обязаны остаться")
     }
 }
