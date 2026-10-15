@@ -228,6 +228,34 @@ class OpenVpn3Session(
     }
 
     /**
+     * Счётчики трафика на текущий момент, или `null`, если сессии нет.
+     *
+     * **Почему это, а не `TrafficStats` из системы.** Системные счётчики считают
+     * байты по uid, то есть НЕ отличают трафик, прошедший через туннель, от
+     * ушедшего напрямую. Ядро же знает и сколько байт ушло в транспорт, и когда
+     * последний раз оттуда пришёл пакет — именно это нужно, чтобы отличить
+     * «туннель сломался» от «пользователь молчит».
+     *
+     * `lastPacketReceived` ядро отдаёт как СЕКУНДЫ, прошедшие с последнего
+     * принятого пакета, а не как метку времени. Переводим в наши часы: иначе
+     * сравнивать два снимка было бы нечем.
+     */
+    fun counters(nowMillis: Long): EngineCounters? {
+        val active = client ?: return null
+        return runCatching {
+            val transport = active.transport_stats()
+            val tun = active.tun_stats()
+            EngineCounters(
+                bytesOut = tun.getBytesOut(),
+                bytesIn = tun.getBytesIn(),
+                errorsOut = tun.getErrorsOut(),
+                lastPacketReceivedAtMillis =
+                    nowMillis - transport.getLastPacketReceived().toLong() * 1000L,
+            )
+        }.getOrNull()
+    }
+
+    /**
      * Помощник ядра.
      *
      * **Создаётся ЛЕНИВО, а не в `companion object`, и это не оптимизация.**
@@ -245,6 +273,20 @@ class OpenVpn3Session(
         ClientAPI_OpenVPNClientHelper()
     }
 }
+
+/**
+ * Счётчики трафика ядра — без зависимости от JNI.
+ *
+ * Отдельный тип, а не `TunnelCounters` из домена: `:vpnengine` не должен
+ * зависеть от `core:domain` (движок не знает ни о защите, ни о состоянии
+ * экрана). Перевод в доменный тип делает `core:tunnel`.
+ */
+data class EngineCounters(
+    val bytesOut: Long,
+    val bytesIn: Long,
+    val errorsOut: Long,
+    val lastPacketReceivedAtMillis: Long,
+)
 
 /** Разбор профиля: то, что можно показать, но без ключей. */
 data class ProfileEvaluation(
