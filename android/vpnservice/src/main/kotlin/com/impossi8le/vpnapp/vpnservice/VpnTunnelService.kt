@@ -467,6 +467,11 @@ class VpnTunnelService : VpnService() {
         )
 
     private fun notifyState(state: SystemState) {
+        // Снимок для плитки «Быстрых настроек»: она не может спросить состояние
+        // у сервиса, а шторку открывают в произвольный момент — вещание к тому
+        // времени уже улетело. Пишем ДО broadcast: шторка читает снимок сразу.
+        TunnelStateSnapshot.stateName = state.name
+
         sendBroadcast(
             Intent(ACTION_STATE)
                 .setPackage(packageName)
