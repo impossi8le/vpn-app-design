@@ -90,6 +90,7 @@
 | [2026-10-06-apk-distribution-and-install-design.md](superpowers/specs/2026-10-06-apk-distribution-and-install-design.md) | Раздача APK с нашего сервера, понятная установка, Play Protect | на ревью |
 | [2026-10-06-bypass-routes-design.md](superpowers/specs/2026-10-06-bypass-routes-design.md) | Обход РФ-сервисов: часть трафика мимо туннеля. Реализовано сквозным: сервер отдаёт подсети и каталог из 14 сервисов, пишущие эндпоинты под сессией, телефон применяет `excludeRoute`. **Непроверено: сам `excludeRoute` на устройстве** — что трафик действительно уходит с `tun0` (см. `testing/2026-10-07-session-verification.md`) | реализовано, одно звено не проверено |
 | [2026-10-13-error-reporting-design.md](superpowers/specs/2026-10-13-error-reporting-design.md) | **Логирование и репортинг ошибок**: буфер логов ядра, скраббер секретов, обезличивание `.ovpn`, авто-телеметрия и кнопка «Поделиться багом», приём на MOS, MCP и разбор LLM. **ТЗ для бэкенда** | на ревью |
+| [2026-10-15-tracker-board-design.md](superpowers/specs/2026-10-15-tracker-board-design.md) | **Трекер находок**: GitHub Issues + Projects как единственное место для багов и идей; метки тип/область/приоритет, шаблоны для захвата с телефона, правило «issue — только сырьё» | на ревью |
 
 Служебное: `_pdf_build.html`, `build_pdf.py`, `*.pdf` — сборка PDF из спеки, не читать для работы.
 
