@@ -6,9 +6,15 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
+import com.impossi8le.vpnapp.vpnengine.EngineCounters
 import com.impossi8le.vpnapp.vpnengine.EngineState
 import com.impossi8le.vpnapp.vpnengine.OpenVpn3Session
 import com.impossi8le.vpnapp.domain.diagnostics.LogBuffer
+import com.impossi8le.vpnapp.domain.tunnel.StallRecovery
+import com.impossi8le.vpnapp.domain.tunnel.StallRecoveryPolicy
+import com.impossi8le.vpnapp.domain.tunnel.StallRecoveryState
+import com.impossi8le.vpnapp.domain.tunnel.TunnelCounters
+import com.impossi8le.vpnapp.domain.tunnel.TunnelStallDetection
 import com.impossi8le.vpnapp.domain.tunnel.parseBypassCidr
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -125,6 +133,23 @@ class VpnTunnelService : VpnService() {
     private lateinit var connectivity: ConnectivityManager
 
     /**
+     * Наблюдение за залипанием: опрос счётчиков ядра и перезапуск соединения.
+     *
+     * **Почему в сервисе, а не в UI.** Туннель живёт дольше экрана, а залипание
+     * случается именно тогда, когда приложение свёрнуто, — это и есть сценарий
+     * «подключено, а ничего не открывается».
+     *
+     * **Почему это не даёт права на «защищено».** Перезапуск — про ТУННЕЛЬ, а не
+     * про защиту. Он не доказывает, что трафик идёт: доказательство даёт только
+     * замер (§6). Здесь перезапускаем и ничего не обещаем.
+     */
+    private var stallWatcher: Job? = null
+
+    /** Профиль и обходы последнего запуска — нужны, чтобы переподнять соединение. */
+    private var lastProfilePath: String? = null
+    private var lastBypassPath: String? = null
+
+    /**
      * Следит за сетью и сообщает слушателю о её смене.
      *
      * Инвариант §6 требует сбрасывать зелёное при смене сети, и этого нельзя
@@ -176,6 +201,11 @@ class VpnTunnelService : VpnService() {
         if (session != null || connectJob?.isActive == true) return
 
         stopped = false
+
+        // Запоминаем для перезапуска при залипании: поднимать соединение с
+        // другими настройками, чем были, нельзя.
+        lastProfilePath = profilePath
+        lastBypassPath = bypassFilePath
 
         // startForeground ОБЯЗАТЕЛЕН и вызывается ПЕРВЫМ делом.
         //
@@ -252,6 +282,12 @@ class VpnTunnelService : VpnService() {
     }
 
     private fun stopTunnel() {
+        // Наблюдение за залипанием не должно пережить туннель: опрашивать
+        // счётчики нечего, а отложенный перезапуск поднял бы соединение после
+        // того, как пользователь его отключил.
+        stallWatcher?.cancel()
+        stallWatcher = null
+
         // Запоминаем ДО обнуления: иначе проверка «было что останавливать»
         // всегда ложна.
         val wasActive = session != null || connectJob?.isActive == true
@@ -315,7 +351,13 @@ class VpnTunnelService : VpnService() {
     private fun onEngineState(source: OpenVpn3Session, state: EngineState) {
         when (state) {
             EngineState.Connecting -> notifyState(SystemState.CONNECTING)
-            EngineState.Connected -> notifyState(SystemState.ESTABLISHED)
+            EngineState.Connected -> {
+                notifyState(SystemState.ESTABLISHED)
+                // Наблюдение стартует только на установленном соединении: до
+                // него счётчиков ещё нет, а после него залипание как раз и
+                // случается — когда приложение свёрнуто и никто не смотрит.
+                startStallWatcher()
+            }
             EngineState.Reconnecting, EngineState.Disconnected -> notifyState(SystemState.LOST)
             is EngineState.Failed -> notifyState(SystemState.FAILED)
             EngineState.Idle -> notifyState(SystemState.IDLE)
@@ -333,6 +375,96 @@ class VpnTunnelService : VpnService() {
             if (session === source) session = null
         }
     }
+
+    /**
+     * Запустить наблюдение за залипанием.
+     *
+     * Правило живёт в [TunnelStallDetection] и [StallRecoveryPolicy] и проверено
+     * на JVM; здесь только опрос и действие. Иначе логику «когда перезапускать»
+     * нельзя было бы проверить иначе как на телефоне с настоящим залипанием.
+     */
+    private fun startStallWatcher() {
+        stallWatcher?.cancel()
+        stallWatcher = scope.launch {
+            var recovery = StallRecoveryState.Initial
+            // Снимок вместе с моментом съёмки: время нужно самому детектору, а
+            // `EngineCounters` его не несёт — это счётчики ядра, а не наш замер.
+            var previous: Pair<EngineCounters, Long>? = null
+            var lastRestartAt = 0L
+
+            while (isActive) {
+                delay(StallRecoveryPolicy.POLL_INTERVAL_MILLIS)
+                val active = session ?: continue
+                val now = System.currentTimeMillis()
+                val counters = active.counters(now)
+                if (counters == null) {
+                    previous = null
+                    continue
+                }
+
+                val before = previous
+                previous = counters to now
+                if (before == null) continue
+
+                // Свежий туннель сравнивать не с чем: после перезапуска счётчики
+                // начинаются заново, и рост «с нуля» выглядел бы как трафик.
+                if (lastRestartAt > before.second) continue
+
+                val health = TunnelStallDetection.evaluate(
+                    before = before.first.toDomain(before.second),
+                    after = counters.toDomain(now),
+                    stallAfterMillis = StallRecoveryPolicy.STALL_AFTER_MILLIS,
+                )
+                val outcome = StallRecoveryPolicy.decide(health, recovery, now)
+                recovery = outcome.state
+
+                when (outcome.decision) {
+                    StallRecovery.Restart -> {
+                        // Перезапускаем ЗДЕСЬ, а не через UI: пользователь видит
+                        // проблему только когда ничего не открывается, и ждать
+                        // его действия значит оставить его с мёртвым туннелем.
+                        lastRestartAt = now
+                        previous = null
+                        restartTunnel()
+                    }
+
+                    is StallRecovery.Exhausted -> {
+                        // Сдаёмся и говорим правду: соединение не оживает само.
+                        // Молчать нельзя — пользователь решит, что всё хорошо.
+                        val attempts = (outcome.decision as StallRecovery.Exhausted).attempts
+                        logBuffer.add("Туннель не отвечает после $attempts перезапусков")
+                        return@launch
+                    }
+
+                    StallRecovery.Wait -> Unit
+                }
+            }
+        }
+    }
+
+    /**
+     * Перезапустить соединение на том же профиле.
+     *
+     * Профиль и обходы берутся из последнего запуска: перезапуск не должен
+     * поднимать соединение с другими настройками, чем были.
+     */
+    private fun restartTunnel() {
+        val profile = lastProfilePath ?: return
+        scope.launch {
+            stopTunnel()
+            delay(RESTART_PAUSE_MILLIS)
+            startTunnel(profile, lastBypassPath)
+        }
+    }
+
+    private fun EngineCounters.toDomain(nowMillis: Long) =
+        TunnelCounters(
+            bytesOut = bytesOut,
+            bytesIn = bytesIn,
+            lastPacketReceivedAtMillis = lastPacketReceivedAtMillis,
+            errorsOut = errorsOut,
+            takenAtMillis = nowMillis,
+        )
 
     private fun notifyState(state: SystemState) {
         sendBroadcast(
@@ -470,5 +602,13 @@ class VpnTunnelService : VpnService() {
         private const val NOTIFICATION_ID = 1001
         private const val NOTIFICATION_CHANNEL_ID = "vpn_status"
         private const val DEFAULT_MTU = 1400
+
+        /**
+         * Пауза между остановкой и повторным подъёмом при перезапуске.
+         *
+         * Не ноль: интерфейс и сокет должны успеть освободиться, иначе ядро
+         * получит «адрес занят» и перезапуск превратится в отказ.
+         */
+        private const val RESTART_PAUSE_MILLIS = 1_000L
     }
 }
