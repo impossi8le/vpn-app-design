@@ -45,11 +45,10 @@ class AlwaysOnGuidanceTest {
     }
 
     @Test
-    fun `без подтверждённой защиты подсказки нет`() {
+    fun `без поднятого туннеля подсказки нет`() {
         val states = listOf(
             ConnectionStatus.Disconnected,
             ConnectionStatus.Connecting,
-            ConnectionStatus.VerifyingProtection,
             ConnectionStatus.Failed("нет сети"),
             ConnectionStatus.ProtectionFailed(
                 ProtectionVerdict.evaluate(false, true, true) as ProtectionVerdict.Failed,
@@ -66,11 +65,14 @@ class AlwaysOnGuidanceTest {
     }
 
     @Test
-    fun `состояние «туннель поднят» не считается достаточным`() {
-        // Именно здесь легко ошибиться: интерфейс поднят, но защита не подтверждена,
-        // а подсказка про Always-on нужна только тому, у кого всё уже работает.
+    fun `поднятый туннель уже достаточен для подсказки`() {
+        // Изменено 2026-10-15. Раньше здесь ожидалось NONE — и это делало
+        // подсказку невидимой для всех: `Protected` требует замера, а щуп —
+        // заглушка. Единственная настройка, переживающая смерть сервиса, не
+        // предлагалась никому. Подсказка про Always-on осмысленна, как только
+        // туннель поднят, — подтверждение замера для неё не требуется.
         assertEquals(
-            AlwaysOnHint.NONE,
+            AlwaysOnHint.SUGGEST,
             AlwaysOnGuidance.hint(
                 ConnectionStatus.VerifyingProtection,
                 alreadyEnabled = false,

@@ -292,6 +292,8 @@ fun AppRoot(
                 onPauseUpdateDownload = { onIntent(AppIntent.PauseUpdateDownload) },
                 onInstallUpdate = { onIntent(AppIntent.InstallDownloadedUpdate) },
                 onDismissUpdateBanner = { onIntent(AppIntent.DismissUpdateBanner) },
+                suggestAlwaysOn = state.suggestAlwaysOn,
+                onDismissAlwaysOnHint = { onIntent(AppIntent.DismissAlwaysOnHint) },
             )
 
             AppDestination.Bypass -> BypassScreen(
@@ -480,6 +482,14 @@ data class AppRootState(
     val updateMessage: String? = null,
     /** Баннер обновления закрыт пользователем. */
     val updateBannerDismissed: Boolean = false,
+    /**
+     * Предлагать ли включить Always-on VPN.
+     *
+     * Считается [MainActivity] из состояния туннеля и сохранённого отказа.
+     * Решение живёт вне экрана, потому что должно переживать перезапуск: один
+     * раз отклонённая подсказка не возвращается.
+     */
+    val suggestAlwaysOn: Boolean = false,
     /** Идёт проверка введённого кода: кнопка подтверждения занята. */
     val signingIn: Boolean = false,
     /** Текст ошибки входа, показываемый под полем кода. `null` — ошибки нет. */
@@ -564,6 +574,12 @@ sealed interface AppIntent {
 
     /** Убрать баннер обновления с главного экрана и убрать огрызок закачки. */
     data object DismissUpdateBanner : AppIntent
+
+    /**
+     * Отклонить подсказку про Always-on VPN — навсегда, а не до следующего раза.
+     * Хранится в настройках: подсказка иначе возвращалась бы при каждом запуске.
+     */
+    data object DismissAlwaysOnHint : AppIntent
 
     data object SessionChecked : AppIntent
     data object StartLogin : AppIntent

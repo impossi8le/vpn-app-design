@@ -12,8 +12,10 @@ import com.impossi8le.vpnapp.domain.settings.AppSettingsStore
 class FakeAppSettingsStore(
     confirmCountrySwitch: Boolean = true,
     dontAskCountrySwitch: Boolean = false,
+    alwaysOnHintDismissed: Boolean = false,
 ) : AppSettingsStore {
 
     override var confirmCountrySwitch: Boolean = confirmCountrySwitch
     override var dontAskCountrySwitch: Boolean = dontAskCountrySwitch
+    override var alwaysOnHintDismissed: Boolean = alwaysOnHintDismissed
 }

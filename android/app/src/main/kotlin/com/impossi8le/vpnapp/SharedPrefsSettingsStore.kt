@@ -35,9 +35,16 @@ class SharedPrefsSettingsStore(
             prefs.edit().putBoolean(KEY_DONT_ASK_COUNTRY_SWITCH, value).apply()
         }
 
+    override var alwaysOnHintDismissed: Boolean
+        get() = prefs.getBoolean(KEY_ALWAYS_ON_DISMISSED, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_ALWAYS_ON_DISMISSED, value).apply()
+        }
+
     private companion object {
         const val KEY_CONFIRM_COUNTRY_SWITCH = "confirm_country_switch"
         const val KEY_DONT_ASK_COUNTRY_SWITCH = "dont_ask_country_switch"
+        const val KEY_ALWAYS_ON_DISMISSED = "always_on_hint_dismissed"
 
         /** Дефолт — «спрашивать»: молчаливый обрыв соединения хуже лишнего тапа. */
         const val DEFAULT_CONFIRM = true

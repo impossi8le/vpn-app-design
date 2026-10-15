@@ -121,6 +121,15 @@ fun ConnectionScreen(
     onInstallUpdate: () -> Unit = {},
     onDismissUpdateBanner: () -> Unit = {},
     /**
+     * Предлагать ли включить Always-on VPN.
+     *
+     * Решение приходит снаружи ([AlwaysOnGuidance] + сохранённый отказ), а не
+     * считается здесь: подсказка должна переживать перезапуск, чтобы один раз
+     * отклонённая не возвращалась.
+     */
+    suggestAlwaysOn: Boolean = false,
+    onDismissAlwaysOnHint: () -> Unit = {},
+    /**
      * Имя работающего подключения, если известно. Показывается подзаголовком,
      * когда туннель поднят: пользователь просил видеть, какой конфиг работает.
      * `null` — имени нет, тогда подзаголовок нейтрален.
@@ -217,6 +226,18 @@ fun ConnectionScreen(
                         onPause = onPauseUpdateDownload,
                         onInstall = onInstallUpdate,
                         onDismiss = onDismissUpdateBanner,
+                    )
+                }
+            }
+
+            // Подсказка про Always-on VPN — единственная защита, переживающая
+            // смерть сервиса. Показывается, когда туннель поднят и пользователь
+            // её ещё не отклонил. Тон нейтральный: это не предупреждение о
+            // случившейся утечке, а настройка, которую стоит включить.
+            if (suggestAlwaysOn) {
+                item {
+                    AlwaysOnHintCard(
+                        onDismiss = onDismissAlwaysOnHint,
                     )
                 }
             }
@@ -469,6 +490,8 @@ const val CONNECTION_RINGS_TAG = "connection_rings"
 const val CONNECTION_PROGRESS_TAG = "connection_progress"
 const val CONNECTION_SWITCH_WARNING_TAG = "connection_switch_warning"
 const val CONNECTION_NOTICE_TAG = "connection_notice"
+const val CONNECTION_ALWAYS_ON_TAG = "connection_always_on"
+const val CONNECTION_ALWAYS_ON_DISMISS_TAG = "connection_always_on_dismiss"
 const val CONNECTION_REFRESHING_TAG = "connection_refreshing"
 const val CONNECTION_STALE_TAG = "connection_stale"
 const val HOME_UPDATE_TAG = "home_update"
@@ -491,6 +514,44 @@ const val CONNECTION_BYPASS_TAG = "connection_bypass"
  * ней запускал вторую загрузку (на телефоне сервер видел три параллельных
  * запроса одного APK), а тут кнопки просто нет.
  */
+@Composable
+private fun AlwaysOnHintCard(
+    onDismiss: () -> Unit,
+) {
+    VpnCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                text = "Защита исчезнет, если сервис остановится",
+                color = VpnColors.Bone,
+                fontSize = 15.sp,
+                modifier = Modifier.testTag(CONNECTION_ALWAYS_ON_TAG),
+            )
+            // Просим включить системную настройку, а не обещаем свой киллсвитч:
+            // у приложения его нет, а Always-on VPN + «Блокировать соединения без
+            // VPN» — единственное, что переживает смерть foreground-сервиса.
+            Text(
+                text = "Включите «Always-on VPN» в настройках Android — тогда при " +
+                    "остановке сервиса трафик не уйдёт напрямую.",
+                color = VpnColors.TextSecondary,
+                fontSize = 13.5.sp,
+                lineHeight = 19.sp,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Row(modifier = Modifier.padding(top = 6.dp)) {
+                Text(
+                    text = "Понятно",
+                    color = VpnColors.Ash,
+                    fontSize = 15.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onDismiss)
+                        .padding(vertical = 6.dp, horizontal = 4.dp)
+                        .testTag(CONNECTION_ALWAYS_ON_DISMISS_TAG),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun UpdateBanner(
     versionCode: Int,

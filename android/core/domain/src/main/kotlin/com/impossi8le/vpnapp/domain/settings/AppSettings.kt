@@ -1,5 +1,7 @@
 package com.impossi8le.vpnapp.domain.settings
 
+import com.impossi8le.vpnapp.domain.tunnel.AlwaysOnHint
+
 /**
  * Несекретные пользовательские настройки.
  *
@@ -18,7 +20,29 @@ interface AppSettingsStore {
 
     /** Пользователь выбрал «Больше не спрашивать» в шите подтверждения. */
     var dontAskCountrySwitch: Boolean
+
+    /**
+     * Пользователь отклонил подсказку включить Always-on VPN.
+     *
+     * Хранится, а не живёт в памяти экрана: подсказка возвращается при каждом
+     * подключении, и отклонённая заново предлагалась бы после каждого запуска —
+     * это не «напоминание», а навязчивость.
+     */
+    var alwaysOnHintDismissed: Boolean
 }
+
+/**
+ * Показывать ли подсказку про Always-on VPN.
+ *
+ * **Почему это не `AlwaysOnGuidance.hint`.** Здесь решается ТОЛЬКО вопрос
+ * хранения отказа, который на JVM не проверить; само правило «когда предлагать»
+ * остаётся в домене ([AlwaysOnGuidance]). Смешивать их значило бы завести две
+ * копии правила — и разойтись им при первой же правке.
+ */
+fun shouldSuggestAlwaysOn(
+    hint: AlwaysOnHint,
+    dismissed: Boolean,
+): Boolean = hint == AlwaysOnHint.SUGGEST && !dismissed
 
 /**
  * Нужно ли спрашивать подтверждение перед сменой страны.

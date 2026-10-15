@@ -39,11 +39,13 @@ import com.impossi8le.vpnapp.config.cacheAfterRefresh
 import com.impossi8le.vpnapp.domain.config.cachedConfigSelection
 import com.impossi8le.vpnapp.domain.diagnostics.jsonString
 import com.impossi8le.vpnapp.domain.settings.askBeforeCountrySwitch
+import com.impossi8le.vpnapp.domain.settings.shouldSuggestAlwaysOn
 import com.impossi8le.vpnapp.core.ui.UpdateDownloadState
 import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
+import com.impossi8le.vpnapp.domain.tunnel.AlwaysOnGuidance
 import com.impossi8le.vpnapp.domain.tunnel.BypassRoute
 import com.impossi8le.vpnapp.domain.tunnel.apiServerRouteOf
 import com.impossi8le.vpnapp.domain.tunnel.sameSubnet
@@ -988,6 +990,22 @@ private fun VpnApp() {
             },
             updateMessage = updateMessage,
             updateBannerDismissed = updateBannerDismissed,
+            // Подсказка про Always-on: предлагаем, когда туннель поднят и
+            // пользователь её ещё не отклонял. Состояние всегда
+            // VerifyingProtection (щупа нет), поэтому без этой правки подсказка
+            // не показалась бы никому.
+            suggestAlwaysOn = shouldSuggestAlwaysOn(
+                hint = AlwaysOnGuidance.hint(
+                    status = status,
+                    // Определить, включён ли Always-on, программно нельзя:
+                    // система не отдаёт эту настройку приложению. Считаем, что
+                    // не включён, и полагаемся на отказ пользователя — иначе
+                    // подсказка не показалась бы вообще.
+                    alreadyEnabled = false,
+                    dismissed = graph.settings.alwaysOnHintDismissed,
+                ),
+                dismissed = graph.settings.alwaysOnHintDismissed,
+            ),
         ),
         // Двойной жест «Назад» на главном экране сворачивает приложение, а не
         // завершает: под туннелем может идти трафик, и случайный свайп не должен
@@ -1078,6 +1096,11 @@ private fun VpnApp() {
                 }
 
                 AppIntent.DismissUpdateBanner -> updateBannerDismissed = true
+
+                // Отказ помним навсегда: подсказка привязана к «туннель поднят»,
+                // а он поднимается при каждом подключении — без хранения она
+                // возвращалась бы каждый раз.
+                AppIntent.DismissAlwaysOnHint -> graph.settings.alwaysOnHintDismissed = true
 
                 // Действия по матрице кнопки из макета.
                 is AppIntent.ConnectionAction -> scope.launch {
