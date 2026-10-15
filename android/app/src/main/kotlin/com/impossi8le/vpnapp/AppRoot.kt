@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import com.impossi8le.vpnapp.core.ui.UpdateDownloadState
 import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.feature.account.AboutScreen
@@ -176,7 +177,13 @@ fun AppRoot(
         ForceUpdateScreen(
             installedVersionName = state.build.versionName,
             update = forced,
-            updateProgress = state.updateProgress,
+            // Экран принудительного обновления ждёт процент или `null`; пауза для
+            // него не отличается от идущей закачки — уйти с него всё равно нельзя.
+            updateProgress = when (val d = state.updateDownload) {
+                is UpdateDownloadState.Downloading -> d.percent
+                is UpdateDownloadState.Paused -> d.percent
+                else -> null
+            },
             updateMessage = state.updateMessage,
             onDownloadUpdate = { onIntent(AppIntent.DownloadUpdate) },
             onCheckUpdate = { onIntent(AppIntent.CheckForUpdate) },
@@ -280,8 +287,10 @@ fun AppRoot(
                 onSwitchCountry = { id -> onIntent(AppIntent.SwitchCountry(id)) },
                 updateVersionCode = (state.update as? UpdateUiState.Available)
                     ?.takeUnless { state.updateBannerDismissed }?.versionCode,
-                updateProgress = state.updateProgress,
+                updateDownload = state.updateDownload,
                 onDownloadUpdate = { onIntent(AppIntent.DownloadUpdate) },
+                onPauseUpdateDownload = { onIntent(AppIntent.PauseUpdateDownload) },
+                onInstallUpdate = { onIntent(AppIntent.InstallDownloadedUpdate) },
                 onDismissUpdateBanner = { onIntent(AppIntent.DismissUpdateBanner) },
             )
 
@@ -336,10 +345,19 @@ fun AppRoot(
                 appVersion = state.build.versionName,
                 buildSha = state.build.gitSha,
                 update = state.update,
-                updateProgress = state.updateProgress,
+                // «О сервисе» показывает процент, пока закачка идёт или стоит на
+                // паузе — в обоих случаях полезно, сколько уже скачано. Успех и
+                // сбой сюда не передаются: там важно не число, а действие.
+                updateProgress = when (val d = state.updateDownload) {
+                    is UpdateDownloadState.Downloading -> d.percent
+                    is UpdateDownloadState.Paused -> d.percent
+                    else -> null
+                },
                 updateMessage = state.updateMessage,
+                updateReady = state.updateDownload is UpdateDownloadState.Ready,
                 onCheckUpdate = { onIntent(AppIntent.CheckForUpdate) },
                 onDownloadUpdate = { onIntent(AppIntent.DownloadUpdate) },
+                onInstallUpdate = { onIntent(AppIntent.InstallDownloadedUpdate) },
                 onBack = { back() },
                 onOpenPrivacy = { onIntent(AppIntent.OpenPrivacyPolicy) },
                 onOpenTerms = { onIntent(AppIntent.OpenTerms) },
@@ -447,8 +465,14 @@ data class AppRootState(
     ),
     /** Состояние проверки обновления. Показывается в «О сервисе» и баннером. */
     val update: UpdateUiState = UpdateUiState.Idle,
-    /** Прогресс скачивания APK, `null` — не качаем. */
-    val updateProgress: Int? = null,
+    /**
+     * Состояние скачивания APK: идёт, на паузе, готово к установке, сорвалось.
+     *
+     * Отдельное поле, а не пара «прогресс + флаг»: состояний четыре, и
+     * «готово к установке» среди них нет ни у прогресса, ни у флага. Именно его
+     * отсутствие теряло путь к установке после успешной закачки (issue #7).
+     */
+    val updateDownload: UpdateDownloadState = UpdateDownloadState.Idle,
     /**
      * Почему установка не началась или не удалась. Показывается в «О сервисе».
      * `null` — причины нет.
@@ -529,10 +553,16 @@ sealed interface AppIntent {
     /** Проверить обновление вручную (кнопка в «О сервисе»). */
     data object CheckForUpdate : AppIntent
 
-    /** Скачать и установить доступное обновление. */
+    /** Начать или продолжить скачивание доступного обновления. */
     data object DownloadUpdate : AppIntent
 
-    /** Убрать баннер обновления с главного экрана. */
+    /** Приостановить скачивание, сохранив огрызок для продолжения. */
+    data object PauseUpdateDownload : AppIntent
+
+    /** Установить уже скачанное обновление. */
+    data object InstallDownloadedUpdate : AppIntent
+
+    /** Убрать баннер обновления с главного экрана и убрать огрызок закачки. */
     data object DismissUpdateBanner : AppIntent
 
     data object SessionChecked : AppIntent

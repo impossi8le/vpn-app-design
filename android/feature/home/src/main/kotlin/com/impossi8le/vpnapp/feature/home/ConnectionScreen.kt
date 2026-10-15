@@ -26,6 +26,7 @@ import com.impossi8le.vpnapp.core.ui.CountryMark
 import com.impossi8le.vpnapp.core.ui.MinTouchTarget
 import com.impossi8le.vpnapp.core.ui.SectionLabel
 import com.impossi8le.vpnapp.core.ui.StatusHeadline
+import com.impossi8le.vpnapp.core.ui.UpdateDownloadState
 import com.impossi8le.vpnapp.core.ui.StatusRings
 import com.impossi8le.vpnapp.core.ui.VpnBadge
 import com.impossi8le.vpnapp.core.ui.VpnCard
@@ -108,14 +109,16 @@ fun ConnectionScreen(
      */
     updateVersionCode: Int? = null,
     /**
-     * Процент скачанного обновления или `null`, если загрузка не идёт.
+     * Состояние скачивания обновления.
      *
      * Живёт на главном экране, а не только в «Аккаунте»: баннер обновления
      * стоит именно здесь, и без строки прогресса нажатие «Обновить» выглядит
      * как молчание — при 106 МБ это минуты на медленной сети.
      */
-    updateProgress: Int? = null,
+    updateDownload: UpdateDownloadState = UpdateDownloadState.Idle,
     onDownloadUpdate: () -> Unit = {},
+    onPauseUpdateDownload: () -> Unit = {},
+    onInstallUpdate: () -> Unit = {},
     onDismissUpdateBanner: () -> Unit = {},
     /**
      * Имя работающего подключения, если известно. Показывается подзаголовком,
@@ -209,8 +212,10 @@ fun ConnectionScreen(
                 item {
                     UpdateBanner(
                         versionCode = updateVersionCode,
-                        progress = updateProgress,
+                        download = updateDownload,
                         onDownload = onDownloadUpdate,
+                        onPause = onPauseUpdateDownload,
+                        onInstall = onInstallUpdate,
                         onDismiss = onDismissUpdateBanner,
                     )
                 }
@@ -469,6 +474,8 @@ const val CONNECTION_STALE_TAG = "connection_stale"
 const val HOME_UPDATE_TAG = "home_update"
 const val HOME_UPDATE_DISMISS_TAG = "home_update_dismiss"
 const val HOME_UPDATE_PROGRESS_TAG = "home_update_progress"
+const val HOME_UPDATE_PAUSE_TAG = "home_update_pause"
+const val HOME_UPDATE_INSTALL_TAG = "home_update_install"
 const val CONNECTION_BYPASS_TAG = "connection_bypass"
 
 /**
@@ -487,8 +494,10 @@ const val CONNECTION_BYPASS_TAG = "connection_bypass"
 @Composable
 private fun UpdateBanner(
     versionCode: Int,
-    progress: Int?,
+    download: UpdateDownloadState,
     onDownload: () -> Unit,
+    onPause: () -> Unit,
+    onInstall: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     VpnCard(modifier = Modifier.fillMaxWidth()) {
@@ -498,42 +507,138 @@ private fun UpdateBanner(
                 color = VpnColors.Bone,
                 fontSize = 15.sp,
             )
-            if (progress != null) {
-                Text(
-                    text = "Скачиваем обновление… $progress%",
-                    color = VpnColors.Ice,
-                    fontSize = 15.sp,
-                    modifier = Modifier
-                        .padding(top = 6.dp)
-                        .testTag(HOME_UPDATE_PROGRESS_TAG),
-                )
-                LinearProgressIndicator(
-                    progress = { progress / 100f },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp),
-                )
-            } else {
-                Row(modifier = Modifier.padding(top = 6.dp)) {
+            when (download) {
+                // Идёт закачка. «Позже» в это время нет намеренно: рядом с
+                // «Паузой» оно читалось бы как её дубль, а отменять закачку
+                // с потерей огрызка пользователь здесь не просил.
+                is UpdateDownloadState.Downloading -> {
                     Text(
-                        text = "Обновить",
+                        text = "Скачиваем обновление… ${download.percent}%",
                         color = VpnColors.Ice,
                         fontSize = 15.sp,
                         modifier = Modifier
-                            .clickable(onClick = onDownload)
-                            .padding(vertical = 6.dp, horizontal = 4.dp)
-                            .testTag(HOME_UPDATE_TAG),
+                            .padding(top = 6.dp)
+                            .testTag(HOME_UPDATE_PROGRESS_TAG),
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
+                    LinearProgressIndicator(
+                        progress = { download.percent / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                    )
+                    Row(modifier = Modifier.padding(top = 6.dp)) {
+                        Text(
+                            text = "Пауза",
+                            color = VpnColors.Ice,
+                            fontSize = 15.sp,
+                            modifier = Modifier
+                                .clickable(onClick = onPause)
+                                .padding(vertical = 6.dp, horizontal = 4.dp)
+                                .testTag(HOME_UPDATE_PAUSE_TAG),
+                        )
+                    }
+                }
+
+                // Пауза. Процент остаётся на экране: огрызок на диске никуда не
+                // делся, и продолжение пойдёт с этого места, а не с нуля.
+                is UpdateDownloadState.Paused -> {
                     Text(
-                        text = "Позже",
+                        text = "Скачивание приостановлено… ${download.percent}%",
                         color = VpnColors.Ash,
                         fontSize = 15.sp,
                         modifier = Modifier
-                            .clickable(onClick = onDismiss)
-                            .padding(vertical = 6.dp, horizontal = 4.dp)
-                            .testTag(HOME_UPDATE_DISMISS_TAG),
+                            .padding(top = 6.dp)
+                            .testTag(HOME_UPDATE_PROGRESS_TAG),
                     )
+                    LinearProgressIndicator(
+                        progress = { download.percent / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                    )
+                    Row(modifier = Modifier.padding(top = 6.dp)) {
+                        Text(
+                            text = "Продолжить",
+                            color = VpnColors.Ice,
+                            fontSize = 15.sp,
+                            modifier = Modifier
+                                .clickable(onClick = onDownload)
+                                .padding(vertical = 6.dp, horizontal = 4.dp)
+                                .testTag(HOME_UPDATE_TAG),
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = "Позже",
+                            color = VpnColors.Ash,
+                            fontSize = 15.sp,
+                            modifier = Modifier
+                                .clickable(onClick = onDismiss)
+                                .padding(vertical = 6.dp, horizontal = 4.dp)
+                                .testTag(HOME_UPDATE_DISMISS_TAG),
+                        )
+                    }
+                }
+
+                // Скачано. Ссылка «Позже» здесь не гасит файл: она убирает
+                // плашку, а установить можно из «О сервисе» — терять 106 МБ
+                // из-за случайного тапа нельзя.
+                UpdateDownloadState.Ready -> {
+                    Text(
+                        text = "Обновление скачано",
+                        color = VpnColors.Ice,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .padding(top = 6.dp)
+                            .testTag(HOME_UPDATE_PROGRESS_TAG),
+                    )
+                    Row(modifier = Modifier.padding(top = 6.dp)) {
+                        Text(
+                            text = "Установить",
+                            color = VpnColors.Ice,
+                            fontSize = 15.sp,
+                            modifier = Modifier
+                                .clickable(onClick = onInstall)
+                                .padding(vertical = 6.dp, horizontal = 4.dp)
+                                .testTag(HOME_UPDATE_INSTALL_TAG),
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = "Позже",
+                            color = VpnColors.Ash,
+                            fontSize = 15.sp,
+                            modifier = Modifier
+                                .clickable(onClick = onDismiss)
+                                .padding(vertical = 6.dp, horizontal = 4.dp)
+                                .testTag(HOME_UPDATE_DISMISS_TAG),
+                        )
+                    }
+                }
+
+                // Сорвалось или ещё не начато — исходный вид с приглашением.
+                // Причину сбоя баннер не пересказывает: она показывается в
+                // «О сервисе», а здесь важна возможность повторить.
+                is UpdateDownloadState.Failed, UpdateDownloadState.Idle -> {
+                    Row(modifier = Modifier.padding(top = 6.dp)) {
+                        Text(
+                            text = "Обновить",
+                            color = VpnColors.Ice,
+                            fontSize = 15.sp,
+                            modifier = Modifier
+                                .clickable(onClick = onDownload)
+                                .padding(vertical = 6.dp, horizontal = 4.dp)
+                                .testTag(HOME_UPDATE_TAG),
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = "Позже",
+                            color = VpnColors.Ash,
+                            fontSize = 15.sp,
+                            modifier = Modifier
+                                .clickable(onClick = onDismiss)
+                                .padding(vertical = 6.dp, horizontal = 4.dp)
+                                .testTag(HOME_UPDATE_DISMISS_TAG),
+                        )
+                    }
                 }
             }
         }

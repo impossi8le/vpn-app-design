@@ -41,6 +41,16 @@ fun AboutScreen(
     updateMessage: String?,
     onCheckUpdate: () -> Unit,
     onDownloadUpdate: () -> Unit,
+    /**
+     * Установить уже скачанное обновление.
+     *
+     * Отдельно от [onDownloadUpdate]: после успешной закачки действие меняется с
+     * «качать» на «ставить». Раньше строка возвращалась к «Скачать», и файл в
+     * кеше становился недостижим — обновиться было нечем.
+     */
+    onInstallUpdate: () -> Unit = {},
+    /** Скачан ли файл целиком. `true` — показываем «Установить», а не «Скачать». */
+    updateReady: Boolean = false,
     onBack: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onOpenTerms: () -> Unit,
@@ -99,6 +109,21 @@ fun AboutScreen(
                     value = "$updateProgress%",
                     valueMono = true,
                 )
+                // Скачано — действие «Установить». Это то самое четвёртое
+                // состояние: без него путь к установке терялся после успеха.
+                updateReady && update is UpdateUiState.Available -> Column {
+                    VpnRow(
+                        key = "Доступна версия",
+                        value = "1.0.${update.versionCode}",
+                        valueMono = true,
+                    )
+                    VpnRow(
+                        key = "Обновление скачано",
+                        trailing = {
+                            LinkAction("Установить ›", onInstallUpdate, ABOUT_UPDATE_TAG)
+                        },
+                    )
+                }
                 update is UpdateUiState.Available -> Column {
                     VpnRow(
                         key = "Доступна версия",
