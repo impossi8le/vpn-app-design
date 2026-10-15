@@ -143,6 +143,9 @@ private const val BYPASS_FILE_NAME = "bypass-routes.txt"
 private fun ConnectionStatus.label(): String = when (this) {
     ConnectionStatus.Disconnected -> "отключено"
     ConnectionStatus.Connecting -> "подключается"
+    // Отдельно от «подключается»: перебой в отчёте — это факт, который иначе
+    // неотличим от первого подключения.
+    ConnectionStatus.Recovering -> "восстановление"
     ConnectionStatus.VerifyingProtection -> "проверка защиты"
     is ConnectionStatus.Protected -> "защищено"
     is ConnectionStatus.ProtectionFailed -> "защита не подтверждена"

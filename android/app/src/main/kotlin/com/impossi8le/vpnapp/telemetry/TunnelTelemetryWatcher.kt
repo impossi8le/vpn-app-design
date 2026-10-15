@@ -141,6 +141,10 @@ class TunnelTelemetryWatcher(
 internal fun ConnectionStatus.telemetryState(): String = when (this) {
     ConnectionStatus.Disconnected -> "disconnected"
     ConnectionStatus.Connecting -> "connecting"
+    // Свой код, а не "connecting": перебой — отдельное событие, и в данных он
+    // не должен слиться с первым подключением, иначе причину частых обрывов
+    // не увидеть.
+    ConnectionStatus.Recovering -> "recovering"
     ConnectionStatus.VerifyingProtection -> "connected"
     is ConnectionStatus.Protected -> "protected"
     is ConnectionStatus.ProtectionFailed -> "protection_failed"
