@@ -1,0 +1,26 @@
+name: Баг
+description: Что-то работает не так
+title: "[Баг] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Что случилось
+      description: Что видно на экране. Без IP-адресов, ключей и деталей обхода — репозиторий публичный.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как повторить
+      description: Шаги, при которых воспроизводится. Если не повторяется — так и напиши.
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Версия приложения
+      description: Видна на экране «Аккаунт». Например 102.
+    validations:
+      required: false

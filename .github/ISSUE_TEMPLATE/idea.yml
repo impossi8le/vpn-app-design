@@ -1,0 +1,26 @@
+name: Идея
+description: Что хочется добавить или поменять
+title: "[Идея] "
+labels: ["idea"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Что хочется и зачем
+      description: Чего не хватает и какую задачу это решает.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Область
+      description: Если не знаешь — оставь «Не знаю».
+      options:
+        - Не знаю
+        - Android
+        - iOS
+        - Бэкенд
+        - Документация
+        - Инфраструктура
+    validations:
+      required: false
