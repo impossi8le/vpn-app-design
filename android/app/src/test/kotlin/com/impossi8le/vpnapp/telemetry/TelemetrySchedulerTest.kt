@@ -1,10 +1,8 @@
 package com.impossi8le.vpnapp.telemetry
 
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.util.concurrent.TimeUnit
 
 /**
  * Параметры периодической отправки метрик.
@@ -26,10 +24,13 @@ class TelemetrySchedulerTest {
 
     @Test
     fun `сеть нужна любая, а не только wifi`() {
-        assertEquals(NetworkRequirement.Connected, TelemetryScheduler.NETWORK_REQUIREMENT)
-        assertFalse(
-            TelemetryScheduler.NETWORK_REQUIREMENT == NetworkRequirement.Unmetered,
-            "требование вайфая лишило бы данных пользователей мобильной сети",
+        // Требование вайфая лишило бы данных пользователей мобильной сети, поэтому
+        // проверяем именно `Connected`: `assertEquals` уже отличает его от
+        // `Unmetered`, и отдельный `assertFalse` на то же самое был бы тавтологией.
+        assertEquals(
+            NetworkRequirement.Connected,
+            TelemetryScheduler.NETWORK_REQUIREMENT,
+            "требовать UNMETERED нельзя: данные не пришли бы никогда",
         )
     }
 
@@ -39,8 +40,10 @@ class TelemetrySchedulerTest {
     }
 
     @Test
-    fun `период описан в минутах и положителен`() {
-        assertTrue(TelemetryScheduler.INTERVAL_MINUTES > 0)
-        assertEquals(6, TimeUnit.HOURS.toMinutes(6) / 60)
+    fun `период — шесть часов`() {
+        // Не «положительное число», а конкретное значение: период — часть
+        // контракта с сервером, и молчаливое изменение (например, на 15 минут)
+        // участило бы отправку без решения человека.
+        assertEquals(6L * 60, TelemetryScheduler.INTERVAL_MINUTES)
     }
 }
