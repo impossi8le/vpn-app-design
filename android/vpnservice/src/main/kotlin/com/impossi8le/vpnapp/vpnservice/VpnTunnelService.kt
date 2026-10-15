@@ -36,7 +36,7 @@ import kotlinx.coroutines.launch
  * сервис. Домен этот тип не видит: наружу уходит имя, а маппинг в
  * `ConnectionStatus` (никогда не зелёный) делает `core:tunnel`.
  */
-enum class SystemState { IDLE, CONNECTING, ESTABLISHED, LOST, FAILED }
+enum class SystemState { IDLE, CONNECTING, RECOVERING, ESTABLISHED, LOST, FAILED }
 
 /**
  * Текст уведомления по системному состоянию.
@@ -50,6 +50,9 @@ enum class SystemState { IDLE, CONNECTING, ESTABLISHED, LOST, FAILED }
 internal fun notificationTextFor(state: SystemState): String? = when (state) {
     SystemState.IDLE -> null
     SystemState.CONNECTING -> "Подключение…"
+    // Не «Подключение…»: связь уже была и пропала. Молчать об этом в шторке
+    // значило бы скрыть перебои, которые пользователь и так заметил.
+    SystemState.RECOVERING -> "Восстанавливаем соединение…"
     SystemState.ESTABLISHED -> "Подключено"
     SystemState.LOST -> "Соединение потеряно"
     SystemState.FAILED -> "Не удалось подключиться"
@@ -433,6 +436,10 @@ class VpnTunnelService : VpnService() {
                         // Молчать нельзя — пользователь решит, что всё хорошо.
                         val attempts = (outcome.decision as StallRecovery.Exhausted).attempts
                         logBuffer.add("Туннель не отвечает после $attempts перезапусков")
+                        // И на экране тоже: без этого состояния экран застыл бы
+                        // на «Восстанавливаем соединение», то есть обещал бы
+                        // возвращение, которого уже не будет.
+                        notifyState(SystemState.FAILED)
                         return@launch
                     }
 
@@ -452,6 +459,11 @@ class VpnTunnelService : VpnService() {
         val profile = lastProfilePath ?: return
         scope.launch {
             stopTunnel()
+            // Не `Connect`: `stopTunnel` увёл состояние в IDLE, и без этой строки
+            // экран показал бы «Не подключено» — пользователь увидел бы, что
+            // соединение пропало, и не узнал, что оно возвращается. `Recovering`
+            // говорит и о перебое, и о том, что работа идёт.
+            notifyState(SystemState.RECOVERING)
             delay(RESTART_PAUSE_MILLIS)
             startTunnel(profile, lastBypassPath)
         }

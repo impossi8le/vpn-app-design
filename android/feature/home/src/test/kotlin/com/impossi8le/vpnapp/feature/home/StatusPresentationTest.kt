@@ -202,6 +202,49 @@ class StatusPresentationTest {
     }
 
     @Test
+    fun `восстановление не выдаётся за первое подключение`() {
+        // Автоперезапуск шёл через «отключено → подключение → подключено», и
+        // экран молча прыгал. Такое состояние обязано говорить, что связь
+        // пропадала, — иначе пользователь не отличит перебой от обычной работы.
+        val recovering = ConnectionStatus.Recovering.presentation()
+
+        assertNotEquals(
+            ConnectionStatus.Connecting.presentation().title,
+            recovering.title,
+            "восстановление обязано отличаться от первого подключения",
+        )
+        assertTrue(
+            recovering.title.contains("восстанав", ignoreCase = true) ||
+                recovering.detail.contains("восстанав", ignoreCase = true),
+            "подача должна прямо говорить о восстановлении: ${recovering.title} / ${recovering.detail}",
+        )
+    }
+
+    @Test
+    fun `во время восстановления сказано, что трафик идёт напрямую`() {
+        // В эти секунды туннеля НЕТ: перезапуск его опустил. Молчать об этом —
+        // та же недоказанная уверенность, против которой написан §6, только
+        // здесь опасность реальна и сиюминутна.
+        val details = ConnectionStatus.Recovering.presentation().detail
+
+        assertTrue(
+            details.contains("напрямую") || details.contains("мимо"),
+            "во время перезапуска трафик идёт вне туннеля — сказать об этом: $details",
+        )
+    }
+
+    @Test
+    fun `восстановление не рисуется зелёным`() {
+        // Зелёный зарезервирован под подтверждённую защиту, а здесь защиты нет
+        // вовсе: туннель опущен.
+        assertNotEquals(
+            VpnColors.Mist,
+            ConnectionStatus.Recovering.presentation().accent,
+            "восстановление — не готовность",
+        )
+    }
+
+    @Test
     fun `красный только у реальной опасности`() {
         // Красный — сигнал разрыва, когда подключение НЕ состоялось. Проверяем
         // оба входа в Failed (нет сети и отказ ядра), чтобы правило держалось на

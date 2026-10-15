@@ -9,7 +9,7 @@ import com.impossi8le.vpnapp.domain.protection.ProtectionEvidence
  * В домен этот тип не протекает: он живёт в core:tunnel и переводится в
  * ConnectionStatus явным маппингом ниже.
  */
-enum class SystemState { IDLE, CONNECTING, ESTABLISHED, LOST, FAILED }
+enum class SystemState { IDLE, CONNECTING, RECOVERING, ESTABLISHED, LOST, FAILED }
 
 /**
  * Маппинг системного состояния в доменное.
@@ -23,6 +23,10 @@ enum class SystemState { IDLE, CONNECTING, ESTABLISHED, LOST, FAILED }
 fun SystemState.toConnectionStatus(): ConnectionStatus = when (this) {
     SystemState.IDLE -> ConnectionStatus.Disconnected
     SystemState.CONNECTING -> ConnectionStatus.Connecting
+    // Восстановление — НЕ `Connecting`: пользователь уже видел «Подключено», и
+    // безобидное «Подключение» скрыло бы, что связь пропадала и в эти секунды
+    // трафик идёт напрямую.
+    SystemState.RECOVERING -> ConnectionStatus.Recovering
     SystemState.ESTABLISHED -> ConnectionStatus.VerifyingProtection
     SystemState.LOST -> ConnectionStatus.Disconnected
     SystemState.FAILED -> ConnectionStatus.Failed("туннель не поднялся")

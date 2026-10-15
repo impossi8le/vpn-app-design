@@ -43,7 +43,10 @@ object TunnelStateSnapshot {
         // Поднятый туннель. `ESTABLISHED` — это ровно «интерфейс поднят», и
         // плитка говорит о туннеле, а не о защите: §6 запрещает обещать больше.
         "ESTABLISHED" -> State.Connected
-        "CONNECTING" -> State.Connecting
+        // Восстановление для плитки — это «идёт процесс»: туннеля сейчас нет,
+        // но и выключенным он не был. Показать «отключён» значило бы соврать
+        // про намерение, «подключён» — про факт.
+        "CONNECTING", "RECOVERING" -> State.Connecting
         "IDLE", "LOST", "FAILED" -> State.Disconnected
         // Незнакомую строку считаем незнанием, а не «выключено».
         else -> State.Unknown
