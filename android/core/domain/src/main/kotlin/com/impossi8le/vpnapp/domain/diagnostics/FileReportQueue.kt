@@ -18,22 +18,37 @@ class FileReportQueue(
 ) : ReportQueue {
 
     override suspend fun enqueue(json: String) {
-        writeAll((readAll() + json).takeLast(maxEntries))
+        withFileLock { writeAll((readAll() + json).takeLast(maxEntries)) }
     }
 
-    override suspend fun peek(): List<String> = readAll()
+    override suspend fun peek(): List<String> = withFileLock { readAll() }
 
     override suspend fun remove(ids: List<String>) {
         if (ids.isEmpty()) return
         val wanted = ids.toSet()
-        writeAll(readAll().filterNot { line -> idOf(line) in wanted })
+        withFileLock { writeAll(readAll().filterNot { line -> idOf(line) in wanted }) }
     }
 
-    override suspend fun size(): Int = readAll().size
+    override suspend fun size(): Int = withFileLock { readAll().size }
 
     override suspend fun clear() {
-        writeAll(emptyList())
+        withFileLock { writeAll(emptyList()) }
     }
+
+    /**
+     * Блокировка общая НА ФАЙЛ, а не на объект.
+     *
+     * Экземпляров очереди в приложении два: запись из UI (`AppGraph.telemetryQueue`)
+     * и чтение с удалением в воркере (`TelemetryGraph.from`). Они смотрят в один и
+     * тот же файл. Без общей блокировки два read-modify-write накладываются —
+     * и событие, записанное UI, стирается записью воркера: очередь теряет данные
+     * молча, а потеря выглядит как «событий не было».
+     *
+     * Ключ — канонический путь, поэтому блокировка работает независимо от того,
+     * какой экземпляр её берёт и как собран путь к файлу.
+     */
+    private inline fun <T> withFileLock(block: () -> T): T =
+        synchronized(lockFor(file)) { block() }
 
     private fun readAll(): List<String> =
         if (file.exists()) file.readLines().filter { it.isNotBlank() } else emptyList()
@@ -58,5 +73,21 @@ class FileReportQueue(
 
     companion object {
         const val DEFAULT_MAX_ENTRIES = 500
+
+        /**
+         * Замки по каноническому пути файла.
+         *
+         * `ComputeIfAbsent` вместо простого поля: два экземпляра получают ОДИН
+         * объект-замок, поэтому блокировка общая. Канонический путь — чтобы
+         * разные написания одного файла (`./q.jsonl` и `q.jsonl`) не дали двух
+         * разных замков. `computeIfAbsent` на `ConcurrentHashMap` атомарен, так
+         * что два потока не создадут по замку.
+         */
+        private val locks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
+        private fun lockFor(file: File): Any {
+            val key = runCatching { file.canonicalPath }.getOrElse { file.absolutePath }
+            return locks.computeIfAbsent(key) { Any() }
+        }
     }
 }

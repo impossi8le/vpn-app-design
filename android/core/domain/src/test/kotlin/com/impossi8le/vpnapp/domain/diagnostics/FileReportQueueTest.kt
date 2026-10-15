@@ -57,4 +57,23 @@ class FileReportQueueTest {
         assertEquals(3, queue.size(), "старые обязаны вытесняться")
         assertTrue(queue.peek().last().contains("\"4\""), "самое свежее обязано остаться")
     }
+
+    @Test
+    fun `два экземпляра над одним файлом не теряют события`() = runBlocking {
+        val dir = createTempDir()
+        val file = File(dir, "queue.jsonl")
+        // Так оно и живёт в приложении: запись из UI и чтение воркером — разные
+        // объекты над ОДНИМ файлом. Без общей блокировки второй read-modify-write
+        // затирает первый, и событие исчезает молча.
+        val writer = FileReportQueue(file)
+        val worker = FileReportQueue(file)
+
+        writer.enqueue("""{"event_id":"from-ui"}""")
+        worker.remove(emptyList()) // рабочий цикл читает и перезаписывает тот же файл
+        writer.enqueue("""{"event_id":"from-ui-2"}""")
+
+        val all = FileReportQueue(file).peek()
+        assertTrue(all.any { it.contains("from-ui") }, "событие из UI не должно пропасть")
+        assertTrue(all.any { it.contains("from-ui-2") }, "второе событие тоже обязано остаться")
+    }
 }
