@@ -42,5 +42,17 @@ object LogScrubber {
         return result
     }
 
-    fun scrubAll(lines: List<String>): List<String> = lines.map(::scrub)
+    /**
+     * Скраб потока строк с учётом МНОГОСТРОЧНЫХ блоков PEM.
+     *
+     * Ядро печатает `BEGIN`/тело/`END` тремя отдельными строками, поэтому
+     * построчный скраб их не поймает: ключ утечёт построчно. Склеиваем и режем
+     * блок целиком — тот же класс ошибки, что дубликат `verb`, который «обходил»
+     * правку одной строки.
+     */
+    fun scrubStream(lines: List<String>): List<String> {
+        val joined = lines.joinToString("\n")
+        val scrubbed = scrub(joined)
+        return scrubbed.split("\n")
+    }
 }

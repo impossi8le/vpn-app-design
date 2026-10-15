@@ -8,7 +8,7 @@ package com.impossi8le.vpnapp.domain.diagnostics
  * Срабатывает тот, что наступит раньше.
  *
  * Потокобезопасен: `add` вызывается из JNI-потока колбэка ядра, а `snapshot`
- * читается из UI-потока при формировании отчёта. Доступ к `lines`/`bytes`
+ * читается из UI-потока при формировании отчёта. Доступ к `raw`/`bytes`
  * синхронизирован, поэтому снимок консистентен, а параллельная запись не ломает
  * `ArrayDeque`. Вызовы короткие, поэтому хватает обычной синхронизации.
  */
@@ -16,32 +16,43 @@ class LogBuffer(
     private val maxLines: Int = DEFAULT_MAX_LINES,
     private val maxBytes: Int = DEFAULT_MAX_BYTES,
 ) {
-    private val lines = ArrayDeque<String>()
+    /**
+     * Строки «как пришли» — с построчным скрабом, но БЕЗ склейки блоков.
+     *
+     * Слитые строки хранить нельзя: многострочный PEM виден только целиком, и
+     * склейку делает [snapshot] — там, где буфер отдаёт наружу готовый лог.
+     */
+    private val raw = ArrayDeque<String>()
     private var bytes = 0
 
     @Synchronized
     fun add(line: String) {
         val scrubbed = LogScrubber.scrub(line)
-        lines.addLast(scrubbed)
+        raw.addLast(scrubbed)
         bytes += scrubbed.length
         trim()
     }
 
+    /**
+     * Отдаём лог после склейки многострочных блоков: только здесь видно, что
+     * `BEGIN` и `END` — части одного секрета.
+     */
     @Synchronized
-    fun snapshot(): List<String> = lines.toList()
+    fun snapshot(): List<String> = LogScrubber.scrubStream(raw.toList())
 
     @Synchronized
-    fun size(): Int = lines.size
+    fun size(): Int = raw.size
 
     @Synchronized
     fun clear() {
-        lines.clear()
+        raw.clear()
         bytes = 0
     }
 
+    /** Вызывается только под блокировкой из [add] — отдельной синхронизации не нужно. */
     private fun trim() {
-        while (lines.size > maxLines || (bytes > maxBytes && lines.size > 1)) {
-            val removed = lines.removeFirst()
+        while (raw.size > maxLines || (bytes > maxBytes && raw.size > 1)) {
+            val removed = raw.removeFirst()
             bytes -= removed.length
         }
     }

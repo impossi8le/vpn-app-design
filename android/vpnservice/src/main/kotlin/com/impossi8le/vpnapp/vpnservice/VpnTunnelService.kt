@@ -8,6 +8,7 @@ import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import com.impossi8le.vpnapp.vpnengine.EngineState
 import com.impossi8le.vpnapp.vpnengine.OpenVpn3Session
+import com.impossi8le.vpnapp.domain.diagnostics.LogBuffer
 import com.impossi8le.vpnapp.domain.tunnel.parseBypassCidr
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -107,6 +108,19 @@ class VpnTunnelService : VpnService() {
      * [stopped].
      */
     private var appliedBypassCount = 0
+
+    /**
+     * Буфер логов ядра — тот же экземпляр, что держит граф приложения.
+     *
+     * Через extras его не передать: `LogBuffer` не `Parcelable`, а сериализовать
+     * его в намерение значило бы сделать две копии буфера — сервис писал бы в
+     * одну, а экран читал из другой, и логи просто не появлялись бы в отчёте.
+     * Поэтому экземпляр один и живёт в [sharedLogBuffer] на процесс: сервис и
+     * приложение разделяют процесс (в манифесте нет `android:process`), и это
+     * ровно тот же приём, что у процесса-синглтона. Путь к профилю так передать
+     * было нельзя (это данные), а здесь передаётся ссылка на общий объект.
+     */
+    private val logBuffer: LogBuffer get() = sharedLogBuffer
 
     private lateinit var connectivity: ConnectivityManager
 
@@ -218,14 +232,14 @@ class VpnTunnelService : VpnService() {
             // от уже перезапущенного.
             newSession.onState = { state -> onEngineState(newSession, state) }
 
-            // Логи ядра — в logcat, иначе диагностика слепая: без них видно
-            // только «туннель не поднялся» без причины.
-            //
-            // build.type == "debug" — в релизе логи выключены: там строки ядра
-            // могут содержать адреса серверов и имена профилей, которым в
-            // пользовательском logcat не место. Приватного ключа там не будет:
-            // `verb` понижен до 1, а он печатал бы тела PEM только начиная с 3.
+            // Логи ядра идут в буфер ВСЕГДА, включая релиз: иначе в релизной
+            // сборке собирать нечего, и причина сбоя на чужом телефоне остаётся
+            // невидимой. В logcat — только в отладке: строки содержат адреса
+            // серверов и имена профилей. Приватного ключа там не будет: `verb`
+            // понижен до 1, а PEM печатаются начиная с 3, и вторая линия —
+            // LogScrubber на входе буфера.
             newSession.onLog = { line ->
+                logBuffer.add(line)
                 if (BuildConfig.DEBUG) android.util.Log.d(TAG, line)
             }
 
@@ -408,6 +422,16 @@ class VpnTunnelService : VpnService() {
     companion object {
         const val ACTION_CONNECT = "com.impossi8le.vpnapp.vpnservice.CONNECT"
         const val ACTION_DISCONNECT = "com.impossi8le.vpnapp.vpnservice.DISCONNECT"
+
+        /**
+         * Единственный на процесс буфер логов ядра.
+         *
+         * Отдаётся наружу аксессором, а не гоняется в extras: сервис и экран
+         * обязаны писать и читать ОДИН объект (иначе логи не дойдут до отчёта).
+         * Грузится лениво при первом обращении — и из сервиса при подключении, и
+         * из графа на экране, и оба получат тот же экземпляр.
+         */
+        val sharedLogBuffer: LogBuffer by lazy { LogBuffer() }
 
         /**
          * Путь к файлу `.ovpn`, а не его текст.
