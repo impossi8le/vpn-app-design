@@ -138,6 +138,8 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
     // runTest: тесты обновления асинхронные, как и их код.
     testImplementation(libs.coroutines.test)
+    // Фейк туннеля: подписка на состояние проверяется без сервиса и эмулятора.
+    testImplementation(project(":test-support"))
 
     // Инструментальные тесты идут под JUnit4: AndroidJUnitRunner не умеет JUnit5,
     // поэтому это отдельный контур и отдельная задача (connectedAndroidTest),

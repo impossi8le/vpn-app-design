@@ -97,6 +97,27 @@ class AppGraph(
     val reportApi = com.impossi8le.vpnapp.network.ReportApi(apiClient)
 
     /**
+     * Очередь авто-метрик — тот же файл, что читает [TelemetryWorker].
+     *
+     * Путь берём из [com.impossi8le.vpnapp.telemetry.TelemetryGraph], а не заводим
+     * свой: воркер собирается WorkManager'ом и о графе экрана не знает. Разъехавшись,
+     * пути дали бы ДВЕ очереди — запись шла бы в одну, отправка читала другую, и
+     * авто-контур снова молчал бы, как до появления producer'а.
+     */
+    val telemetryQueue: com.impossi8le.vpnapp.domain.diagnostics.ReportQueue =
+        com.impossi8le.vpnapp.domain.diagnostics.FileReportQueue(
+            File(filesDir, com.impossi8le.vpnapp.telemetry.TelemetryGraph.QUEUE_FILE_NAME),
+        )
+
+    /**
+     * Producer авто-метрик: пишет события в [telemetryQueue].
+     *
+     * Без него очередь всегда пуста, а [TelemetryWorker] завершается ни с чем.
+     * Подписку на состояние туннеля ставит `MainActivity` — здесь только сборка.
+     */
+    val telemetryRecorder = com.impossi8le.vpnapp.telemetry.TelemetryRecorder(telemetryQueue)
+
+    /**
      * Несекретные настройки интерфейса: «подтверждать смену страны» и «больше не
      * спрашивать». Обычные `SharedPreferences`, а НЕ зашифрованное хранилище —
      * это предпочтения, а не секреты; шифрование остаётся границей сессии и

@@ -61,7 +61,9 @@ import com.impossi8le.vpnapp.network.ApiClient
 import com.impossi8le.vpnapp.network.ReportApi
 import com.impossi8le.vpnapp.network.ReportResult
 import com.impossi8le.vpnapp.feature.account.ReportCollector
+import com.impossi8le.vpnapp.telemetry.TelemetryContext
 import com.impossi8le.vpnapp.telemetry.TelemetryScheduler
+import com.impossi8le.vpnapp.telemetry.TunnelTelemetryWatcher
 import com.impossi8le.vpnapp.tunnel.AppTunnelController
 import com.impossi8le.vpnapp.tunnel.TunnelStatusReceiver
 import com.impossi8le.vpnapp.update.ApkDownloader
@@ -617,6 +619,40 @@ private fun VpnApp() {
      * хранить выбор на диске сейчас нечем без новой зависимости.
      */
     var selectedConfigId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    /**
+     * Producer авто-метрик: переходы состояния туннеля уходят в очередь, которую
+     * отправляет `TelemetryWorker`.
+     *
+     * Без него очередь оставалась пустой, а воркер — ни с чем: отправка была
+     * описана, а записывать события было некому. Подписка живёт в `DisposableEffect`
+     * ниже, то есть умирает вместе с экраном; при пересоздании активности старый
+     * коллектор гасится, новый подхватывает, а первое (текущее) значение потока
+     * отбрасывает сам наблюдатель — иначе поворот экрана рождал бы событие.
+     *
+     * Адрес сервера не читаем: он доступен только из `.ovpn`, а лезть в файл с
+     * приватным ключом ради строки метрики — не та цена. Честное «неизвестно», та
+     * же граница, что в текстовом отчёте ниже.
+     */
+    val telemetryWatcher = remember(graph) {
+        TunnelTelemetryWatcher(
+            tunnel = tunnel,
+            recorder = graph.telemetryRecorder,
+            context = {
+                val id = graph.configManager.currentMeta()?.configId ?: selectedConfigId
+                TelemetryContext(
+                    configId = id,
+                    configName = configs.firstOrNull { it.id == id }?.name,
+                    server = null,
+                )
+            },
+        )
+    }
+
+    DisposableEffect(telemetryWatcher) {
+        telemetryWatcher.start(scope)
+        onDispose { telemetryWatcher.stop() }
+    }
 
     /** Корутина отложенного повтора после «Обновить список». Одна, не цикл. */
     var refreshRetry by remember { mutableStateOf<Job?>(null) }
