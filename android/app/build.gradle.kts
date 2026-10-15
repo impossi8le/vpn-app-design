@@ -73,6 +73,15 @@ android {
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.findByName("release")
+
+            // Только arm64: libovpn3.so весит 48 МБ на arm64 и 46 МБ на x86_64 —
+            // 94 МБ из 102 МБ APK. Второй ABI удваивал файл, хотя телефоны
+            // x86_64 не бывают. x86_64 остаётся собранным в debug: на нём идут
+            // инструментальные тесты (эмулятор x86_64).
+            ndk {
+                abiFilters.clear()
+                abiFilters += "arm64-v8a"
+            }
         }
     }
 
