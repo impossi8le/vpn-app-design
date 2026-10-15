@@ -288,6 +288,7 @@ fun AppRoot(
             AppDestination.Bypass -> BypassScreen(
                 state = state.bypass,
                 onBack = { back() },
+                onReload = { onIntent(AppIntent.BypassReload) },
                 onBypassAll = { onIntent(AppIntent.BypassAllServices) },
                 onQueryChange = { onIntent(AppIntent.BypassQuery(it)) },
                 onToggleExpanded = { onIntent(AppIntent.BypassToggle(it)) },
@@ -587,6 +588,9 @@ sealed interface AppIntent {
 
     /** Экран «Обходы» открыт: подтянуть каталог и текущий список. */
     data object OpenBypass : AppIntent
+
+    /** Явное обновление списка обходов и каталога: из памяти берутся по умолчанию. */
+    data object BypassReload : AppIntent
 
     /** «Обойти все РФ сервисы». */
     data object BypassAllServices : AppIntent

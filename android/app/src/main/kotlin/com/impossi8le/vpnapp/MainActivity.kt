@@ -43,6 +43,8 @@ import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.protection.ProtectionGate
 import com.impossi8le.vpnapp.domain.tunnel.BypassRoute
+import com.impossi8le.vpnapp.domain.tunnel.apiServerRouteOf
+import com.impossi8le.vpnapp.domain.tunnel.sameSubnet
 import com.impossi8le.vpnapp.feature.account.DefaultAccountScreenState
 import com.impossi8le.vpnapp.feature.account.DiagnosticsInput
 import com.impossi8le.vpnapp.feature.account.buildDiagnostics
@@ -209,7 +211,18 @@ private fun openVpnSettings(context: Context) {
  * Запись — на IO: домашний каталог приложения читается/пишется не мгновенно.
  */
 private suspend fun writeBypassFile(context: Context, routes: List<BypassRoute>) {
-    val body = routes.joinToString("\n") { "${it.network}/${it.prefixLength}" }
+    // Адрес нашего API добавляется ВСЕГДА и первым, независимо от того, что
+    // вернул сервер. Без него трафик приложения к собственному API уходит в
+    // туннель и пропадает: на устройстве запрос к API при поднятом туннеле не
+    // отвечает до таймаута, а с выключенным — за 0.09 с. Тогда метрики и отчёты
+    // об ошибках не доходят именно тогда, когда они нужнее всего.
+    //
+    // Ставим в начало и снимаем дубли по адресу: сервер мог прислать ту же
+    // подсеть, и повтор превратил бы «сервер приложения» в строку без подписи.
+    val withApi = apiServerRouteOf(API_BASE_URL)
+        ?.let { api -> listOf(api) + routes.filterNot { it.sameSubnet(api) } }
+        ?: routes
+    val body = withApi.joinToString("\n") { "${it.network}/${it.prefixLength}" }
     withContext(Dispatchers.IO) {
         runCatching { File(context.filesDir, BYPASS_FILE_NAME).writeText(body) }
     }
@@ -1319,6 +1332,10 @@ private fun VpnApp() {
                 // Экран «Обходы» открыт: подтянуть каталог РФ-сервисов и текущий
                 // список. Загрузка идёт в ViewModel; к туннелю не привязана.
                 AppIntent.OpenBypass -> bypassViewModel.start()
+
+                // Явное обновление: список обходов живёт в памяти, и в сеть экран
+                // сам не ходит — только по этой команде и после записи.
+                AppIntent.BypassReload -> bypassViewModel.reload()
 
                 AppIntent.BypassAllServices -> bypassViewModel.bypassAll()
 

@@ -83,6 +83,7 @@ fun bypassRemoveTag(label: String) = "bypass_remove_$label"
 fun BypassScreen(
     state: BypassUiState,
     onBack: () -> Unit,
+    onReload: () -> Unit,
     onBypassAll: () -> Unit,
     onQueryChange: (String) -> Unit,
     onToggleExpanded: (String) -> Unit,
@@ -111,6 +112,11 @@ fun BypassScreen(
         VpnNavBar(
             title = "Обходы",
             onBack = onBack,
+            // Обновление — по действию, а не при каждом входе: список берётся из
+            // памяти, и в сеть экран ходит только когда о пополнении попросил
+            // пользователь или после записи (см. `BypassViewModel.start`).
+            action = "Обновить",
+            onAction = onReload,
             backTestTag = BYPASS_BACK_TAG,
         )
 

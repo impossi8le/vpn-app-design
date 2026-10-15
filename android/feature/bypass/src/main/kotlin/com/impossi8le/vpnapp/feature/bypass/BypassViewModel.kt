@@ -84,29 +84,47 @@ class BypassViewModel(
     private val _state = MutableStateFlow(BypassUiState(supported = supported))
     val state: StateFlow<BypassUiState> = _state.asStateFlow()
 
-    /** Первичная загрузка. Из конструктора — состояния туннеля не касается. */
+    /**
+     * Первичная загрузка. Из конструктора — состояния туннеля не касается.
+     *
+     * **Почему обе загрузки под одним условием.** Раньше каталог был защищён
+     * (`catalog != null`), а список обходов загружался КАЖДЫЙ вход на экран:
+     * 143 запроса `/bypass-routes` против 25 — к каталогу, при том что экранов
+     * ровно столько же. Вход на экран подтягивал список заново, хотя он тут же
+     * перечитывался после каждой записи и после смены подключения.
+     *
+     * Теперь список тоже берётся из памяти: он уже пришёл, а расходиться с
+     * сервером ему не с чего — изменения проходят через этот же ViewModel.
+     * Обновить вручную можно [reload], и он же вызывается после каждой записи.
+     */
     fun start() {
-        if (_state.value.catalog != null || _state.value.servicesFailed) return
-        refresh()
-        loadCatalog()
-    }
-
-    /** Перечитать список обходов и каталог с сервера. */
-    fun refresh() {
-        viewModelScope.launch { reloadRoutes() }
-    }
-
-    private fun loadCatalog() {
+        if (started) return
+        started = true
         viewModelScope.launch {
-            when (val catalog = control.catalog()) {
-                is BypassCatalog.Loaded ->
-                    _state.value = _state.value.copy(catalog = catalog, servicesFailed = false)
+            loadCatalog()
+            reloadRoutes()
+        }
+    }
 
-                BypassCatalog.Failed ->
-                    // Не подменяем неудачу пустым списком: экран скажет словами,
-                    // что каталог не пришёл.
-                    _state.value = _state.value.copy(catalog = null, servicesFailed = true)
-            }
+    /** Обновление по действию пользователя: кнопка «Обновить» на экране. */
+    fun reload() {
+        viewModelScope.launch {
+            loadCatalog()
+            reloadRoutes()
+        }
+    }
+
+    private var started = false
+
+    private suspend fun loadCatalog() {
+        when (val catalog = control.catalog()) {
+            is BypassCatalog.Loaded ->
+                _state.value = _state.value.copy(catalog = catalog, servicesFailed = false)
+
+            BypassCatalog.Failed ->
+                // Не подменяем неудачу пустым списком: экран скажет словами,
+                // что каталог не пришёл.
+                _state.value = _state.value.copy(catalog = null, servicesFailed = true)
         }
     }
 
