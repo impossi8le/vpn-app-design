@@ -1487,7 +1487,7 @@ cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :core:dom
 - [ ] **Step 6: Собрать и прогнать тесты сервиса**
 
 ```bash
-cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :vpnservice:test :core:domain:test --no-daemon
+cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :vpnservice:testDebugUnitTest :core:domain:test --no-daemon
 ```
 
 Ожидаемо: `BUILD SUCCESSFUL`.
@@ -1586,7 +1586,7 @@ enum class NetworkRequirement { Connected, Unmetered }
 - [ ] **Step 3: Запустить тест и убедиться, что он падает**
 
 ```bash
-cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :app:test --tests '*TelemetrySchedulerTest' --no-daemon
+cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :app:testDebugUnitTest --tests '*TelemetrySchedulerTest' --no-daemon
 ```
 
 Ожидаемо: `Unresolved reference: TelemetryScheduler`.
@@ -1729,7 +1729,7 @@ class TelemetryWorker(
 - [ ] **Step 5: Запустить тест и убедиться, что он проходит**
 
 ```bash
-cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :app:test --tests '*TelemetrySchedulerTest' --no-daemon
+cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :app:testDebugUnitTest --tests '*TelemetrySchedulerTest' --no-daemon
 ```
 
 Ожидаемо: `BUILD SUCCESSFUL`, 4 теста.
@@ -1746,7 +1746,7 @@ cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :app:test
 - [ ] **Step 7: Собрать приложение и прогнать тесты**
 
 ```bash
-cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :app:assembleDebug :app:test --no-daemon
+cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon
 ```
 
 Ожидаемо: `BUILD SUCCESSFUL`.
@@ -1831,7 +1831,7 @@ class ReportCollectorTest {
 - [ ] **Step 2: Запустить тест и убедиться, что он падает**
 
 ```bash
-cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :feature:account:test --tests '*ReportCollectorTest' --no-daemon
+cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :feature:account:testDebugUnitTest --tests '*ReportCollectorTest' --no-daemon
 ```
 
 Ожидаемо: `Unresolved reference: ReportCollector`.
@@ -1880,7 +1880,7 @@ object ReportCollector {
 - [ ] **Step 4: Запустить тест и убедиться, что он проходит**
 
 ```bash
-cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :feature:account:test --tests '*ReportCollectorTest' --no-daemon
+cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :feature:account:testDebugUnitTest --tests '*ReportCollectorTest' --no-daemon
 ```
 
 Ожидаемо: `BUILD SUCCESSFUL`, 3 теста.
@@ -1928,7 +1928,7 @@ Step 5). Прежний код с `File(cacheDir, DIAGNOSTICS_FILE_NAME)` и `op
 - [ ] **Step 6: Собрать и прогнать тесты**
 
 ```bash
-cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :app:assembleDebug :feature:account:test :app:test --no-daemon
+cd /d/VPN_app/android && JAVA_HOME="D:/VPN_app/.tools/jdk17" ./gradlew :app:assembleDebug :feature:account:testDebugUnitTest :app:testDebugUnitTest --no-daemon
 ```
 
 Ожидаемо: `BUILD SUCCESSFUL`.
