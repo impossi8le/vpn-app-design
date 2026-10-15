@@ -42,6 +42,30 @@ class TelemetryApiTest {
     }
 
     @Test
+    fun `200 и 202 тоже считаются принятыми`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(200))
+        server.enqueue(MockResponse().setResponseCode(202))
+        server.start()
+        val api = TelemetryApi(ApiClient(server.url("/api/v1").toString().trimEnd('/')))
+
+        assertEquals(TelemetryResult.Accepted, api.send(102, listOf(event("a"))))
+        assertEquals(TelemetryResult.Accepted, api.send(102, listOf(event("a"))))
+        server.shutdown()
+    }
+
+    @Test
+    fun `403 — нет авторизации, как и 401`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(403))
+        server.start()
+        val api = TelemetryApi(ApiClient(server.url("/api/v1").toString().trimEnd('/')))
+
+        assertEquals(TelemetryResult.NotAuthorized, api.send(102, listOf(event("a"))))
+        server.shutdown()
+    }
+
+    @Test
     fun `401 — нет авторизации`() = runTest {
         val server = MockWebServer()
         server.enqueue(MockResponse().setResponseCode(401))

@@ -70,6 +70,33 @@ class ReportApiTest {
     }
 
     @Test
+    fun `429 — повторить позже, отчёт не теряется`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(429))
+        server.start()
+        val api = ReportApi(ApiClient(server.url("/api/v1").toString().trimEnd('/')))
+
+        val result = api.send("отчёт", "лог", null, "{}")
+
+        assertTrue(result is ReportResult.Retry, "429 обязан вести к повтоpy, а не к отказу")
+        assertEquals("rate_limited", (result as ReportResult.Retry).reason)
+        server.shutdown()
+    }
+
+    @Test
+    fun `незнакомый 4xx — отчёт остаётся в очереди`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(400))
+        server.start()
+        val api = ReportApi(ApiClient(server.url("/api/v1").toString().trimEnd('/')))
+
+        val result = api.send("отчёт", null, null, "{}")
+
+        assertTrue(result is ReportResult.Retry, "незнакомый 4xx не должен молча терять отчёт")
+        server.shutdown()
+    }
+
+    @Test
     fun `сеть недоступна — повторить позже`() = runTest {
         val api = ReportApi(ApiClient("http://127.0.0.1:1/"))
 
