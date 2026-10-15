@@ -36,6 +36,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.impossi8le.vpnapp.config.PrepareResult
 import com.impossi8le.vpnapp.config.cacheAfterRefresh
 import com.impossi8le.vpnapp.domain.config.cachedConfigSelection
+import com.impossi8le.vpnapp.domain.diagnostics.jsonString
 import com.impossi8le.vpnapp.domain.settings.askBeforeCountrySwitch
 import com.impossi8le.vpnapp.core.ui.UpdateUiState
 import com.impossi8le.vpnapp.core.ui.VpnColors
@@ -639,11 +640,15 @@ private fun VpnApp() {
             tunnel = tunnel,
             recorder = graph.telemetryRecorder,
             context = {
-                val id = graph.configManager.currentMeta()?.configId ?: selectedConfigId
+                val meta = graph.configManager.currentMeta()
+                val id = meta?.configId ?: selectedConfigId
                 TelemetryContext(
                     configId = id,
                     configName = configs.firstOrNull { it.id == id }?.name,
-                    server = null,
+                    // Адрес — из меты, записанной при сохранении профиля: в
+                    // `.ovpn` лежит приватный ключ, и читать его ради строки
+                    // метрики незачем.
+                    server = meta?.serverHostPort,
                 )
             },
         )
@@ -1200,10 +1205,10 @@ private fun VpnApp() {
                             tunnelState = status.label(),
                             configId = configId,
                             configName = configName,
-                            // Хост/порт сервера не читаем: достать его можно только
-                            // из `.ovpn`, а лезть в файл с приватным ключом ради
-                            // строки отчёта — не та цена. Честное «неизвестно».
-                            serverHostPort = null,
+                            // Адрес берём из меты: он записан при сохранении
+                            // профиля, когда текст был на руках. Читать `.ovpn`
+                            // ради этой строки не нужно, а он содержит ключ.
+                            serverHostPort = graph.configManager.currentMeta()?.serverHostPort,
                             timestampIso = Instant.now().toString(),
                         ),
                     )
@@ -1245,7 +1250,15 @@ private fun VpnApp() {
                     // чат, при отказе буфер — единственный способ донести текст,
                     // потому что глубокой ссылкой Telegram файл не приложить.
                     scope.launch {
-                        val meta = """{"version_code":${BuildConfig.VERSION_CODE}}"""
+                        // Модель и состояние туннеля — по §6.2: без них сервер не
+                        // отличит сбой на конкретной модели от общего. Экранирование
+                        // делаем явно: модель приходит из системы и в JSON не должна
+                        // попасть как есть.
+                        val meta = buildString {
+                            append("""{"version_code":${BuildConfig.VERSION_CODE}""")
+                            append(""","model":${jsonString(Build.MODEL)}""")
+                            append(""","tunnel_state":${jsonString(status.label())}}""")
+                        }
                         when (
                             val result = graph.reportApi.send(
                                 report = collected.text,

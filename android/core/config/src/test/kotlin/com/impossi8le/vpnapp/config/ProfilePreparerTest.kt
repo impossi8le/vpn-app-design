@@ -137,7 +137,14 @@ class ProfilePreparerTest {
 
         assertEquals(PrepareResult.Ready, result)
         assertEquals(1, service.fetchCount)
-        assertEquals(ProfileMeta("GEclient94", "v7", 1_000_000L), meta.load())
+        // Сравниваем значимые поля, а не объект целиком: мета несёт ещё и адрес
+        // сервера, и ждать его тут в захардкоженном виде значило бы дублировать
+        // разбор профиля в тесте.
+        with(meta.load()!!) {
+            assertEquals("GEclient94", configId)
+            assertEquals("v7", version)
+            assertEquals(1_000_000L, endDateEpochSeconds)
+        }
     }
 
     @Test
@@ -158,7 +165,11 @@ class ProfilePreparerTest {
         assertEquals(PrepareResult.Ready, result)
         assertEquals(1, service.fetchCount)
         assertEquals(String(bBytes), String(store.load()!!.raw)) // именно байты B
-        assertEquals(ProfileMeta("B", "v2", 1_000_000L), meta.load())
+        with(meta.load()!!) {
+            assertEquals("B", configId, "мета обязана стать от конфига B")
+            assertEquals("v2", version)
+            assertEquals(1_000_000L, endDateEpochSeconds)
+        }
     }
 
     @Test

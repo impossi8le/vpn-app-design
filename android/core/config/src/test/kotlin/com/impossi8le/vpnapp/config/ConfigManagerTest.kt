@@ -80,7 +80,13 @@ class ConfigManagerTest {
 
         runTest { manager.apply("GEclient94", currentVersion = null, endDateEpochSeconds = 1_000_000L) }
 
-        assertEquals(ProfileMeta("GEclient94", "v7", 1_000_000L), metaStore.load())
+        val meta = metaStore.load()!!
+        assertEquals("GEclient94", meta.configId)
+        assertEquals("v7", meta.version)
+        assertEquals(1_000_000L, meta.endDateEpochSeconds)
+        // Адрес берётся из текста профиля при сохранении: диагностика не должна
+        // читать `.ovpn` ради строки отчёта.
+        assertEquals("host:1194", meta.serverHostPort, "адрес сервера обязан попасть в мету")
     }
 
     @Test
@@ -94,7 +100,10 @@ class ConfigManagerTest {
         }
 
         assertEquals(ApplyResult.AlreadyCurrent("v1"), result)
-        assertEquals(ProfileMeta("GEclient94", "v1", 2_000_000L), metaStore.load())
+        val meta = metaStore.load()!!
+        assertEquals("GEclient94", meta.configId)
+        assertEquals("v1", meta.version)
+        assertEquals(2_000_000L, meta.endDateEpochSeconds)
     }
 
     @Test

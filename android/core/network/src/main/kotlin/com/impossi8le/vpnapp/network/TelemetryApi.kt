@@ -59,7 +59,12 @@ class TelemetryApi(
                 client.http.newCall(request).execute().use { response ->
                     when (response.code) {
                         200, 202, 204 -> TelemetryResult.Accepted
-                        401, 403 -> TelemetryResult.NotAuthorized
+                        // 401 — токена нет, отправлять нечего: очередь чистим.
+                        401 -> TelemetryResult.NotAuthorized
+                        // 403 в этом контракте переиспользуется и для временной
+                        // блокировки аккаунта, поэтому события НЕ выбрасываем:
+                        // «повторить позже» честнее, чем потерять накопленное.
+                        403 -> TelemetryResult.Retry
                         // `429` обязан стоять ДО диапазона `4xx`: иначе «повтори
                         // позже» превратилось бы в «тело негодно» и батч
                         // потерялся бы при простом переполнении на сервере.

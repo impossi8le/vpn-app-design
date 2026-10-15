@@ -4,6 +4,7 @@ import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -30,6 +31,24 @@ class ReportApiTest {
         val recorded = server.takeRequest()
         assertEquals("/api/v1/report", recorded.path)
         assertTrue(recorded.body.readUtf8().contains("текст отчёта"))
+        server.shutdown()
+    }
+
+    @Test
+    fun `логи и профиль уходят сжатыми и распаковываются обратно`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"report_id":"r-1"}"""))
+        server.start()
+        val api = ReportApi(ApiClient(server.url("/api/v1").toString().trimEnd('/')))
+        val longLogs = List(200) { "строка лога номер $it с повтором" }.joinToString("\n")
+
+        api.send(report = "отчёт", logs = longLogs, config = "remote 192.0.2.10 443\n", meta = "{}")
+
+        val raw = server.takeRequest().body.readUtf8()
+        assertTrue(raw.contains("application/gzip"), "части логов и профиля обязаны быть gzip")
+        assertTrue(raw.contains("logs.txt.gz"), "имя части должно говорить о сжатии")
+        // Сжатое тело не должно содержать открытого текста лога: иначе это не gzip.
+        assertFalse(raw.contains("строка лога номер 199"), "логи обязаны быть сжаты, а не просто помечены")
         server.shutdown()
     }
 

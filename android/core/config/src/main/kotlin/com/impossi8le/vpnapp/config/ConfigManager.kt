@@ -8,6 +8,7 @@ import com.impossi8le.vpnapp.domain.config.Profile
 import com.impossi8le.vpnapp.domain.config.ProfileMeta
 import com.impossi8le.vpnapp.domain.config.ProfileMetaStore
 import com.impossi8le.vpnapp.domain.config.ProfileStore
+import com.impossi8le.vpnapp.domain.tunnel.ProfileServer
 import java.security.MessageDigest
 
 /**
@@ -82,7 +83,12 @@ class ConfigManager(
         // Идемпотентность: та же версия — писать нечего. Но метаданные всё равно
         // фиксируем: срок подписки мог сдвинуться, и по нему решается «пора удалять».
         if (currentVersion != null && currentVersion == fetched.version) {
-            meta.save(ProfileMeta(configId, fetched.version, endDateEpochSeconds))
+            meta.save(
+                ProfileMeta(
+                    configId, fetched.version, endDateEpochSeconds,
+                    serverHostPort = ProfileServer.of(fetched.raw.decodeToString()),
+                ),
+            )
             return ApplyResult.AlreadyCurrent(fetched.version)
         }
 
@@ -102,7 +108,15 @@ class ConfigManager(
             return ApplyResult.HashMismatch
         }
 
-        meta.save(ProfileMeta(configId, fetched.version, endDateEpochSeconds))
+        // Адрес сервера кладём в мету здесь, где текст профиля уже на руках:
+        // диагностике он нужен, а читать `.ovpn` (с приватным ключом) ради строки
+        // отчёта — лишний доступ к секрету.
+        meta.save(
+            ProfileMeta(
+                configId, fetched.version, endDateEpochSeconds,
+                serverHostPort = ProfileServer.of(fetched.raw.decodeToString()),
+            ),
+        )
         return ApplyResult.Applied(fetched.version)
     }
 

@@ -36,6 +36,10 @@ class FileProfileMetaStore(
                 configId = configId,
                 version = version,
                 endDateEpochSeconds = root["end_date"]?.jsonPrimitive?.long ?: return null,
+                // Поля может не быть: мета от версии до его появления. Это не
+                // ошибка — адрес просто неизвестен, и «Сервер: неизвестно»
+                // остаётся честным.
+                serverHostPort = root.str("server"),
             )
         } catch (_: Exception) {
             null
@@ -47,6 +51,9 @@ class FileProfileMetaStore(
             put("config_id", JsonPrimitive(meta.configId))
             put("version", JsonPrimitive(meta.version))
             put("end_date", JsonPrimitive(meta.endDateEpochSeconds))
+            // Пишем только когда адрес известен: пустое значение выглядело бы
+            // как «сервер есть, но пустой».
+            meta.serverHostPort?.let { put("server", JsonPrimitive(it)) }
         }
         file.writeText(payload.toString())
     }

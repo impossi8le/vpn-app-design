@@ -55,13 +55,20 @@ class TelemetryApiTest {
     }
 
     @Test
-    fun `403 — нет авторизации, как и 401`() = runTest {
+    fun `403 не теряет события — это может быть блокировка аккаунта`() = runTest {
         val server = MockWebServer()
         server.enqueue(MockResponse().setResponseCode(403))
         server.start()
         val api = TelemetryApi(ApiClient(server.url("/api/v1").toString().trimEnd('/')))
 
-        assertEquals(TelemetryResult.NotAuthorized, api.send(102, listOf(event("a"))))
+        // НЕ `NotAuthorized`: тот исход заставляет воркер ОЧИСТИТЬ очередь, а 403
+        // контракт переиспользует и для временной блокировки аккаунта. События
+        // пользователя при блокировке терять нельзя — ждём и повторяем.
+        assertEquals(
+            TelemetryResult.Retry,
+            api.send(102, listOf(event("a"))),
+            "403 не должен вести к потере накопленных событий",
+        )
         server.shutdown()
     }
 

@@ -50,8 +50,11 @@ class ReportApi(
             val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
                 .addFormDataPart("report", report, report.toRequestBody(REPORT_TEXT_MEDIA))
                 .addFormDataPart("meta", meta, meta.toRequestBody(REPORT_JSON_MEDIA))
-            logs?.let { builder.addFormDataPart("logs", "logs.txt", it.toRequestBody(REPORT_TEXT_MEDIA)) }
-            config?.let { builder.addFormDataPart("config", "profile.ovpn", it.toRequestBody(REPORT_TEXT_MEDIA)) }
+            // Логи и профиль сжимаем: это текст с высокой повторяемостью, и gzip
+            // режет его в разы. Обычный текст отчёта отдаём как есть — на короткой
+            // строке выигрыш нулевой, а серверу читать её глазами удобнее.
+            logs?.let { builder.addFormDataPart("logs", "logs.txt.gz", it.gzipped()) }
+            config?.let { builder.addFormDataPart("config", "profile.ovpn.gz", it.gzipped()) }
 
             val request = Request.Builder()
                 .url("${client.baseUrl}/report")
@@ -86,5 +89,19 @@ class ReportApi(
     }
 }
 
+/**
+ * Сжать текст в gzip.
+ *
+ * Логи ядра и обезличенный профиль — многострочный текст с повторами, он сжимается
+ * хорошо. Сжатие делается здесь, а не на стороне вызывающего: иначе каждый
+ * вызывающий обязан помнить про gzip, и однажды забудет.
+ */
+private fun String.gzipped(): okhttp3.RequestBody {
+    val compressed = java.io.ByteArrayOutputStream()
+    java.util.zip.GZIPOutputStream(compressed).use { it.write(toByteArray(Charsets.UTF_8)) }
+    return compressed.toByteArray().toRequestBody(REPORT_GZIP_MEDIA)
+}
+
 private val REPORT_TEXT_MEDIA = "text/plain; charset=utf-8".toMediaType()
 private val REPORT_JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
+private val REPORT_GZIP_MEDIA = "application/gzip".toMediaType()
