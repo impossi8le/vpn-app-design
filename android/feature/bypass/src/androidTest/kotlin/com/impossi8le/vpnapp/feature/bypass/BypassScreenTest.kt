@@ -42,6 +42,7 @@ class BypassScreenTest {
             BypassScreen(
                 state = state,
                 onBack = {},
+                onReload = {},
                 onBypassAll = onBypassAll,
                 onQueryChange = {},
                 onToggleExpanded = onToggleExpanded,
