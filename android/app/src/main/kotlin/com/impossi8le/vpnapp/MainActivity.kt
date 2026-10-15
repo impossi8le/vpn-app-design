@@ -58,6 +58,10 @@ import com.impossi8le.vpnapp.feature.home.HomeViewModel
 import com.impossi8le.vpnapp.feature.home.stalenessNote
 import com.impossi8le.vpnapp.feature.home.toRowStates
 import com.impossi8le.vpnapp.network.ApiClient
+import com.impossi8le.vpnapp.network.ReportApi
+import com.impossi8le.vpnapp.network.ReportResult
+import com.impossi8le.vpnapp.feature.account.ReportCollector
+import com.impossi8le.vpnapp.telemetry.TelemetryScheduler
 import com.impossi8le.vpnapp.tunnel.AppTunnelController
 import com.impossi8le.vpnapp.tunnel.TunnelStatusReceiver
 import com.impossi8le.vpnapp.update.ApkDownloader
@@ -231,6 +235,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Метрики уходят фоном, независимо от того, открыт ли экран: задача
+        // переживает перезапуск и не требует держать приложение в памяти.
+        TelemetryScheduler.enqueue(applicationContext)
         setContent {
             // targetSdk 35 принуждает edge-to-edge на Android 15+: без отступа
             // контент рисуется ПОД строкой статуса и панелью навигации, и
@@ -1170,13 +1177,62 @@ private fun VpnApp() {
                         File(context.cacheDir, DIAGNOSTICS_FILE_NAME).writeText(report)
                     }
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("Отчёт поддержке", report))
-                    Toast.makeText(
-                        context,
-                        "Отчёт скопирован — вставьте в чат поддержки",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                    openSupportBot(context)
+                    val copyToClipboard: () -> Unit = {
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Отчёт поддержке", report))
+                        Toast.makeText(
+                            context,
+                            "Отчёт скопирован — вставьте в чат поддержки",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+
+                    // Собираем пакет: текст отчёта + логи ядра + обезличенный
+                    // профиль. Ключи профиля вырезает ConfigAnonymizer — на
+                    // устройстве, ДО отправки: серверу нельзя доверять чистку
+                    // недоверенного входа. Тот же экземпляр буфера пишет сервис.
+                    val collected = ReportCollector.build(
+                        reportText = report,
+                        logs = graph.logBuffer.snapshot(),
+                        profileText = runCatching {
+                            File(
+                                context.filesDir,
+                                "profile.ovpn",
+                            ).readText()
+                        }.getOrNull(),
+                    )
+                    // Отправка не блокирует экран: пользователь не должен ждать
+                    // сеть. Прежняя дорожка через буфер обмена и бота остаётся
+                    // запасным путём при неудаче.
+                    scope.launch {
+                        val meta = """{"version_code":${BuildConfig.VERSION_CODE}}"""
+                        when (
+                            val result = graph.reportApi.send(
+                                report = collected.text,
+                                logs = collected.logs.ifEmpty { null },
+                                config = collected.config.ifEmpty { null },
+                                meta = meta,
+                            )
+                        ) {
+                            is ReportResult.Sent -> Toast.makeText(
+                                context, "Отчёт отправлен", Toast.LENGTH_SHORT,
+                            ).show()
+
+                            ReportResult.NotAuthorized -> Toast.makeText(
+                                context, "Сессия истекла — войдите заново", Toast.LENGTH_LONG,
+                            ).show()
+
+                            ReportResult.TooLarge -> Toast.makeText(
+                                context, "Отчёт слишком большой — вставьте вручную", Toast.LENGTH_LONG,
+                            ).show()
+
+                            // Честно: не «отправлено», а как есть. Прежняя
+                            // дорожка остаётся запасным путём.
+                            is ReportResult.Retry -> {
+                                copyToClipboard()
+                                openSupportBot(context)
+                            }
+                        }
+                    }
                 }
 
                 // Экран «Обходы» открыт: подтянуть каталог РФ-сервисов и текущий

@@ -121,6 +121,11 @@ dependencies {
     implementation(libs.lifecycle.runtime.ktx)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.process)
+
+    // Периодическая отправка метрик переживает закрытие приложения: только
+    // WorkManager умеет очередь задач между перезапусками, без него события
+    // копились бы вечно (Task 9).
+    implementation(libs.work.runtime.ktx)
     implementation(libs.coroutines.core)
 
     testImplementation(libs.junit5.api)
