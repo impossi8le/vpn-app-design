@@ -1213,13 +1213,12 @@ private fun VpnApp() {
                         File(context.cacheDir, DIAGNOSTICS_FILE_NAME).writeText(report)
                     }
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    // Копирование БЕЗ сообщения: текст кладём в буфер во всех
+                    // исходах, а говорит пользователю пусть ветка — своё и одно.
+                    // Раньше копирование само показывало «Отчёт скопирован», и на
+                    // ветке отказа это затирало честное «не отправлено».
                     val copyToClipboard: () -> Unit = {
                         clipboard.setPrimaryClip(ClipData.newPlainText("Отчёт поддержке", report))
-                        Toast.makeText(
-                            context,
-                            "Отчёт скопирован — вставьте в чат поддержки",
-                            Toast.LENGTH_LONG,
-                        ).show()
                     }
 
                     // Собираем пакет: текст отчёта + логи ядра + обезличенный
@@ -1239,6 +1238,12 @@ private fun VpnApp() {
                     // Отправка не блокирует экран: пользователь не должен ждать
                     // сеть. Прежняя дорожка через буфер обмена и бота остаётся
                     // запасным путём при неудаче.
+                    //
+                    // **Буфер обмена заполняется в КАЖДОЙ ветке, включая успех.**
+                    // Экран обещает «скопирует текст в буфер», и обещание должно
+                    // выполняться: при `Sent` пользователь может дописать отчёт в
+                    // чат, при отказе буфер — единственный способ донести текст,
+                    // потому что глубокой ссылкой Telegram файл не приложить.
                     scope.launch {
                         val meta = """{"version_code":${BuildConfig.VERSION_CODE}}"""
                         when (
@@ -1249,23 +1254,50 @@ private fun VpnApp() {
                                 meta = meta,
                             )
                         ) {
-                            is ReportResult.Sent -> Toast.makeText(
-                                context, "Отчёт отправлен", Toast.LENGTH_SHORT,
-                            ).show()
+                            is ReportResult.Sent -> {
+                                copyToClipboard()
+                                Toast.makeText(
+                                    context,
+                                    "Отчёт отправлен — текст скопирован на случай, если нужно дописать",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                                // Бота НЕ открываем: отправка состоялась, и уводить
+                                // пользователя из приложения больше незачем.
+                            }
 
-                            ReportResult.NotAuthorized -> Toast.makeText(
-                                context, "Сессия истекла — войдите заново", Toast.LENGTH_LONG,
-                            ).show()
+                            ReportResult.NotAuthorized -> {
+                                copyToClipboard()
+                                openSupportBot(context)
+                                Toast.makeText(
+                                    context,
+                                    "Сессия истекла — войдите заново; отчёт скопирован, можно вставить в поддержку",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
 
-                            ReportResult.TooLarge -> Toast.makeText(
-                                context, "Отчёт слишком большой — вставьте вручную", Toast.LENGTH_LONG,
-                            ).show()
+                            ReportResult.TooLarge -> {
+                                // СНАЧАЛА буфер, потом сообщение. Раньше здесь
+                                // говорилось «вставьте вручную», а вставлять было
+                                // нечего — буфер оставался пустым.
+                                copyToClipboard()
+                                openSupportBot(context)
+                                Toast.makeText(
+                                    context,
+                                    "Отчёт слишком большой — скопирован, вставьте в поддержку",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
 
                             // Честно: не «отправлено», а как есть. Прежняя
                             // дорожка остаётся запасным путём.
                             is ReportResult.Retry -> {
                                 copyToClipboard()
                                 openSupportBot(context)
+                                Toast.makeText(
+                                    context,
+                                    "Не отправлено — скопировано, вставьте в поддержку",
+                                    Toast.LENGTH_LONG,
+                                ).show()
                             }
                         }
                     }
