@@ -23,11 +23,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -349,7 +349,11 @@ fun VpnPrimaryButton(
         contentPadding = PaddingValues(0.dp),
         modifier = modifier
             .fillMaxWidth()
-            .height(50.dp)
+            // Минимум, а не точная высота: при системном масштабе шрифта >100%
+            // подпись выше контейнера и обрезается (issue #13). Рост под контент
+            // не нарушает правило «кнопка не меняет размер между состояниями» —
+            // это рост под кегль, одинаковый для всех состояний.
+            .heightIn(min = 50.dp)
             .border(
                 width = 1.5.dp,
                 color = VpnColors.Ice,
@@ -386,7 +390,9 @@ fun VpnGhostButton(
         contentPadding = PaddingValues(0.dp),
         modifier = modifier
             .fillMaxWidth()
-            .height(height)
+            // height — нижняя граница, а не точная высота: при крупном шрифте
+            // подпись не должна обрезаться (issue #13).
+            .heightIn(min = height)
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier),
     ) {
         Text(text = text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
@@ -436,6 +442,11 @@ fun VpnNavBar(
             color = VpnColors.Bone,
             fontSize = 16.5.sp,
             fontWeight = FontWeight.Medium,
+            // Центр строки, а не её левый край: доля `weight(1f)` одинакова при
+            // любой ширине действий, поэтому заголовок не съезжает на экранах,
+            // где справа есть действие («Подключение», «Обходы»), и при его
+            // отсутствии. Так же собрана шапка «Аккаунта».
+            textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
         )
         Box(modifier = Modifier.width(52.dp)) {
