@@ -83,4 +83,42 @@ class TelemetryRecorderTest {
         assertEquals("connect_attempt", obj["type"]!!.jsonPrimitive.content)
         assertEquals(4210, obj["duration_ms"]!!.jsonPrimitive.content.toInt())
     }
+
+    @Test
+    fun `попытка подключения несёт контекст`() = runBlocking {
+        val queue = FakeQueue()
+        val recorder = TelemetryRecorder(queue, clock = { "t" }, idFactory = { "a1" })
+
+        recorder.connectAttempt(
+            state = "connected",
+            durationMs = 4210,
+            configId = "c1",
+            configName = "Нидерланды",
+            server = "192.0.2.10:1194",
+        )
+
+        val obj = Json.parseToJsonElement(queue.items.first()).jsonObject
+        assertEquals("c1", obj["config_id"]!!.jsonPrimitive.content)
+        assertEquals("Нидерланды", obj["config_name"]!!.jsonPrimitive.content)
+        assertEquals("192.0.2.10:1194", obj["server"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `ошибка несёт контекст`() = runBlocking {
+        val queue = FakeQueue()
+        val recorder = TelemetryRecorder(queue, clock = { "t" }, idFactory = { "e1" })
+
+        recorder.error(
+            code = "tunnel_failed",
+            state = "failed",
+            configId = "c1",
+            configName = "Нидерланды",
+            server = "192.0.2.10:1194",
+        )
+
+        val obj = Json.parseToJsonElement(queue.items.first()).jsonObject
+        assertEquals("c1", obj["config_id"]!!.jsonPrimitive.content)
+        assertEquals("Нидерланды", obj["config_name"]!!.jsonPrimitive.content)
+        assertEquals("192.0.2.10:1194", obj["server"]!!.jsonPrimitive.content)
+    }
 }

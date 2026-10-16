@@ -51,14 +51,27 @@ class TelemetryRecorder(
      * Код — короткий идентификатор причины (`tunnel_failed`, `tun_prop_error`), а
      * не человеческий текст: по нему сервер строит статистику, не разбирая строку,
      * и в него нечего «дописать» лишнего.
+     *
+     * Контекст (`configId`/`configName`/`server`) — тот же, что у `state_change`:
+     * без него по ошибке не видно, к какому серверу не подключилось, и разбор
+     * жалобы «долго/не подключается» снова упирается в догадки.
      */
-    suspend fun error(code: String, state: String?) {
+    suspend fun error(
+        code: String,
+        state: String?,
+        configId: String? = null,
+        configName: String? = null,
+        server: String? = null,
+    ) {
         enqueue(
             TelemetryEvent(
                 eventId = idFactory(),
                 type = EventType.Error,
                 ts = clock(),
                 state = state,
+                configId = configId,
+                configName = configName,
+                server = server,
                 code = code,
             ),
         )
@@ -69,12 +82,17 @@ class TelemetryRecorder(
      *
      * Отдельный тип, а не `state_change`: по нему видно, сколько занимает
      * подключение, — метрика не выводится из одних только переходов.
+     *
+     * Контекст тот же, что у `state_change`: `server` без него в прод-данных
+     * отсутствовал во всех записях, и по `connect_attempt` нельзя было понять,
+     * к какому узлу не подключилось.
      */
     suspend fun connectAttempt(
         state: String,
         durationMs: Long,
         configId: String? = null,
         configName: String? = null,
+        server: String? = null,
     ) {
         enqueue(
             TelemetryEvent(
@@ -84,6 +102,7 @@ class TelemetryRecorder(
                 state = state,
                 configId = configId,
                 configName = configName,
+                server = server,
                 durationMs = durationMs,
             ),
         )

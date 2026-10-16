@@ -731,10 +731,17 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
             recorder = graph.telemetryRecorder,
             context = {
                 val meta = graph.configManager.currentMeta()
-                val id = meta?.configId ?: selectedConfigId
+                // Источник истины о РАБОТАЮЩЕМ подключении — мета профиля, а не
+                // `selectedConfigId`. Прежний `meta?.configId ?: selectedConfigId`
+                // смешивал два разных понятия: при смене конфига мета нового
+                // профиля уже записана, а выбор указывает туда же, и «отключено»
+                // прежнего туннеля помечалось новым сервером (issue #25).
+                // Падение на выбор убрано намеренно: когда меты нет, конфиг
+                // отключения неизвестен — честный `null`, а не подстановка того,
+                // что сейчас выбрано на экране.
                 TelemetryContext(
-                    configId = id,
-                    configName = configs.firstOrNull { it.id == id }?.name,
+                    configId = meta?.configId,
+                    configName = meta?.configId?.let { id -> configs.firstOrNull { it.id == id }?.name },
                     // Адрес — из меты, записанной при сохранении профиля: в
                     // `.ovpn` лежит приватный ключ, и читать его ради строки
                     // метрики незачем.
@@ -994,7 +1001,10 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
                 when (val prepared = graph.preparer.ensureProfile(targetId)) {
                     PrepareResult.Ready -> {
                         // Опускаем текущий туннель, чтобы он не читал файл, который
-                        // вот-вот подменится новым профилем.
+                        // вот-вот подменится новым профилем. Останов смены конфига
+                        // — тоже пользовательский: разрыв прежнего туннеля не сбой,
+                        // и в статистике ошибок ему не место (issue #26).
+                        telemetryWatcher.noteUserDisconnect()
                         viewModel.disconnect()
                         // Обходы к новому профилю: файл пишем перед connect по той
                         // же причине, что и в ветке Connect (см. ниже).
@@ -1240,9 +1250,18 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
 
                         // «Отменить» и «Отключить» — разные подписи, но действие
                         // одно: опустить то, что поднимается или уже поднято.
+                        //
+                        // Перед опусканием помечаем остановку КАК ПОЛЬЗОВАТЕЛЬСКУЮ:
+                        // иначе разрыв, пришедший следом, ушёл бы в телеметрию как
+                        // сбой (`error tunnel_dropped`), и отмена завышала бы счёт
+                        // проблем с сервером. «Пользователь передумал» и «сервер не
+                        // отвёл» — разные вещи (issue #26).
                         StatusAction.Cancel,
                         StatusAction.Disconnect,
-                        -> viewModel.disconnect()
+                        -> {
+                            telemetryWatcher.noteUserDisconnect()
+                            viewModel.disconnect()
+                        }
 
                         StatusAction.Retry -> viewModel.reverify()
 
