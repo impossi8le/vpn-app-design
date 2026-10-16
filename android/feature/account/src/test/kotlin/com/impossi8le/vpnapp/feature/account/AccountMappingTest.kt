@@ -4,6 +4,7 @@ import com.impossi8le.vpnapp.domain.config.ConfigList
 import com.impossi8le.vpnapp.domain.config.ConfigSummary
 import com.impossi8le.vpnapp.domain.config.SubscriptionStatus
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.time.ZoneId
@@ -89,9 +90,44 @@ class AccountMappingTest {
     }
 
     @Test
+    fun `Telegram ID берётся из chat_id ответа me`() {
+        // Раньше на экране стояло выдуманное «•••• 4821», и «Показать» раскрывало
+        // его как чужой ID. Теперь значение приходит из ответа: chat_id — это и
+        // есть Telegram ID (§3 контракта).
+        val state = ConfigList(chatId = 377182640L, configs = emptyList())
+            .toAccountScreenState(DefaultAccountScreenState)
+
+        assertEquals("377182640", state.telegramId)
+    }
+
+    @Test
+    fun `нет chat_id в ответе — честное отсутствие, а не выдуманное число`() {
+        // Разбор без `chat_id` кладёт 0L. Ноль — это «поля нет», и показывать
+        // его как ID пользователя нельзя.
+        val state = ConfigList(chatId = 0L, configs = emptyList())
+            .toAccountScreenState(DefaultAccountScreenState)
+
+        assertNull(state.telegramId)
+    }
+
+    @Test
+    fun `умолчание экрана не содержит выдуманного Telegram ID`() {
+        assertNull(DefaultAccountScreenState.telegramId)
+    }
+
+    @Test
+    fun `раскрытие показывает ID, скрытие маскирует, отсутствие — прочерк`() {
+        val known = DefaultAccountScreenState.copy(telegramId = "377182640")
+        assertEquals("377182640", telegramIdDisplay(known.copy(telegramIdRevealed = true)))
+        assertEquals("••••••••", telegramIdDisplay(known.copy(telegramIdRevealed = false)))
+
+        // Данных нет — прочерк, и никакой маски: «скрыто» читалось бы как «есть».
+        assertEquals("—", telegramIdDisplay(known.copy(telegramId = null, telegramIdRevealed = true)))
+    }
+
+    @Test
     fun `чужие поля переносятся нетронутыми`() {
         val base = DefaultAccountScreenState.copy(
-            telegramId = "123456",
             telegramIdRevealed = true,
             confirmCountrySwitch = false,
         )
@@ -99,7 +135,6 @@ class AccountMappingTest {
         val state = ConfigList(chatId = 1L, configs = emptyList()).toAccountScreenState(base)
 
         // Функция не знает про эти поля и не имеет права их менять.
-        assertEquals("123456", state.telegramId)
         assertEquals(true, state.telegramIdRevealed)
         assertEquals(false, state.confirmCountrySwitch)
     }

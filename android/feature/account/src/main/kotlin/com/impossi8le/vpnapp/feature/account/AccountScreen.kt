@@ -52,8 +52,14 @@ const val ACCOUNT_LOGOUT_TAG = "account_logout"
  * Живёт в разметке, а не в модели: это чисто визуальное решение, и оно должно
  * оставаться рядом с местом, где показывается. Полный ID — только по кнопке:
  * скриншот в поддержку не должен отдавать профиль аккаунта.
+ *
+ * Показывается только когда ID известен: маска поверх отсутствующего значения
+ * выглядела бы как «есть, но скрыто», а данных нет.
  */
 private const val MASKED_TELEGRAM_ID = "••••••••"
+
+/** Прочерк для отсутствующего ID — «данных нет», а не пустая строка. */
+private const val TELEGRAM_ID_UNKNOWN = "—"
 
 /**
  * Состояние экрана аккаунта.
@@ -63,7 +69,7 @@ private const val MASKED_TELEGRAM_ID = "••••••••"
  * форматировать) остаётся во ViewModel, иначе её не проверить тестом без рендера.
  */
 data class AccountScreenState(
-    val telegramId: String,
+    val telegramId: String?,
     val telegramIdRevealed: Boolean,
     val activeConnections: Int,
     val totalConnections: Int,
@@ -71,6 +77,19 @@ data class AccountScreenState(
     val subscriptionUntil: String,
     val confirmCountrySwitch: Boolean,
 )
+
+/**
+ * Что показать в строке «Telegram ID».
+ *
+ * Три состояния, а не два: ID известен и раскрыт — показываем его; известен, но
+ * скрыт — маску; неизвестен — прочерк. Маска на неизвестном значении означала бы
+ * «есть, но скрыто», и пользователь нажал бы «Показать», получив пустоту.
+ */
+internal fun telegramIdDisplay(state: AccountScreenState): String = when {
+    state.telegramId == null -> TELEGRAM_ID_UNKNOWN
+    state.telegramIdRevealed -> state.telegramId
+    else -> MASKED_TELEGRAM_ID
+}
 
 /**
  * Экран аккаунта (§11 макета).
@@ -118,16 +137,20 @@ fun AccountScreen(
                     trailing = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = if (state.telegramIdRevealed) state.telegramId else MASKED_TELEGRAM_ID,
+                                text = telegramIdDisplay(state),
                                 color = VpnColors.Bone,
                                 fontSize = 12.5.sp,
                                 fontFamily = MonoFont,
                             )
-                            LinkAction(
-                                text = if (state.telegramIdRevealed) "Скрыть" else "Показать ›",
-                                onClick = onToggleTelegramId,
-                                testTag = ACCOUNT_REVEAL_ID_TAG,
-                            )
+                            // Кнопка раскрытия — только когда есть что раскрывать:
+                            // переключать прочерк бессмысленно и вводит в заблуждение.
+                            if (state.telegramId != null) {
+                                LinkAction(
+                                    text = if (state.telegramIdRevealed) "Скрыть" else "Показать ›",
+                                    onClick = onToggleTelegramId,
+                                    testTag = ACCOUNT_REVEAL_ID_TAG,
+                                )
+                            }
                         }
                     },
                 )

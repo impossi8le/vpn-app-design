@@ -24,9 +24,13 @@ const val SUBSCRIPTION_UNKNOWN = "—"
  *
  * Данные аккаунта (`activeConnections`, `subscriptionUntil`) тут нулевые: их
  * заполняет ответ сервера, а не константа — до него экран показывает «0 из 0».
+ *
+ * `telegramId` — тоже `null`, а не выдуманное число: ранее тут стоял
+ * литерал вида «•••• 4821», и кнопка «Показать» раскрывала его как настоящий ID.
+ * Чужое число на экране хуже пустоты — пользователь считает его своим.
  */
 val DefaultAccountScreenState = AccountScreenState(
-    telegramId = "•••• 4821",
+    telegramId = null,
     telegramIdRevealed = false,
     activeConnections = 0,
     totalConnections = 0,
@@ -51,10 +55,15 @@ val DefaultAccountScreenState = AccountScreenState(
  * только действующими подключениями, и строка «N истекли» должна говорить
  * правду о том, что не работает.
  *
- * @param base состояние, чьи поля о функции не знают (Telegram ID, тумблеры):
- *   они переносятся как есть.
+ * Telegram ID — это `chat_id` из того же ответа (§3 контракта): сервер отдаёт
+ * его числом. Сервер прислал ноль или поле вовсе — честное `null` («данных
+ * нет»), а не выдуманное число, которое пользователь принял бы за своё.
+ *
+ * @param base состояние, чьи поля о функции не знают (тумблеры, флаг раскрытия
+ *   ID): они переносятся как есть.
  */
 fun ConfigList.toAccountScreenState(base: AccountScreenState): AccountScreenState = base.copy(
+    telegramId = chatId.takeIf { it != 0L }?.toString(),
     activeConnections = configs.count { it.status == SubscriptionStatus.ACTIVE },
     expiredConnections = configs.count { it.status != SubscriptionStatus.ACTIVE },
     totalConnections = connectionsLimit,
