@@ -57,6 +57,16 @@ const val BYPASS_CUSTOM_INPUT_TAG = "bypass_custom_input"
 const val BYPASS_CUSTOM_NAME_TAG = "bypass_custom_name"
 const val BYPASS_CUSTOM_ADD_TAG = "bypass_custom_add"
 const val BYPASS_CUSTOM_HEADER_TAG = "bypass_custom_header"
+const val BYPASS_ROUTES_HEADER_TAG = "bypass_routes_header"
+
+/**
+ * Ключ раздела «РФ-сервисы» для [BypassUiState.expandedKeys].
+ *
+ * Каталог длинный (сотни строк), и развёрнутый он отодвигает «Свой обход» далеко
+ * за экран — а именно туда идёт пользователь, когда хочет добавить свой адрес.
+ */
+const val BYPASS_SERVICES_KEY = "__services__"
+const val BYPASS_SERVICES_HEADER_TAG = "bypass_services_header"
 
 /**
  * Ключ блока «Свой обход» для [BypassUiState.expandedKeys].
@@ -67,6 +77,16 @@ const val BYPASS_CUSTOM_HEADER_TAG = "bypass_custom_header"
  * задевал блок.
  */
 const val BYPASS_CUSTOM_KEY = "__custom__"
+
+/**
+ * Ключ списка «Обходы сейчас» для [BypassUiState.expandedKeys].
+ *
+ * Список применённых подсетей бывает длинным (десятки записей), и развёрнутый он
+ * занимает весь экран: до «РФ-сервисов» и «Своего обхода» приходится долго
+ * крутить. Поэтому он тоже сворачивается — тем же состоянием, что и остальные
+ * раскрываемые блоки экрана. Ключ заведомо не слаг сервиса.
+ */
+const val BYPASS_ROUTES_KEY = "__routes__"
 const val BYPASS_ROUTES_FAILED_TAG = "bypass_routes_failed"
 const val BYPASS_ROUTES_EMPTY_TAG = "bypass_routes_empty"
 const val BYPASS_SERVICES_FAILED_TAG = "bypass_services_failed"
@@ -209,9 +229,41 @@ fun BypassScreen(
                 }
             }
 
-            item { SectionLabel(text = "Обходы сейчас") }
+            // Список применённых подсетей свёрнут по умолчанию: их бывают
+            // десятки, и развёрнутый список отодвигает остальные разделы за
+            // пределы экрана. Свёрнутый показывает число — этого достаточно,
+            // чтобы понять масштаб, а подробности открываются тапом.
+            val routesExpanded = BYPASS_ROUTES_KEY in state.expandedKeys
+            val routeCount = state.routes?.size
 
-            routesSection(state, onRemove)
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = MinTouchTarget)
+                        .clickable { onToggleExpanded(BYPASS_ROUTES_KEY) }
+                        .testTag(BYPASS_ROUTES_HEADER_TAG),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (routeCount != null) "Обходы сейчас: $routeCount" else "Обходы сейчас",
+                        color = VpnColors.Ash,
+                        fontSize = 11.5.sp,
+                        letterSpacing = 1.1.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    // Тот же знак и то же правило, что у строк сервисов.
+                    Text(
+                        if (routesExpanded) "▾" else "▸",
+                        color = VpnColors.Ice,
+                        fontSize = 14.sp,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+
+            if (routesExpanded) routesSection(state, onRemove)
 
             item {
                 VpnPrimaryButton(
@@ -225,8 +277,40 @@ fun BypassScreen(
                 )
             }
 
-            item { SectionLabel(text = "РФ-сервисы") }
+            // Раздел «РФ-сервисы» свёрнут по умолчанию: каталог длинный, и с
+            // развёрнутым списком «Свой обход» остаётся далеко за экраном —
+            // пользователь идёт именно туда, когда хочет добавить свой адрес.
+            // Свёрнутый раздел показывает, сколько сервисов внутри.
+            val servicesExpanded = BYPASS_SERVICES_KEY in state.expandedKeys
+            val serviceCount = (state.catalog as? BypassCatalog.Loaded)?.services?.size
 
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = MinTouchTarget)
+                        .clickable { onToggleExpanded(BYPASS_SERVICES_KEY) }
+                        .testTag(BYPASS_SERVICES_HEADER_TAG),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (serviceCount != null) "РФ-сервисы: $serviceCount" else "РФ-сервисы",
+                        color = VpnColors.Ash,
+                        fontSize = 11.5.sp,
+                        letterSpacing = 1.1.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        if (servicesExpanded) "▾" else "▸",
+                        color = VpnColors.Ice,
+                        fontSize = 14.sp,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+
+            if (servicesExpanded) {
             item {
                 OutlinedTextField(
                     value = state.query,
@@ -281,6 +365,7 @@ fun BypassScreen(
                         onToggle = { onToggleExpanded(service.key) },
                     )
                 }
+            }
             }
 
             // «Свой обход» свёрнут, пока его не раскрыли: два поля и кнопка

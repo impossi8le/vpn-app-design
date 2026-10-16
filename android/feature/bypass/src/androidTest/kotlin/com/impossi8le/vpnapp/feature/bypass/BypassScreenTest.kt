@@ -76,7 +76,11 @@ class BypassScreenTest {
     fun tappingServiceRowReportsToggle() {
         var toggled: String? = null
         setScreen(
-            state = BypassUiState(catalog = BypassCatalog.Loaded(listOf(vk)), routes = emptyList()),
+            state = BypassUiState(
+                catalog = BypassCatalog.Loaded(listOf(vk)),
+                routes = emptyList(),
+                expandedKeys = setOf(BYPASS_SERVICES_KEY),
+            ),
             onToggleExpanded = { toggled = it },
         )
 
@@ -91,7 +95,9 @@ class BypassScreenTest {
             state = BypassUiState(
                 catalog = BypassCatalog.Loaded(listOf(vk)),
                 routes = emptyList(),
-                expandedKeys = setOf("vk"),
+                // Раздел сервисов теперь свёрнут по умолчанию — раскрываем его
+                // вместе со строкой, иначе домены не отрисованы вовсе.
+                expandedKeys = setOf(BYPASS_SERVICES_KEY, "vk"),
             ),
         )
 
@@ -116,6 +122,7 @@ class BypassScreenTest {
                 catalog = BypassCatalog.Loaded(listOf(vk, yandex)),
                 routes = emptyList(),
                 query = "яндекс",
+                expandedKeys = setOf(BYPASS_SERVICES_KEY),
             ),
         )
 
@@ -130,6 +137,7 @@ class BypassScreenTest {
                 catalog = BypassCatalog.Loaded(listOf(vk)),
                 routes = emptyList(),
                 query = "не-существует",
+                expandedKeys = setOf(BYPASS_SERVICES_KEY),
             ),
         )
 
@@ -139,7 +147,13 @@ class BypassScreenTest {
     @Test
     fun failedRoutesLoadIsNotShownAsEmptyList() {
         // Неудача чтения и «обходов нет» — разные факты, и экран их не смешивает.
-        setScreen(state = BypassUiState(routes = null, routesFailed = true))
+        setScreen(
+            state = BypassUiState(
+                routes = null,
+                routesFailed = true,
+                expandedKeys = setOf(BYPASS_ROUTES_KEY),
+            ),
+        )
 
         compose.onNodeWithTag(BYPASS_ROUTES_FAILED_TAG).assertIsDisplayed()
         compose.onNodeWithTag(BYPASS_ROUTES_EMPTY_TAG).assertDoesNotExist()
@@ -147,14 +161,23 @@ class BypassScreenTest {
 
     @Test
     fun emptyRoutesReadAsNoBypasses() {
-        setScreen(state = BypassUiState(routes = emptyList()))
+        setScreen(
+            state = BypassUiState(routes = emptyList(), expandedKeys = setOf(BYPASS_ROUTES_KEY)),
+        )
 
         compose.onNodeWithTag(BYPASS_ROUTES_EMPTY_TAG).assertIsDisplayed()
     }
 
     @Test
     fun failedCatalogIsNotShownAsNoServices() {
-        setScreen(state = BypassUiState(catalog = null, servicesFailed = true, routes = emptyList()))
+        setScreen(
+            state = BypassUiState(
+                catalog = null,
+                servicesFailed = true,
+                routes = emptyList(),
+                expandedKeys = setOf(BYPASS_SERVICES_KEY),
+            ),
+        )
 
         compose.onNodeWithTag(BYPASS_SERVICES_FAILED_TAG).assertIsDisplayed()
     }
@@ -164,7 +187,7 @@ class BypassScreenTest {
         val route = BypassRoute("87.240.129.0", 24)
         var removed: BypassRoute? = null
         setScreen(
-            state = BypassUiState(routes = listOf(route)),
+            state = BypassUiState(routes = listOf(route), expandedKeys = setOf(BYPASS_ROUTES_KEY)),
             onRemove = { removed = it },
         )
 
@@ -208,6 +231,7 @@ class BypassScreenTest {
         setScreen(
             state = BypassUiState(
                 routes = listOf(BypassRoute("87.240.129.0", 24, name = "ВКонтакте")),
+                expandedKeys = setOf(BYPASS_ROUTES_KEY),
             ),
         )
 
@@ -217,7 +241,12 @@ class BypassScreenTest {
     @Test
     fun unnamedRouteStillShowsCidr() {
         // Старые записи без подписи не должны пропасть из списка.
-        setScreen(state = BypassUiState(routes = listOf(BypassRoute("77.88.0.0", 16))))
+        setScreen(
+            state = BypassUiState(
+                routes = listOf(BypassRoute("77.88.0.0", 16)),
+                expandedKeys = setOf(BYPASS_ROUTES_KEY),
+            ),
+        )
 
         compose.onNodeWithText("77.88.0.0/16").assertIsDisplayed()
     }
@@ -237,6 +266,61 @@ class BypassScreenTest {
         compose.onNodeWithTag(BYPASS_CUSTOM_NAME_TAG).performTextInput("Работа")
 
         assertEquals("Работа", typed)
+    }
+
+    @Test
+    fun servicesSectionStartsCollapsed() {
+        // Раздел «РФ-сервисы» свёрнут по умолчанию: каталог длинный, и
+        // развёрнутый он отодвигает «Свой обход» за экран — а пользователь идёт
+        // именно туда, чтобы добавить свой адрес.
+        setScreen(
+            state = BypassUiState(catalog = BypassCatalog.Loaded(listOf(vk)), routes = emptyList()),
+        )
+
+        // Строки каталога наружу не отрисованы...
+        compose.onNodeWithTag(BYPASS_SERVICES_HEADER_TAG).assertIsDisplayed()
+        compose.onNodeWithText("ВКонтакте").assertDoesNotExist()
+    }
+
+    @Test
+    fun expandedServicesSectionShowsCatalog() {
+        setScreen(
+            state = BypassUiState(
+                catalog = BypassCatalog.Loaded(listOf(vk)),
+                routes = emptyList(),
+                expandedKeys = setOf(BYPASS_SERVICES_KEY),
+            ),
+        )
+
+        compose.onNodeWithText("ВКонтакте").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun routesSectionStartsCollapsed() {
+        // Список применённых подсетей бывает в десятки строк и без сворачивания
+        // занимает весь экран.
+        setScreen(
+            state = BypassUiState(
+                catalog = BypassCatalog.Loaded(listOf(vk)),
+                routes = listOf(BypassRoute("109.238.90.0", 24, "RuTube")),
+            ),
+        )
+
+        compose.onNodeWithTag(BYPASS_ROUTES_HEADER_TAG).assertIsDisplayed()
+        compose.onNodeWithText("109.238.90.0/24").assertDoesNotExist()
+    }
+
+    @Test
+    fun expandedRoutesSectionShowsRoutes() {
+        setScreen(
+            state = BypassUiState(
+                catalog = BypassCatalog.Loaded(listOf(vk)),
+                routes = listOf(BypassRoute("109.238.90.0", 24, "RuTube")),
+                expandedKeys = setOf(BYPASS_ROUTES_KEY),
+            ),
+        )
+
+        compose.onNodeWithText("109.238.90.0/24").performScrollTo().assertIsDisplayed()
     }
 
     @Test
