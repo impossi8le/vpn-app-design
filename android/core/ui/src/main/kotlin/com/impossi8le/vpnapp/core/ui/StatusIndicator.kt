@@ -161,6 +161,15 @@ fun StatusHeadline(
     modifier: Modifier = Modifier,
     titleTestTag: String? = null,
     detailTestTag: String? = null,
+    /**
+     * Ответ на вопрос «надо ли ждать». `null` — ждать нечего, строки нет.
+     *
+     * Отдельная строка, а не часть [detail]: `detail` отвечает, куда идёт
+     * трафик, а это — закончилось ли дело. Сведённые в одну строку, они
+     * заставляли бы пользователя выбирать между двумя ответами.
+     */
+    hint: String? = null,
+    hintTestTag: String? = null,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -187,5 +196,18 @@ fun StatusHeadline(
                 .padding(top = 6.dp, start = 10.dp, end = 10.dp)
                 .then(if (detailTestTag != null) Modifier.testTag(detailTestTag) else Modifier),
         )
+        if (hint != null) {
+            Text(
+                hint,
+                color = VpnColors.TextSecondary,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 19.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, start = 10.dp, end = 10.dp)
+                    .then(if (hintTestTag != null) Modifier.testTag(hintTestTag) else Modifier),
+            )
+        }
     }
 }

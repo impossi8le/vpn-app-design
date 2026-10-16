@@ -4,7 +4,10 @@ import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.protection.ProtectionVerdict
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -198,6 +201,62 @@ class StatusPresentationTest {
             "Подключено",
             ConnectionStatus.Connecting.presentation().title,
             "пока соединение устанавливается, «Подключено» показывать нельзя",
+        )
+    }
+
+    @Test
+    fun `во время подключения сказано, что ждать нужно`() {
+        // Главная претензия issue #6: после нажатия «Подключить» непонятно,
+        // закончилось ли дело. Для идущего подключения ответ — «идёт, подожди».
+        val hint = ConnectionStatus.Connecting.presentation().hint
+
+        assertNotNull(hint, "во время подключения надо сказать, что процесс идёт")
+        assertTrue(
+            hint!!.contains("секунд", ignoreCase = true) ||
+                hint.contains("ждать", ignoreCase = true),
+            "строка должна снимать вопрос «сколько это займёт»: $hint",
+        )
+    }
+
+    @Test
+    fun `после подключения сказано, что ждать нечего`() {
+        // Вторая половина той же претензии: в состоянии «Подключено» экран
+        // молчал, и человек ждал зря либо отключал уже работающее.
+        val hint = ConnectionStatus.VerifyingProtection.presentation().hint
+
+        assertNotNull(hint, "в подключённом состоянии надо ответить, надо ли ждать")
+        assertTrue(
+            hint!!.contains("можно пользоваться", ignoreCase = true),
+            "ждать нечего — так и сказать, а не молчать: $hint",
+        )
+    }
+
+    @Test
+    fun `подключённое состояние не выдаёт проверку за идущий процесс`() {
+        // Проверка защиты — заглушка и отвечает мгновенно. Написать «идёт
+        // проверка, подождите» значило бы выдумать процесс и заставить ждать
+        // впустую. Честно: ждать нечего, но защиты нет — это разные вещи.
+        val hint = ConnectionStatus.VerifyingProtection.presentation().hint!!
+
+        assertFalse(
+            hint.contains("идёт проверка", ignoreCase = true) ||
+                hint.contains("проверяем", ignoreCase = true),
+            "нельзя рисовать проверку, которой нет: $hint",
+        )
+        assertTrue(
+            hint.contains("не измеряется", ignoreCase = true) ||
+                hint.contains("не подтверждает", ignoreCase = true),
+            "но и молчать про отсутствие замера нельзя: $hint",
+        )
+    }
+
+    @Test
+    fun `отключённое состояние не обещает ожидания`() {
+        // Здесь ждать действительно нечего, и строки быть не должно: пустое
+        // ожидание читается как незавершённость.
+        assertNull(
+            ConnectionStatus.Disconnected.presentation().hint,
+            "в покое ожидания нет — и строки тоже",
         )
     }
 

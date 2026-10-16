@@ -311,6 +311,16 @@ val MonoFont = androidx.compose.ui.text.font.FontFamily.Monospace
  * Белая, без цвета бренда: цвет на экране принадлежит состоянию, а не бренду.
  * Высота 50dp — из макета, а не «на глаз»: при ней подпись в одну строку
  * помещается на самой узкой поддерживаемой ширине.
+ *
+ * **Вес главного действия — тенью и акцентной рамкой, а не размером.** Раньше
+ * белая кнопка не отличалась от других белых кнопок приложения, и главное
+ * действие на экране не читалось (issue #6). Но менять её высоту или ширину
+ * нельзя: «кнопка не двигается и не меняет размер между состояниями, меняются
+ * только текст и заливка» — иначе при переключении состояний макет прыгал бы.
+ * Поэтому вес даётся тем, что не влияет на геометрию: тень поднимает кнопку над
+ * фоном, а [VpnColors.Ice] по контуру отделяет её от соседних белых кнопок.
+ * Ice — акцент выделения, а не индикатор состояния, так что на смысл §6 это не
+ * влияет: кнопка не становится «зелёной» и ничего не обещает про защиту.
  */
 @Composable
 fun VpnPrimaryButton(
@@ -330,10 +340,21 @@ fun VpnPrimaryButton(
             disabledContainerColor = VpnColors.Bone.copy(alpha = 0.5f),
             disabledContentColor = VpnColors.Void.copy(alpha = 0.7f),
         ),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 6.dp,
+            pressedElevation = 2.dp,
+            // Отключённая кнопка не парит: тень читалась бы как «доступна».
+            disabledElevation = 0.dp,
+        ),
         contentPadding = PaddingValues(0.dp),
         modifier = modifier
             .fillMaxWidth()
             .height(50.dp)
+            .border(
+                width = 1.5.dp,
+                color = VpnColors.Ice,
+                shape = RoundedCornerShape(VpnRadii.Button.dp),
+            )
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier),
     ) {
         Text(text = text, fontSize = 16.5.sp, fontWeight = FontWeight.Medium)

@@ -262,6 +262,8 @@ fun ConnectionScreen(
                         StatusHeadline(
                             title = presentation.title,
                             detail = presentation.detail,
+                            hint = presentation.hint,
+                            hintTestTag = CONNECTION_HINT_TAG,
                             accent = presentation.accent,
                             titleTestTag = CONNECTION_TITLE_TAG,
                             detailTestTag = CONNECTION_DETAIL_TAG,
@@ -490,6 +492,7 @@ const val CONNECTION_RINGS_TAG = "connection_rings"
 const val CONNECTION_PROGRESS_TAG = "connection_progress"
 const val CONNECTION_SWITCH_WARNING_TAG = "connection_switch_warning"
 const val CONNECTION_NOTICE_TAG = "connection_notice"
+const val CONNECTION_HINT_TAG = "connection_hint"
 const val CONNECTION_ALWAYS_ON_TAG = "connection_always_on"
 const val CONNECTION_ALWAYS_ON_DISMISS_TAG = "connection_always_on_dismiss"
 const val CONNECTION_REFRESHING_TAG = "connection_refreshing"
