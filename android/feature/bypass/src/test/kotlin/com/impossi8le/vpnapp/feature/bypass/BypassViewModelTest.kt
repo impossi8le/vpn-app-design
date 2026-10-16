@@ -98,6 +98,35 @@ class BypassViewModelTest {
     }
 
     @Test
+    fun `свой обход свёрнут, пока его не раскрыли`() = runTest(scheduler) {
+        // Тот же механизм, что и у строк сервисов: по умолчанию ключа нет —
+        // блок свёрнут, поля ввода на экране не занимают места.
+        val vm = BypassViewModel(FakeBypassControl(), supported = true)
+
+        assertFalse(BYPASS_CUSTOM_KEY in vm.state.value.expandedKeys, "по умолчанию блок «Свой обход» свёрнут")
+
+        vm.toggleExpanded(BYPASS_CUSTOM_KEY)
+        assertTrue(BYPASS_CUSTOM_KEY in vm.state.value.expandedKeys)
+        vm.toggleExpanded(BYPASS_CUSTOM_KEY)
+        assertFalse(BYPASS_CUSTOM_KEY in vm.state.value.expandedKeys)
+    }
+
+    @Test
+    fun `ввод в свой обход переживает сворачивание`() = runTest(scheduler) {
+        // Сворачивание не трогает `customInput`/`customName`: раскрытие вернёт
+        // ровно набранное.
+        val vm = BypassViewModel(FakeBypassControl(), supported = true)
+        vm.onCustomInputChange("vk.com")
+        vm.onCustomNameChange("Работа")
+
+        vm.toggleExpanded(BYPASS_CUSTOM_KEY)
+        vm.toggleExpanded(BYPASS_CUSTOM_KEY)
+
+        assertEquals("vk.com", vm.state.value.customInput)
+        assertEquals("Работа", vm.state.value.customName)
+    }
+
+    @Test
     fun `запрос поиска сохраняется`() = runTest(scheduler) {
         val vm = BypassViewModel(FakeBypassControl(), supported = true)
         vm.onQueryChange("вк")

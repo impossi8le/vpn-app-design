@@ -1,5 +1,10 @@
 package com.impossi8le.vpnapp.feature.bypass
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +56,17 @@ const val BYPASS_SEARCH_TAG = "bypass_search"
 const val BYPASS_CUSTOM_INPUT_TAG = "bypass_custom_input"
 const val BYPASS_CUSTOM_NAME_TAG = "bypass_custom_name"
 const val BYPASS_CUSTOM_ADD_TAG = "bypass_custom_add"
+const val BYPASS_CUSTOM_HEADER_TAG = "bypass_custom_header"
+
+/**
+ * Ключ блока «Свой обход» для [BypassUiState.expandedKeys].
+ *
+ * Блок раскрывается ТЕМ ЖЕ состоянием, что и строки сервисов: второго способа
+ * развернуть строку на экране быть не должно. Ключ сервер не присылает — у
+ * сервиса ключ слаг (`vk`), а здесь заведомо не слаг, чтобы разворот сервиса не
+ * задевал блок.
+ */
+const val BYPASS_CUSTOM_KEY = "__custom__"
 const val BYPASS_ROUTES_FAILED_TAG = "bypass_routes_failed"
 const val BYPASS_ROUTES_EMPTY_TAG = "bypass_routes_empty"
 const val BYPASS_SERVICES_FAILED_TAG = "bypass_services_failed"
@@ -267,44 +283,95 @@ fun BypassScreen(
                 }
             }
 
+            // «Свой обход» свёрнут, пока его не раскрыли: два поля и кнопка
+            // занимают экран всё время, а нужны редко — обычный путь это
+            // «Обойти все РФ сервисы». Раскрывается тем же `expandedKeys`, что и
+            // строки сервисов, — одно поведение на экран.
+            val customExpanded = BYPASS_CUSTOM_KEY in state.expandedKeys
+
             item { SectionLabel(text = "Свой обход") }
 
             item {
-                OutlinedTextField(
-                    value = state.customInput,
-                    onValueChange = onCustomInputChange,
-                    singleLine = true,
-                    label = { Text("Домен или подсеть (CIDR)") },
-                    colors = darkFieldColors(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(BYPASS_CUSTOM_INPUT_TAG),
-                )
-            }
+                VpnCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = MinTouchTarget)
+                                .clickable { onToggleExpanded(BYPASS_CUSTOM_KEY) }
+                                .testTag(BYPASS_CUSTOM_HEADER_TAG),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Домен или подсеть",
+                                    color = VpnColors.Bone,
+                                    fontSize = 14.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    "Добавить адрес вручную",
+                                    color = VpnColors.Ash,
+                                    fontSize = 11.5.sp,
+                                )
+                            }
+                            // Тот же знак, что у строк сервисов, и по тому же правилу.
+                            Text(
+                                if (customExpanded) "▾" else "▸",
+                                color = VpnColors.Ice,
+                                fontSize = 14.sp,
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .padding(start = 4.dp),
+                            )
+                        }
 
-            item {
-                // Название необязательно: пусто — в списке будет голый CIDR.
-                // Уходит на сервер `#`-подписью над `route`, поэтому живёт
-                // между запусками, а не только до них.
-                OutlinedTextField(
-                    value = state.customName,
-                    onValueChange = onCustomNameChange,
-                    singleLine = true,
-                    label = { Text("Название (необязательно)") },
-                    colors = darkFieldColors(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(BYPASS_CUSTOM_NAME_TAG),
-                )
-            }
+                        // Поля остаются в дереве, пока блок раскрыт, и текст живёт в
+                        // состоянии экрана (`customInput`/`customName`). Свёрнутый
+                        // блок прячет поля, а не уничтожает набранное.
+                        AnimatedVisibility(
+                            visible = customExpanded,
+                            enter = fadeIn() + expandVertically(),
+                            exit = fadeOut() + shrinkVertically(),
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                OutlinedTextField(
+                                    value = state.customInput,
+                                    onValueChange = onCustomInputChange,
+                                    singleLine = true,
+                                    label = { Text("Домен или подсеть (CIDR)") },
+                                    colors = darkFieldColors(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 12.dp)
+                                        .testTag(BYPASS_CUSTOM_INPUT_TAG),
+                                )
 
-            item {
-                VpnGhostButton(
-                    text = "Добавить обход",
-                    onClick = { if (!state.applying) onAddCustom() },
-                    testTag = BYPASS_CUSTOM_ADD_TAG,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
+                                // Название необязательно: пусто — в списке будет
+                                // голый CIDR. Уходит на сервер `#`-подписью над
+                                // `route`, поэтому живёт между запусками.
+                                OutlinedTextField(
+                                    value = state.customName,
+                                    onValueChange = onCustomNameChange,
+                                    singleLine = true,
+                                    label = { Text("Название (необязательно)") },
+                                    colors = darkFieldColors(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 7.dp)
+                                        .testTag(BYPASS_CUSTOM_NAME_TAG),
+                                )
+
+                                VpnGhostButton(
+                                    text = "Добавить обход",
+                                    onClick = { if (!state.applying) onAddCustom() },
+                                    testTag = BYPASS_CUSTOM_ADD_TAG,
+                                    modifier = Modifier.padding(top = 9.dp),
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             item { Box(modifier = Modifier.padding(bottom = 12.dp)) }

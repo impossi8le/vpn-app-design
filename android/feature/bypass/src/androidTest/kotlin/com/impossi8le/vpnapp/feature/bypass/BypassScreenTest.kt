@@ -1,5 +1,9 @@
 package com.impossi8le.vpnapp.feature.bypass
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -36,6 +40,7 @@ class BypassScreenTest {
         onRemove: (BypassRoute) -> Unit = {},
         onToggleExpanded: (String) -> Unit = {},
         onAddCustom: () -> Unit = {},
+        onCustomInputChange: (String) -> Unit = {},
         onCustomNameChange: (String) -> Unit = {},
     ) {
         compose.setContent {
@@ -46,7 +51,7 @@ class BypassScreenTest {
                 onBypassAll = onBypassAll,
                 onQueryChange = {},
                 onToggleExpanded = onToggleExpanded,
-                onCustomInputChange = {},
+                onCustomInputChange = onCustomInputChange,
                 onCustomNameChange = onCustomNameChange,
                 onAddCustom = onAddCustom,
                 onRemove = onRemove,
@@ -181,7 +186,11 @@ class BypassScreenTest {
     fun addCustomButtonReportsIntent() {
         var added = false
         setScreen(
-            state = BypassUiState(routes = emptyList(), customInput = "vk.com"),
+            state = BypassUiState(
+                routes = emptyList(),
+                customInput = "vk.com",
+                expandedKeys = setOf(BYPASS_CUSTOM_KEY),
+            ),
             onAddCustom = { added = true },
         )
 
@@ -215,12 +224,85 @@ class BypassScreenTest {
     fun customNameFieldReportsTypedName() {
         var typed: String? = null
         setScreen(
-            state = BypassUiState(routes = emptyList(), customInput = "1.2.3.0/24"),
+            state = BypassUiState(
+                routes = emptyList(),
+                customInput = "1.2.3.0/24",
+                expandedKeys = setOf(BYPASS_CUSTOM_KEY),
+            ),
             onCustomNameChange = { typed = it },
         )
 
         compose.onNodeWithTag(BYPASS_CUSTOM_NAME_TAG).performTextInput("Работа")
 
         assertEquals("Работа", typed)
+    }
+
+    @Test
+    fun customBlockStartsCollapsed() {
+        // Блок «Свой обход» занимает экран всё время, хотя нужен редко: свёрнут,
+        // пока его не раскрыли.
+        setScreen(state = BypassUiState(routes = emptyList()))
+
+        compose.onNodeWithTag(BYPASS_CUSTOM_INPUT_TAG).assertDoesNotExist()
+        compose.onNodeWithTag(BYPASS_CUSTOM_ADD_TAG).assertDoesNotExist()
+        compose.onNodeWithTag(BYPASS_CUSTOM_HEADER_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun expandedCustomBlockShowsFields() {
+        setScreen(
+            state = BypassUiState(routes = emptyList(), expandedKeys = setOf(BYPASS_CUSTOM_KEY)),
+        )
+
+        compose.onNodeWithTag(BYPASS_CUSTOM_INPUT_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(BYPASS_CUSTOM_ADD_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun tappingCustomHeaderReportsToggle() {
+        // Раскрывается тем же механизмом, что и строки сервисов, — тем же ключом.
+        var toggled: String? = null
+        setScreen(
+            state = BypassUiState(routes = emptyList()),
+            onToggleExpanded = { toggled = it },
+        )
+
+        compose.onNodeWithTag(BYPASS_CUSTOM_HEADER_TAG).performClick()
+
+        assertEquals(BYPASS_CUSTOM_KEY, toggled)
+    }
+
+    @Test
+    fun collapsingCustomBlockKeepsTypedText() {
+        // Свернули блок с набранным текстом — и он вернулся при раскрытии: текст
+        // живёт в состоянии экрана (`customInput`/`customName`), а не в разметке,
+        // которую снос при сворачивании уничтожил бы.
+        var expanded by mutableStateOf(true)
+        var input by mutableStateOf("vk.com")
+        compose.setContent {
+            BypassScreen(
+                state = BypassUiState(
+                    routes = emptyList(),
+                    customInput = input,
+                    expandedKeys = if (expanded) setOf(BYPASS_CUSTOM_KEY) else emptySet(),
+                ),
+                onBack = {},
+                onReload = {},
+                onBypassAll = {},
+                onQueryChange = {},
+                onToggleExpanded = { expanded = !expanded },
+                onCustomInputChange = { input = it },
+                onCustomNameChange = {},
+                onAddCustom = {},
+                onRemove = {},
+            )
+        }
+        compose.onNodeWithText("vk.com").assertIsDisplayed()
+
+        compose.onNodeWithTag(BYPASS_CUSTOM_HEADER_TAG).performClick()
+        compose.onNodeWithTag(BYPASS_CUSTOM_INPUT_TAG).assertDoesNotExist()
+
+        compose.onNodeWithTag(BYPASS_CUSTOM_HEADER_TAG).performClick()
+        compose.onNodeWithText("vk.com").assertIsDisplayed()
     }
 }
