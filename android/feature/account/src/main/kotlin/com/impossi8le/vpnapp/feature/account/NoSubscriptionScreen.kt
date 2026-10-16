@@ -1,13 +1,11 @@
 package com.impossi8le.vpnapp.feature.account
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,9 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,8 +27,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.impossi8le.vpnapp.core.ui.Tone
 import com.impossi8le.vpnapp.core.ui.VpnColors
+import com.impossi8le.vpnapp.core.ui.VpnGhostButton
 import com.impossi8le.vpnapp.core.ui.VpnNotice
-import com.impossi8le.vpnapp.core.ui.VpnRadii
+import com.impossi8le.vpnapp.core.ui.VpnPrimaryButton
 
 const val NO_SUBSCRIPTION_TITLE_TAG = "no_subscription_title"
 const val NO_SUBSCRIPTION_REFRESH_TAG = "no_subscription_refresh"
@@ -102,36 +98,19 @@ fun NoSubscriptionScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        Button(
+        VpnPrimaryButton(
+            text = "Обновить",
             onClick = onRefresh,
-            shape = RoundedCornerShape(VpnRadii.Button.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = VpnColors.Bone,
-                contentColor = VpnColors.Void,
-            ),
-            contentPadding = PaddingValues(0.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-                .testTag(NO_SUBSCRIPTION_REFRESH_TAG),
-        ) {
-            Text("Обновить", fontSize = 16.5.sp, fontWeight = FontWeight.Medium)
-        }
+            testTag = NO_SUBSCRIPTION_REFRESH_TAG,
+        )
 
-        OutlinedButton(
+        VpnGhostButton(
+            text = "Войти другим Telegram",
             onClick = onSwitchTelegram,
-            shape = RoundedCornerShape(VpnRadii.Button.dp),
-            border = BorderStroke(0.5.dp, VpnColors.Edge),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = VpnColors.Bone),
-            contentPadding = PaddingValues(0.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp)
-                .height(46.dp)
-                .testTag(NO_SUBSCRIPTION_SWITCH_TAG),
-        ) {
-            Text("Войти другим Telegram", fontSize = 15.sp, fontWeight = FontWeight.Medium)
-        }
+            testTag = NO_SUBSCRIPTION_SWITCH_TAG,
+            height = 46.dp,
+            modifier = Modifier.padding(top = 8.dp),
+        )
     }
 }
 

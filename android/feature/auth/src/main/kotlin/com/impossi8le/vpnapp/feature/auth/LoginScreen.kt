@@ -1,6 +1,5 @@
 package com.impossi8le.vpnapp.feature.auth
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,9 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -37,11 +32,11 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.impossi8le.vpnapp.core.ui.MonoFont
 import com.impossi8le.vpnapp.core.ui.VpnColors
+import com.impossi8le.vpnapp.core.ui.VpnPrimaryButton
 import com.impossi8le.vpnapp.core.ui.VpnRadii
 
 /** Теги: одна и та же строка в UI и в тестах, чтобы тест не искал по тексту. */
@@ -124,7 +119,7 @@ fun LoginScreen(
             )
         }
 
-        PrimaryButton(
+        VpnPrimaryButton(
             text = "Войти тем же Telegram",
             onClick = onLogin,
             modifier = Modifier.padding(top = 18.dp),
@@ -276,54 +271,5 @@ internal fun ShieldGlyph(tint: Color, modifier: Modifier = Modifier) {
             close()
         }
         drawPath(shield, color = tint, style = Stroke(width = 1.7f * u))
-    }
-}
-
-/** Главная кнопка: белая заливка, тёмный текст. Цвет принадлежит состоянию, не бренду. */
-@Composable
-internal fun PrimaryButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    testTag: String? = null,
-) {
-    Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(VpnRadii.Button.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = VpnColors.Bone,
-            contentColor = VpnColors.Void,
-        ),
-        contentPadding = PaddingValues(0.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .height(50.dp)
-            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier),
-    ) {
-        Text(text = text, fontSize = 16.5.sp, fontWeight = FontWeight.Medium)
-    }
-}
-
-/** Второстепенная кнопка: прозрачный фон, рамка Edge. [height] — 46dp для мелкой. */
-@Composable
-internal fun GhostButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    testTag: String? = null,
-    height: Dp = 50.dp,
-) {
-    OutlinedButton(
-        onClick = onClick,
-        shape = RoundedCornerShape(VpnRadii.Button.dp),
-        border = BorderStroke(0.5.dp, VpnColors.Edge),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = VpnColors.Bone),
-        contentPadding = PaddingValues(0.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .height(height)
-            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier),
-    ) {
-        Text(text = text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
     }
 }

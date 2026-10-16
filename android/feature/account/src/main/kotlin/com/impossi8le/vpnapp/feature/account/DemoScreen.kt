@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -31,6 +29,7 @@ import com.impossi8le.vpnapp.core.ui.Tone
 import com.impossi8le.vpnapp.core.ui.VpnBadge
 import com.impossi8le.vpnapp.core.ui.VpnColors
 import com.impossi8le.vpnapp.core.ui.VpnNotice
+import com.impossi8le.vpnapp.core.ui.VpnPrimaryButton
 import com.impossi8le.vpnapp.core.ui.VpnRadii
 
 const val DEMO_BANNER_TAG = "demo_banner"
@@ -98,22 +97,13 @@ fun DemoScreen(
 
             // Кнопка заблокирована: в демо туннель не поднимается, и активная
             // кнопка обещала бы действие, которого не будет.
-            Button(
+            VpnPrimaryButton(
+                text = "Подключить",
                 onClick = {},
                 enabled = false,
-                shape = RoundedCornerShape(VpnRadii.Button.dp),
-                colors = ButtonDefaults.buttonColors(
-                    disabledContainerColor = VpnColors.Bone.copy(alpha = 0.5f),
-                    disabledContentColor = VpnColors.Void.copy(alpha = 0.5f),
-                ),
-                modifier = Modifier
-                    .padding(top = 16.dp)
-                    .fillMaxWidth()
-                    .height(50.dp)
-                    .testTag(DEMO_ACTION_TAG),
-            ) {
-                Text(text = "Подключить", fontSize = 16.5.sp, fontWeight = FontWeight.Medium)
-            }
+                modifier = Modifier.padding(top = 16.dp),
+                testTag = DEMO_ACTION_TAG,
+            )
 
             Text(
                 text = "В демо-режиме туннель не поднимается",

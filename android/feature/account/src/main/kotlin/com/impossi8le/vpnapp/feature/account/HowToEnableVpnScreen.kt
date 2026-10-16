@@ -1,11 +1,9 @@
 package com.impossi8le.vpnapp.feature.account
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,10 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -30,8 +25,8 @@ import com.impossi8le.vpnapp.core.ui.MinTouchTarget
 import com.impossi8le.vpnapp.core.ui.Tone
 import com.impossi8le.vpnapp.core.ui.VpnCard
 import com.impossi8le.vpnapp.core.ui.VpnColors
+import com.impossi8le.vpnapp.core.ui.VpnGhostButton
 import com.impossi8le.vpnapp.core.ui.VpnNotice
-import com.impossi8le.vpnapp.core.ui.VpnRadii
 import com.impossi8le.vpnapp.core.ui.VpnRow
 
 const val HOW_TO_BACK_TAG = "how_to_back"
@@ -121,19 +116,11 @@ fun HowToEnableVpnScreen(
 
         Spacer(Modifier.weight(1f))
 
-        OutlinedButton(
+        VpnGhostButton(
+            text = "Проверить снова",
             onClick = onRecheck,
-            shape = RoundedCornerShape(VpnRadii.Button.dp),
-            border = BorderStroke(0.5.dp, VpnColors.Edge),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = VpnColors.Bone),
-            contentPadding = PaddingValues(0.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-                .testTag(HOW_TO_RECHECK_TAG),
-        ) {
-            Text("Проверить снова", fontSize = 16.5.sp, fontWeight = FontWeight.Medium)
-        }
+            testTag = HOW_TO_RECHECK_TAG,
+        )
     }
 }
 

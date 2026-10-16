@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.impossi8le.vpnapp.core.ui.MonoFont
 import com.impossi8le.vpnapp.core.ui.VpnColors
+import com.impossi8le.vpnapp.core.ui.VpnGhostButton
 import kotlinx.coroutines.delay
 
 const val LOGIN_WAITING_TITLE_TAG = "login_waiting_title"
@@ -241,7 +242,7 @@ fun LoginWaitingScreen(
             )
         }
 
-        GhostButton(
+        VpnGhostButton(
             text = if (signingIn) "Проверяем…" else "Подтвердить",
             onClick = { onSubmitNonce(nonce) },
             height = 46.dp,
@@ -249,7 +250,7 @@ fun LoginWaitingScreen(
             modifier = Modifier.padding(top = 12.dp),
         )
 
-        GhostButton(
+        VpnGhostButton(
             text = "Открыть Telegram ещё раз",
             onClick = onReopenTelegram,
             height = 46.dp,
@@ -269,7 +270,7 @@ fun LoginWaitingScreen(
         // Кнопка есть только при [showDemoButton]: [MainActivity] ставит его в
         // `BuildConfig.DEBUG`, поэтому в release демонстрационного прохода нет.
         if (showDemoButton) {
-            GhostButton(
+            VpnGhostButton(
                 text = "Демонстрация: показать экраны дальше",
                 onClick = onContinueDemo,
                 height = 46.dp,
