@@ -60,6 +60,10 @@ import com.impossi8le.vpnapp.feature.auth.DeepLinkGuard
 import com.impossi8le.vpnapp.feature.bypass.BypassViewModel
 import com.impossi8le.vpnapp.feature.home.ConfigRowState
 import com.impossi8le.vpnapp.feature.home.ConfigRowStatus
+import com.impossi8le.vpnapp.feature.home.ConfigTapRouting
+import com.impossi8le.vpnapp.feature.home.hasLiveConnection
+import com.impossi8le.vpnapp.feature.home.pickDefaultConfigId
+import com.impossi8le.vpnapp.feature.home.routeConfigTap
 import com.impossi8le.vpnapp.feature.home.StatusAction
 import com.impossi8le.vpnapp.feature.home.SwitchCountrySheet
 import com.impossi8le.vpnapp.feature.home.HomeViewModel
@@ -883,6 +887,31 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
         }
     }
 
+    // Автовыбор на пустом выборе: на чистой установке `selectedConfigId` — `null`,
+    // и список рисовался без единой выделенной строки. Что значит «первый», почему
+    // мёртвое не выделяем и почему сохранённый выбор не перебивается — в
+    // `pickDefaultConfigId`.
+    //
+    // **Ключ — только `configs`, и это принципиально.** Список приходит
+    // асинхронно, и эффект обязан сработать, когда он наконец пришёл. Ключ по
+    // `selectedConfigId` перезапускал бы эффект на каждый тап по строке, а по
+    // `displayConfigs` — затирал бы выбор тем, что сам же и нарисовал. С одним
+    // `configs` выбор пользователя не трогается: при непустом `selectedConfigId`
+    // `pickDefaultConfigId` возвращает его как есть.
+    //
+    // **Первым кандидатом — профиль, который уже стоит.** Если в файле есть
+    // сохранённый профиль, выделение обязано указать на него, а не на первую
+    // строку списка: иначе показанное «выбрано» разойдётся с тем, что реально
+    // поднято. Профиль берём только если он ЕСТЬ в списке — иначе строка не
+    // нарисуется вовсе, и `pickDefaultConfigId` для отсутствующего id не годится.
+    // `currentMeta()` читает файл, поэтому — в эффекте, а не в композиции.
+    LaunchedEffect(configs) {
+        val persistedId = graph.configManager.currentMeta()?.configId
+            ?.takeIf { id -> configs.any { it.id == id } }
+        pickDefaultConfigId(configs, selectedConfigId ?: persistedId)
+            ?.let { selectedConfigId = it }
+    }
+
     // Имя работающего подключения — честный источник — метаданные установленного
     // профиля: именно тот configId, что лежит в файле, отдан туннелю. Читаем его
     // в эффекте, а не в композиции: `currentMeta()` трогает файл, и на главном
@@ -1288,30 +1317,54 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
                     }
                 }
 
-                // Выбор подключения: запомнить id и показать строку выбранной.
-                // Профиль под это подключение ещё НЕ готовится — подготовка
-                // идёт на «Подключить», и делать сеть здесь значило бы грузить
-                // конфиг по одному тапу в список.
-                is AppIntent.SelectConfig -> selectedConfigId = intent.id
-
-                // «Поднять туннель на другом подключении». Минимально: тот же
-                // выбор строки, что и у [SelectConfig]. Мы СОЗНАТЕЛЬНО не
-                // трогаем туннель и не показываем «переключаюсь»: без
-                // подготовленного профиля другого подключения поднимать нечего,
-                // а фальшивый статус защиты запрещён инвариантом §6. Смена
-                // страны меняет только выбор в списке.
-                // Смена страны. Спрашивать ли — решает чистая функция по двум
-                // предпочтениям: тумблеру в аккаунте и галочке «больше не
-                // спрашивать». Без подтверждения переключаемся сразу — лишний тап
-                // там, где обрыв соединения и так ожидаем, только раздражает.
-                is AppIntent.SwitchCountry -> {
+                // Тап по строке подключения — единая точка входа для выбранной и
+                // невыбранной строки (issue #19).
+                //
+                // Что делает тап, решает [routeConfigTap]: при отсутствии живого
+                // соединения — только выбор (профиль под него ещё НЕ готовится,
+                // подготовка идёт на «Подключить»); по уже работающему
+                // подключению — ничего (переключаться некуда); по другому при
+                // живом соединении — путь смены подключения.
+                //
+                // **Имя цели берём ДО вопроса и не теряем подтверждение молча.**
+                // Раньше при `targetName == null` (списка нет или обновляется)
+                // срабатывал `performSwitch` БЕЗ спроса: соединение рвалось без
+                // согласия пользователя. Теперь имени нет — честно сообщаем, что
+                // подключение недоступно, а не рвём связь тихо.
+                is AppIntent.TapConfig -> {
                     val targetName = configs.firstOrNull { it.id == intent.id }?.name
-                    if (askBeforeCountrySwitch(confirmCountrySwitch, dontAskCountrySwitch) && targetName != null) {
-                        pendingSwitchCountry = targetName
-                        pendingSwitchId = intent.id
-                        pendingSwitchDontAsk = false
-                    } else {
-                        performSwitch(intent.id)
+                    when (
+                        routeConfigTap(
+                            tappedId = intent.id,
+                            selectedId = selectedConfigId,
+                            liveConnection = status.hasLiveConnection,
+                        )
+                    ) {
+                        is ConfigTapRouting.Choose ->
+                            selectedConfigId = intent.id
+
+                        is ConfigTapRouting.AlreadyRunning -> Unit
+
+                        is ConfigTapRouting.Switch -> when {
+                            // Имени нет — переключение невозможно: без имени шит
+                            // подтверждения не собрать, а обойти его значило бы
+                            // сорвать связь без согласия. Говорим об этом прямо.
+                            targetName == null ->
+                                prepareMessage = "Не удалось определить подключение. Обновите список."
+
+                            // Спрашивать ли — решает чистая функция по двум
+                            // предпочтениям: тумблеру в аккаунте и галочке
+                            // «больше не спрашивать».
+                            askBeforeCountrySwitch(confirmCountrySwitch, dontAskCountrySwitch) -> {
+                                pendingSwitchCountry = targetName
+                                pendingSwitchId = intent.id
+                                pendingSwitchDontAsk = false
+                            }
+
+                            // Вопрос снят — переключаемся сразу: лишний тап там,
+                            // где обрыв соединения и так ожидаем, только мешает.
+                            else -> performSwitch(intent.id)
+                        }
                     }
                 }
 

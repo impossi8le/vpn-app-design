@@ -299,8 +299,7 @@ fun AppRoot(
                     go(AppDestination.Bypass)
                 },
                 onRefreshConfigs = { onIntent(AppIntent.RefreshConfigs) },
-                onSelectConfig = { id -> onIntent(AppIntent.SelectConfig(id)) },
-                onSwitchCountry = { id -> onIntent(AppIntent.SwitchCountry(id)) },
+                onTapConfig = { id -> onIntent(AppIntent.TapConfig(id)) },
                 updateVersionCode = (state.update as? UpdateUiState.Available)
                     ?.takeUnless { state.updateBannerDismissed }?.versionCode,
                 updateDownload = state.updateDownload,
@@ -648,8 +647,17 @@ sealed interface AppIntent {
     data object SignOutHandled : AppIntent
     data object RecheckVpnPermission : AppIntent
     data class ConnectionAction(val action: StatusAction) : AppIntent
-    data class SelectConfig(val id: String) : AppIntent
-    data class SwitchCountry(val id: String) : AppIntent
+
+    /**
+     * Тап по строке подключения.
+     *
+     * Одно намерение на выбранную и невыбранную строку: раньше их было два
+     * (`SelectConfig` и `SwitchCountry`), и подтверждение смены подключения
+     * доставалось только уже выбранной строке — «попап работает в узкой зоне»
+     * (issue #19). Различитель между «выбрать» и «переключиться» — не статус
+     * строки, а наличие живого соединения; решает это обработчик ниже.
+     */
+    data class TapConfig(val id: String) : AppIntent
     data class SetConfirmCountrySwitch(val enabled: Boolean) : AppIntent
     data class SelectDemoConfig(val config: DemoConfig) : AppIntent
 

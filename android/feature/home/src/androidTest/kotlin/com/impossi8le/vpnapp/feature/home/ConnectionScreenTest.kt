@@ -49,8 +49,7 @@ class ConnectionScreenTest {
                 onAction = onAction,
                 onOpenAccount = {},
                 onRefreshConfigs = {},
-                onSelectConfig = {},
-                onSwitchCountry = {},
+                onTapConfig = {},
                 runningConfigName = runningConfigName,
             )
         }
@@ -157,8 +156,7 @@ class ConnectionScreenTest {
                 onAction = {},
                 onOpenAccount = {},
                 onRefreshConfigs = {},
-                onSelectConfig = { selected = it },
-                onSwitchCountry = {},
+                onTapConfig = { selected = it },
             )
         }
 

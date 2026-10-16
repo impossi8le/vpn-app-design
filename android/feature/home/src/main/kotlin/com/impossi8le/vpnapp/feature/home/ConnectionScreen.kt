@@ -67,8 +67,18 @@ fun ConnectionScreen(
      */
     onOpenBypass: () -> Unit = {},
     onRefreshConfigs: () -> Unit,
-    onSelectConfig: (String) -> Unit,
-    onSwitchCountry: (String) -> Unit,
+    /**
+     * Тап по строке подключения.
+     *
+     * Один обработчик на все строки — выбранную и невыбранную alike. Раньше их
+     * было два (`onSelectConfig` для невыбранной, `onSwitchCountry` для выбранной),
+     * и подтверждение смены подключения доставалось только той строке, что уже
+     * была выбрана (issue #19): «попап работает только в определённой зоне».
+     * Разделение путей здесь и было причиной — свести их к одному входу и значит
+     * починить. Что означает тап (выбрать или переключиться) решает выше, а не
+     * разметка: экран по-прежнему только показывает.
+     */
+    onTapConfig: (String) -> Unit,
     modifier: Modifier = Modifier,
     /**
      * Список подключений сейчас перезагружается.
@@ -352,8 +362,7 @@ fun ConnectionScreen(
             items(configs, key = { it.id }) { config ->
                 ConfigRow(
                     config = config,
-                    onClick = { onSelectConfig(config.id) },
-                    onSwitch = { onSwitchCountry(config.id) },
+                    onTap = { onTapConfig(config.id) },
                 )
             }
 
@@ -417,8 +426,7 @@ fun ConnectionScreen(
 @Composable
 private fun ConfigRow(
     config: ConfigRowState,
-    onClick: () -> Unit,
-    onSwitch: () -> Unit,
+    onTap: () -> Unit,
 ) {
     val dead = config.status == ConfigRowStatus.Expired
     val selected = config.status == ConfigRowStatus.Selected
@@ -430,7 +438,11 @@ private fun ConfigRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = MinTouchTarget)
-            .clickable { if (dead) Unit else if (selected) onSwitch() else onClick() }
+            // Истёкшую строку не нажимаем — выбирать в ней нечего. У остальных
+            // исход один: оба пути (выбранная и невыбранная) ведут в один вход
+            // [onTap], а не в разные обработчики, — иначе подтверждение смены
+            // доставалось бы только одной зоне списка (issue #19).
+            .clickable(enabled = !dead) { onTap() }
             .testTag(configRowTag(config.id)),
     ) {
         Row(
