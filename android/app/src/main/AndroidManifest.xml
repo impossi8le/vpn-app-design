@@ -56,7 +56,37 @@
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
+            <!-- Плитка переключаемая: система понимает, что она отражает
+                 состояние «включено/выключено», и рисует её тумблером. Без
+                 метаданных состояние всё равно задаётся вручную, но система
+                 может позволить пользователю «выключить» её жестом. -->
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
         </service>
+
+        <!--
+          Долгое нажатие по плитке.
+
+          Система ведёт по долгому тапу НА ЭТУ активность, если она объявлена с
+          действием QS_TILE_PREFERENCES; без неё Android открывает НАСТРОЙКИ
+          приложения — ровно то, на что жаловался пользователь (issue #16, п. 1).
+          У `TileService` собственного обработчика долгого тапа нет, поэтому
+          «ведёт в приложение» делается здесь.
+
+          `NoDisplay` и `excludeFromRecents`: это не экран, а переадресация —
+          рисовать нечего, в недавних задачах её быть не должно.
+        -->
+        <activity
+            android:name=".tile.TilePreferencesActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".MainActivity"

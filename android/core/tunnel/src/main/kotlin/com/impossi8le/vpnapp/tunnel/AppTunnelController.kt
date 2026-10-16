@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.VpnService
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.tunnel.TunnelControlling
+import com.impossi8le.vpnapp.domain.tunnel.TunnelState
+import com.impossi8le.vpnapp.domain.tunnel.TunnelStateStore
 import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -159,9 +161,14 @@ class AppTunnelController(
     override suspend fun disconnect() {
         context.startService(Intent(context, serviceClass).setAction(actionDisconnect))
         _status.value = ConnectionStatus.Disconnected
-        // Гасим сторож сразу, а не ждём, пока он заметит смену на следующем шаге:
-        // живой цикл после отключения — это лишние опросы системы.
+        // Сторож гасим сразу...
         presenceWatcher.stop()
+        // ...и сообщаем общий источник правды. Сервис опубликует то же самое
+        // своим notifyState(IDLE), но ТОЛЬКО если ему было что останавливать:
+        // одиночный DISCONNECT по незапущенному сервису не рассылает состояние,
+        // и снимок остался бы прежним — плитка показывала бы «подключён» при уже
+        // опущенном туннеле. Пишем здесь, чтобы «отключено» было видно обоим.
+        TunnelStateStore.publish(TunnelState.Idle)
     }
 
     override suspend fun reverifyProtection() {
@@ -202,7 +209,15 @@ class AppTunnelController(
         presenceWatcher.restart(
             scope = watchScope,
             current = { _status.value },
-            onTunnelLost = { _status.value = it },
+            onTunnelLost = { lost ->
+                _status.value = lost
+                // Место, где расхождение возникало наяву. Туннель исчез, НЕ
+                // прислав `Disconnected`: интерфейс снёс кто-то извне (см.
+                // `TunnelPresenceWatcher`). Экран узнаёт об этом отсюда, и снимок
+                // обязан смениться ровно здесь же — иначе плитка осталась бы
+                // «подключён», пока экран уже говорит «не подключено».
+                TunnelStateStore.publish(TunnelState.Idle)
+            },
         )
     }
 
