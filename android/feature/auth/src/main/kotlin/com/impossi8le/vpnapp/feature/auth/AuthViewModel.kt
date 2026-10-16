@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+/** Код подтверждения всегда шестизначный (контракт §2). */
+private const val NONCE_LENGTH = 6
+
 /**
  * Состояния входа. Отдельное «нужен код из бота» — не деталь: это единственный
  * шаг, который пользователь делает руками, и без него вход не завершится.
@@ -67,6 +70,40 @@ class AuthViewModel(
     val state: StateFlow<AuthUiState> = _state.asStateFlow()
 
     private var pollJob: Job? = null
+
+    /**
+     * Код подтверждения, пришедший ССЫЛКОЙ из бота, а не набранный руками.
+     *
+     * Экран кладёт его в своё поле ввода: распознавать ссылку — дело слоя
+     * платформы, а не экрана, поэтому переживает пересоздание активности здесь,
+     * а не в `rememberSaveable` экрана. Тот же путь обработки, что и у ручного
+     * ввода: значение уходит в [submitNonce], ничего не подставляя в состояние
+     * входа в обход него.
+     *
+     * `null` — «ссылки не было». После того как экран забрал значение
+     * ([consumePrefilledNonce]), оно снова `null`: повторная доставка той же
+     * ссылки не должна перезаписывать поле, которое пользователь уже правит.
+     */
+    private val _prefilledNonce = MutableStateFlow<String?>(null)
+    val prefilledNonce: StateFlow<String?> = _prefilledNonce.asStateFlow()
+
+    /**
+     * Подставить код, пришедший ссылкой.
+     *
+     * Принимается только осмысленный код (шесть цифр) и только когда операция
+     * входа ждёт ввода: в других состояниях показывать код некуда, а запоминать
+     * его до экрана ожидания значило бы подставить устаревшее значение позже.
+     */
+    fun prefillNonce(nonce: String) {
+        if (_state.value !is AuthUiState.AwaitingNonce) return
+        if (nonce.length != NONCE_LENGTH || !nonce.all(Char::isDigit)) return
+        _prefilledNonce.value = nonce
+    }
+
+    /** Экран забрал подставленный код — сбрасываем, чтобы не подставить повторно. */
+    fun consumePrefilledNonce() {
+        _prefilledNonce.value = null
+    }
 
     fun startLogin() {
         if (pollJob?.isActive == true) return

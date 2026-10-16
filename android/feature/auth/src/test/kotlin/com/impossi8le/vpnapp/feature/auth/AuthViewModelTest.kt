@@ -16,6 +16,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -178,6 +179,70 @@ class AuthViewModelTest {
 
         assertEquals(0, service.pollCount, "пустой код не имеет смысла опрашивать")
         assertTrue(vm.state.value is AuthUiState.Failed)
+    }
+
+    @Test
+    fun `код из ссылки подставляется при ожидании ввода`() = runTest(scheduler) {
+        val vm = AuthViewModel(FakeAuthService(challenge = challenge()), FakeSessionStore(), "Pixel")
+        vm.startLogin()
+
+        vm.prefillNonce("482109")
+
+        assertEquals("482109", vm.prefilledNonce.value)
+    }
+
+    @Test
+    fun `код из ссылки отбрасывается, пока операция входа не ждёт ввода`() = runTest(scheduler) {
+        val vm = AuthViewModel(FakeAuthService(challenge = challenge()), FakeSessionStore(), "Pixel")
+
+        // Операция ещё не начата: подставлять код некуда.
+        vm.prefillNonce("482109")
+
+        assertNull(vm.prefilledNonce.value)
+    }
+
+    @Test
+    fun `неполный или нечисловой код из ссылки не подставляется`() = runTest(scheduler) {
+        val vm = AuthViewModel(FakeAuthService(challenge = challenge()), FakeSessionStore(), "Pixel")
+        vm.startLogin()
+
+        vm.prefillNonce("4821")
+        assertNull(vm.prefilledNonce.value, "код не из шести цифр — не код подтверждения")
+
+        vm.prefillNonce("48a109")
+        assertNull(vm.prefilledNonce.value)
+    }
+
+    @Test
+    fun `забранный код не подставляется повторно`() = runTest(scheduler) {
+        val vm = AuthViewModel(FakeAuthService(challenge = challenge()), FakeSessionStore(), "Pixel")
+        vm.startLogin()
+        vm.prefillNonce("482109")
+
+        vm.consumePrefilledNonce()
+
+        assertNull(vm.prefilledNonce.value, "иначе повторная композиция затирала бы правку пользователя")
+    }
+
+    @Test
+    fun `подставленный код уходит тем же путём, что и набранный руками`() = runTest(scheduler) {
+        // Стоп-кран против соблазна сделать «вход по ссылке» отдельной веткой:
+        // код из ссылки обязан завершать вход ровно так же, как ручной ввод.
+        val store = FakeSessionStore()
+        val service = FakeAuthService(
+            challenge = challenge(),
+            outcomes = mutableListOf(
+                Result.success(PollOutcome.Confirmed(Session("tok", 1L), chatId = 42L)),
+            ),
+        )
+        val vm = AuthViewModel(service, store, "Pixel")
+
+        vm.startLogin()
+        vm.prefillNonce("482109")
+        vm.submitNonce(vm.prefilledNonce.value!!)
+
+        assertTrue(vm.state.value is AuthUiState.SignedIn)
+        assertEquals("tok", store.saved?.token)
     }
 
     @Test

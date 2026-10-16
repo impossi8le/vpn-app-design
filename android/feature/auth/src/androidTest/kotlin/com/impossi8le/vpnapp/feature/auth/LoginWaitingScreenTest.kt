@@ -30,6 +30,8 @@ class LoginWaitingScreenTest {
         signingIn: Boolean = false,
         errorText: String? = null,
         onSubmitNonce: (String) -> Unit = {},
+        prefilledNonce: String? = null,
+        onPrefilledNonceConsumed: () -> Unit = {},
     ) {
         compose.setContent {
             LoginWaitingScreen(
@@ -37,6 +39,8 @@ class LoginWaitingScreenTest {
                 errorText = errorText,
                 onSubmitNonce = onSubmitNonce,
                 onReopenTelegram = {},
+                prefilledNonce = prefilledNonce,
+                onPrefilledNonceConsumed = onPrefilledNonceConsumed,
                 onContinueDemo = {},
             )
         }
@@ -84,5 +88,41 @@ class LoginWaitingScreenTest {
         // значит «не поместилась», а не «не отрисована». Проверка видимости
         // падала бы из-за размера экрана, а не из-за поведения.
         compose.onNodeWithTag(LOGIN_WAITING_COUNTDOWN_TAG).assertExists()
+    }
+
+    @Test
+    fun prefilledNonceFromLinkEndsUpInTheFieldAndSubmits() {
+        // Ради этого шага задача и делалась: код из ссылки избавляет от набора
+        // шести цифр руками. Проверяем, что он реально доходит до поля — то есть
+        // что нажатие отдаёт наружу именно его, без участия клавиатуры.
+        var submitted = ""
+        setScreen(prefilledNonce = "482109", onSubmitNonce = { submitted = it })
+
+        compose.onNodeWithTag(LOGIN_WAITING_SUBMIT_TAG).performClick()
+
+        assertEquals("482109", submitted)
+    }
+
+    @Test
+    fun prefilledNonceIsReportedConsumedOnce() {
+        // Значение подставляется один раз и сразу помечается использованным:
+        // иначе повторная композиция затирала бы правку пользователя.
+        var consumed = 0
+        setScreen(prefilledNonce = "482109", onPrefilledNonceConsumed = { consumed++ })
+
+        compose.waitForIdle()
+
+        assertEquals(1, consumed)
+    }
+
+    @Test
+    fun noNonceMeansNothingIsConsumed() {
+        // Обычный путь — ручной ввод: подставлять нечего, и дёргать колбэк незачем.
+        var consumed = 0
+        setScreen(onPrefilledNonceConsumed = { consumed++ })
+
+        compose.waitForIdle()
+
+        assertEquals(0, consumed)
     }
 }

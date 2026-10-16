@@ -69,8 +69,19 @@
             </intent-filter>
 
             <!--
-              Deep link для входа через Telegram: t.me/bot?start=login_<public_code>
-              На Android ссылка открывается через намерение, приложение ловит её здесь.
+              Deep link для входа через Telegram:
+              vpnapp://login?code=<public_code>&nonce=<device_nonce>
+
+              Раньше фильтр был объявлен, но обработчика не было: возврат из
+              Telegram не доходил до приложения, и код приходилось вводить руками.
+              Ловит `MainActivity` — и в `onCreate` (холодный запуск), и в
+              `onNewIntent` (возврат на живую активность; это и есть смысл
+              `launchMode="singleTask"` выше). Разбор ссылки и сверку `code` с
+              текущей операцией делает `DeepLinkGuard`; чужой или устаревший код
+              отбрасывается.
+
+              `autoVerify="false"` — закрепление схемы за приложением (App Links)
+              требует домена и `assetlinks.json`: это отдельный шаг, здесь его нет.
             -->
             <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW" />

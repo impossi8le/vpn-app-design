@@ -80,4 +80,41 @@ class DeepLinkGuardTest {
         // Похожесть строки не должна приниматься за совпадение: сравнение точное.
         assertNull(DeepLinkGuard.publicCodeFrom("$prefix?code=a7f3c9d2e1b4", "a7f3c9d2e1b4"))
     }
+
+    // --- Код подтверждения из ссылки (вход одним нажатием) ---
+
+    @Test
+    fun `код подтверждения берётся из ссылки с совпавшим кодом операции`() {
+        val uri = "vpnapp://login?code=a7f3c9d2e1b4&nonce=482109"
+        assertEquals("482109", DeepLinkGuard.nonceFrom(uri, "a7f3c9d2e1b4"))
+    }
+
+    @Test
+    fun `код подтверждения не берётся из ссылки с чужим кодом операции`() {
+        // Несущий случай: ссылка с нашим `nonce`, но чужим `code` — это попытка
+        // подсунуть код подтверждения для операции, начатой не нами.
+        val uri = "vpnapp://login?code=attacker_code&nonce=482109"
+        assertNull(DeepLinkGuard.nonceFrom(uri, "a7f3c9d2e1b4"))
+    }
+
+    @Test
+    fun `ссылка без кода подтверждения даёт null`() {
+        assertNull(DeepLinkGuard.nonceFrom("vpnapp://login?code=a7f3c9d2e1b4", "a7f3c9d2e1b4"))
+    }
+
+    @Test
+    fun `код подтверждения не из шести цифр отбрасывается`() {
+        // Поле ждёт ровно шесть цифр (filter(Char::isDigit).take(6)); подставлять
+        // в него что-то другое значит показать мусор.
+        assertNull(DeepLinkGuard.nonceFrom("vpnapp://login?code=c&nonce=4821", "c"))
+        assertNull(DeepLinkGuard.nonceFrom("vpnapp://login?code=c&nonce=4821099", "c"))
+        assertNull(DeepLinkGuard.nonceFrom("vpnapp://login?code=c&nonce=48a109", "c"))
+        assertNull(DeepLinkGuard.nonceFrom("vpnapp://login?code=c&nonce=", "c"))
+    }
+
+    @Test
+    fun `пустая ссылка и отсутствие ожидаемого кода дают null для кода подтверждения`() {
+        assertNull(DeepLinkGuard.nonceFrom(null, "a7f3c9d2e1b4"))
+        assertNull(DeepLinkGuard.nonceFrom("vpnapp://login?code=c&nonce=482109", null))
+    }
 }

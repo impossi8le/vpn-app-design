@@ -56,6 +56,7 @@ import com.impossi8le.vpnapp.feature.account.toAccountScreenState
 import java.time.Instant
 import com.impossi8le.vpnapp.feature.auth.AuthUiState
 import com.impossi8le.vpnapp.feature.auth.AuthViewModel
+import com.impossi8le.vpnapp.feature.auth.DeepLinkGuard
 import com.impossi8le.vpnapp.feature.bypass.BypassViewModel
 import com.impossi8le.vpnapp.feature.home.ConfigRowState
 import com.impossi8le.vpnapp.feature.home.ConfigRowStatus
@@ -85,6 +86,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 
 /**
@@ -257,8 +259,21 @@ private suspend fun writeBypassFile(context: Context, routes: List<BypassRoute>)
  */
 class MainActivity : ComponentActivity() {
 
+    /**
+     * Ссылка входа из бота, ждущая обработки.
+     *
+     * `launchMode="singleTask"` означает две двери для одного и того же события:
+     * холодный запуск по ссылке приходит в `onCreate`, а возврат из Telegram на
+     * уже открытую активность — в `onNewIntent`. Оба пути кладут URI сюда, и
+     * дальше разбор один (`DeepLinkGuard`). Хранилище живёт на активности, а не в
+     * `remember` композиции: иначе пересоздание активности теряло бы ссылку.
+     */
+    private val loginDeepLink = MutableStateFlow<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Холодный запуск по ссылке: намерение уже здесь.
+        deliverLoginIntent(intent)
         // Метрики уходят фоном, независимо от того, открыт ли экран: задача
         // переживает перезапуск и не требует держать приложение в памяти.
         TelemetryScheduler.enqueue(applicationContext)
@@ -287,15 +302,47 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .windowInsetsPadding(WindowInsets.safeDrawing),
                 ) {
-                    VpnApp()
+                    // Ссылку собираем здесь, а не внутри `VpnApp`: коллекция
+                    // должна переживать перекомпозицию, а сама активность — нет.
+                    val deepLink by loginDeepLink.collectAsStateWithLifecycle()
+                    VpnApp(deepLink, onLoginDeepLinkConsumed = { loginDeepLink.value = null })
                 }
             }
         }
     }
+
+    /**
+     * Вторая дверь ссылки: возврат из Telegram на живую активность.
+     *
+     * `LaunchMode.singleTask` перенаправляет повторный запуск сюда, а не в
+     * `onCreate`. Без этого переопределения возврат из бота не доходил бы до
+     * приложения вовсе — именно поэтому фильтр в манифесте был объявлен, но
+     * «не работал».
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // `setIntent` обязателен: `getIntent()` иначе вернёт намерение
+        // первоначального запуска, и повторные ссылки перестанут отличаться.
+        setIntent(intent)
+        deliverLoginIntent(intent)
+    }
+
+    /**
+     * Отдать ссылку входа дальше, если она наша.
+     *
+     * Проверка — по схеме и хосту фильтра (`vpnapp://login`), а не по факту
+     * «что-то пришло во VIEW»: активность ловит и чужие намерения (MAIN), и
+     * реагировать на них тут незачем.
+     */
+    private fun deliverLoginIntent(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme != DeepLinkGuard.SCHEME || data.host != DeepLinkGuard.HOST) return
+        loginDeepLink.value = data.toString()
+    }
 }
 
 @Composable
-private fun VpnApp() {
+private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Unit) {
     val context = LocalContext.current
     val tunnel = remember {
         AppTunnelController(
@@ -328,6 +375,24 @@ private fun VpnApp() {
         AuthViewModel(graph.authApi, graph.sessionStore, android.os.Build.MODEL)
     }
     val authState by authViewModel.state.collectAsState()
+
+    // Ссылка разбирается один раз, на входе в обработку, и сверяется с кодом
+    // ТЕКУЩЕЙ операции входа: `DeepLinkGuard` вернёт код подтверждения только
+    // если `code` из ссылки совпал с ожидаемым. Порядок — «сначала проверка
+    // ссылки, затем подстановка» — несущий: иначе подменить код операции чужой
+    // ссылкой было бы возможно.
+    LaunchedEffect(loginDeepLinkUri, authState) {
+        // Одноразовость: ссылка обрабатывается РОВНО раз. Иначе каждая смена
+        // состояния (например, экран вернулся к вводу после неверного кода)
+        // заново подставляла бы старый код, затирая то, что пользователь правит.
+        val uri = loginDeepLinkUri ?: return@LaunchedEffect
+        val challenge = (authState as? AuthUiState.AwaitingNonce)?.challenge ?: return@LaunchedEffect
+        val nonce = DeepLinkGuard.nonceFrom(uri, challenge.publicCode) ?: return@LaunchedEffect
+        authViewModel.prefillNonce(nonce)
+        onLoginDeepLinkConsumed()
+    }
+
+    val prefilledNonce by authViewModel.prefilledNonce.collectAsState()
 
     // `bypassSupported` нужен экрану «Обходы» так же, как главному: на API < 33
     // `excludeRoute` не существует, и список обходов там записан, но не применён.
@@ -926,6 +991,8 @@ private fun VpnApp() {
     // потомок, и поставленный до AppRoot шит оказался бы под ним.
     Box(modifier = Modifier.fillMaxSize()) {
     AppRoot(
+        prefilledNonce = prefilledNonce,
+        onPrefilledNonceConsumed = authViewModel::consumePrefilledNonce,
         state = AppRootState(
             status = status,
             configs = displayConfigs,

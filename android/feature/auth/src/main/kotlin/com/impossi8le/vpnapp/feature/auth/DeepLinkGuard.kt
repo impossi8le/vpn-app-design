@@ -16,12 +16,32 @@ package com.impossi8le.vpnapp.feature.auth
  * Чего это НЕ даёт: перехватить ссылку и показать фишинговый экран чужое
  * приложение всё ещё может. Но получить из этого сессию — нет: `secret`
  * остаётся на устройстве и в ссылке не передаётся (контракт §1).
+ *
+ * **Второй параметр — код подтверждения.** Бот показывает пользователю
+ * шестизначный `device_nonce`, и раньше его приходилось набирать руками здесь.
+ * Ссылка из бота (`vpnapp://login?code=<public_code>&nonce=<device_nonce>`)
+ * несёт его рядом с кодом операции: приложение достаёт код и подставляет в поле
+ * само. Значение принимается ТОЛЬКО при совпавшем коде операции — иначе
+ * сторонний APK, объявивший нашу схему, диктовал бы приложению код подтверждения
+ * для чужой операции.
  */
 object DeepLinkGuard {
 
     /** Схема и хост, которые мы объявили в манифесте. */
     const val SCHEME = "vpnapp"
     const val HOST = "login"
+
+    /** Код операции: по нему ссылка сверяется с начатым входом. */
+    private const val CODE_PARAM = "code"
+
+    /**
+     * Код подтверждения (`device_nonce`), который бот иначе показывал бы
+     * цифрами для ручного ввода.
+     */
+    private const val NONCE_PARAM = "nonce"
+
+    /** Код подтверждения всегда шестизначный (контракт §2). */
+    private const val NONCE_LENGTH = 6
 
     /**
      * Код из ссылки, если она нам подходит.
@@ -34,12 +54,35 @@ object DeepLinkGuard {
         if (uri == null || expectedCode == null) return null
         if (!uri.startsWith("$SCHEME://$HOST")) return null
 
-        val code = extractParam(uri, "code") ?: return null
+        val code = extractParam(uri, CODE_PARAM) ?: return null
 
         // Совпадение с ожидаемым кодом — единственное, что делает ссылку
         // осмысленной. Без этого сторонний APK, объявивший нашу схему, мог бы
         // подсунуть свой код и увести пользователя в чужую операцию входа.
         return if (code == expectedCode) code else null
+    }
+
+    /**
+     * Код подтверждения из ссылки — если её код операции совпал с ожидаемым.
+     *
+     * Отдельная точка входа от [publicCodeFrom], а не второй возвращаемый
+     * параметр: вызывающему нужен ровно этот результат, а не сама проверка
+     * ссылки. Гейт тот же — сначала [publicCodeFrom], и только затем `nonce`.
+     * Так подмена кода подтверждения чужой ссылкой невозможна по построению.
+     *
+     * @return шесть цифр из ссылки или `null`, если ссылка не наша, код операции
+     *   не совпал, параметра нет, или он не похож на код подтверждения.
+     */
+    fun nonceFrom(uri: String?, expectedCode: String?): String? {
+        // Гейт по коду операции: без совпадения ссылка не наша, и `nonce` из неё
+        // брать нельзя даже если по форме он правильный.
+        val accepted = uri?.takeIf { publicCodeFrom(it, expectedCode) != null } ?: return null
+
+        val nonce = extractParam(accepted, NONCE_PARAM) ?: return null
+        // Шесть цифр — ровно то, что ждёт поле ввода (filter(Char::isDigit).take(6))
+        // и контракт §2. Всё прочее — заведомо неверный ввод, и подставлять его
+        // в поле значило бы показать мусор вместо кода.
+        return nonce.takeIf { it.length == NONCE_LENGTH && it.all(Char::isDigit) }
     }
 
     /**
@@ -49,7 +92,10 @@ object DeepLinkGuard {
      * юнит-тестом на JVM, а не только на устройстве.
      */
     private fun extractParam(uri: String, name: String): String? {
-        val query = uri.substringAfter('?', missingDelimiterValue = "").ifEmpty { return null }
+        // Фрагмент отбрасываем: `code` до `#` — тот же параметр, а `nonce` после
+        // `#` нам не принадлежит (у фрагмента своё назначение).
+        val query = uri.substringAfter('?', missingDelimiterValue = "").substringBefore('#')
+        if (query.isEmpty()) return null
         return query.split('&')
             .map { it.split('=', limit = 2) }
             .firstOrNull { it.size == 2 && it[0] == name }
