@@ -823,10 +823,23 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
         rawDownloadState
     }
 
-    // Огрызки ЧУЖИХ версий не нужны; огрызок текущей берегём — его докачает
-    // следующая попытка. Раньше удалялись все, и докачка была невозможна в
-    // принципе: сервер поддерживает Range, а качать всё равно приходилось с нуля.
-    LaunchedEffect(Unit) { apkDownloader.clearStale(BuildConfig.VERSION_CODE) }
+    // Мусор от ЧУЖИХ версий не нужен; нужные берегём — их докачает следующая
+    // попытка или отдаст установщик.
+    //
+    // **Ключ — `updateState`, и без него был дефект.** Скачанное обновление
+    // лежит под номером ДОСТУПНОЙ версии (123), а `BuildConfig.VERSION_CODE` —
+    // это версия УСТАНОВЛЕННОЙ (119). С одним лишь `VERSION_CODE` каждый запуск
+    // стирал скачанное обновление как «чужое»: баннер говорил «скачано», кнопка
+    // не находила файл. Эффект перезапускается, когда проверка узнала версию, —
+    // тогда-то её и добавляем в список нужных.
+    LaunchedEffect(updateState) {
+        val offered = (updateState as? UpdateUiState.Available)?.versionCode
+        if (offered != null) {
+            apkDownloader.clearStale(BuildConfig.VERSION_CODE, offered)
+        } else {
+            apkDownloader.clearStale(BuildConfig.VERSION_CODE)
+        }
+    }
 
     val updateProgress = (downloadState as? UpdateDownloadState.Downloading)?.percent
     val updatePausedAt = (downloadState as? UpdateDownloadState.Paused)?.percent

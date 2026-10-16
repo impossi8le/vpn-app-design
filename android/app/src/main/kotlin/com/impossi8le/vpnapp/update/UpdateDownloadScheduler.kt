@@ -66,6 +66,10 @@ object UpdateDownloadScheduler {
         WorkManager.getInstance(context).cancelUniqueWork(ApkDownloadWorker.UNIQUE_NAME)
         ApkDownloader.partFile(context.cacheDir, versionCode).delete()
         ApkDownloader.etagFile(context.cacheDir, versionCode).delete()
+        // И готовый файл тоже: «Позже» значит «не хочу занимать место», а APK
+        // весит под 60 МБ. Раньше он оставался в кеше навсегда — пользователь
+        // отложил обновление, а место всё равно занято.
+        ApkDownloader.readyFile(context.cacheDir, versionCode)?.delete()
     }
 
     /**

@@ -195,13 +195,41 @@ class ApkDownloaderTest {
         val alienEtag = ApkDownloader.etagFile(cacheDir, 6).apply { writeText("\"v0\"") }
         val kept = File(cacheDir, "keep.txt").apply { writeText("x") }
 
-        ApkDownloader(OkHttpClient(), cacheDir).clearStale(currentVersionCode = 7)
+        ApkDownloader(OkHttpClient(), cacheDir).clearStale(7)
 
         assertTrue(mine.exists(), "огрызок ЭТОЙ версии нужен для докачки — его не трогаем")
         assertTrue(mineEtag.exists(), "метка нужна вместе с огрызком")
         assertTrue(!alien.exists(), "огрызок другой версии только занимает место")
         assertTrue(!alienEtag.exists(), "метка чужой версии едет с её огрызком")
         assertTrue(kept.exists(), "посторонние файлы не трогаем")
+    }
+
+    @Test
+    fun `скачанное обновление не стирается как чужое`() {
+        // Живой дефект 1.0.119. Установлена сборка 119, скачано обновление 123:
+        // файл лежит как update-123.apk, а `BuildConfig.VERSION_CODE` равен 119.
+        // Пока в список нужных передавали только установленную версию, КАЖДЫЙ
+        // запуск приложения стирал скачанное обновление — баннер говорил
+        // «скачано», а кнопка не находила файл и молчала.
+        val downloaded = File(cacheDir, "update-123.apk").apply { writeBytes(ByteArray(50)) }
+
+        ApkDownloader(OkHttpClient(), cacheDir).clearStale(119, 123)
+
+        assertTrue(
+            downloaded.exists(),
+            "файл ПРЕДЛОЖЕННОЙ версии — не мусор: из-за его удаления кнопка «Установить» молчала",
+        )
+    }
+
+    @Test
+    fun `без известной версии обновления чужой файл убирается`() {
+        // Обратная сторона: пока версия обновления неизвестна, нужную не угадать,
+        // и старый файл честнее считать мусором, чем держать 60 МБ неизвестно чего.
+        val old = File(cacheDir, "update-120.apk").apply { writeBytes(ByteArray(50)) }
+
+        ApkDownloader(OkHttpClient(), cacheDir).clearStale(119)
+
+        assertTrue(!old.exists(), "без известной версии обновления файл не нужен")
     }
 
     @Test

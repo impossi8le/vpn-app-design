@@ -153,15 +153,22 @@ class ApkDownloader(
     }
 
     /**
-     * Убрать огрызки чужих версий, сохранив тот, что принадлежит [currentVersionCode].
+     * Убрать файлы чужих версий, сохранив нужные.
      *
-     * Прошлая версия удаляла ВСЕ огрызки при запуске — из-за этого докачка была
-     * невозможна в принципе, даже когда сервер её поддерживает.
+     * **Почему версий ДВЕ, и это не перестраховка.** Установленная сборка и та,
+     * что скачивается, имеют РАЗНЫЕ номера: скачанный APK лежит как
+     * `update-<версия обновления>.apk`, а `BuildConfig.VERSION_CODE` — это версия
+     * уже установленного приложения. Когда сюда передавали только её, каждый
+     * запуск приложения удалял скачанное обновление как «чужое»: баннер помнил
+     * «скачано», а кнопка не находила файл и молчала (дефект 1.0.119).
+     *
+     * @param keepVersionCodes номера, файлы которых нужно сохранить. Всё
+     *   остальное — мусор от прошлых версий.
      */
-    fun clearStale(currentVersionCode: Int) {
-        // Огрызок и метка текущей версии нужны для докачки — трогаем только чужие.
+    fun clearStale(vararg keepVersionCodes: Int) {
+        val keep = keepVersionCodes.toSet()
         cacheDir.listFiles()
-            ?.filter { versionOf(it.name)?.let { v -> v != currentVersionCode } == true }
+            ?.filter { versionOf(it.name)?.let { v -> v !in keep } == true }
             ?.forEach { it.delete() }
     }
 
@@ -186,6 +193,6 @@ class ApkDownloader(
         private fun versionOf(name: String): Int? =
             VERSIONED.find(name)?.groupValues?.get(1)?.toIntOrNull()
 
-        private val VERSIONED = Regex("""^update-(\d+)\.apk\.(part|etag)$""")
+        private val VERSIONED = Regex("""^update-(\d+)\.apk(\.(part|etag))?$""")
     }
 }
