@@ -64,6 +64,14 @@ sealed interface AppDestination {
     /** О сервисе. */
     data object About : AppDestination
 
+    /**
+     * Как добавить плитку «Быстрых настроек» на панель.
+     *
+     * Отдельный экран, а не строка в «О сервисе»: инструкция из нескольких шагов
+     * с оговорками не помещается в одну строку списка.
+     */
+    data object TileHowTo : AppDestination
+
     /** Демонстрация интерфейса без подписки. */
     data object Demo : AppDestination
 }

@@ -26,6 +26,7 @@ import com.impossi8le.vpnapp.feature.account.AccountScreenState
 import com.impossi8le.vpnapp.feature.account.DefaultAccountScreenState
 import com.impossi8le.vpnapp.feature.account.DemoConfig
 import com.impossi8le.vpnapp.feature.account.DemoScreen
+import com.impossi8le.vpnapp.feature.account.HowToAddTileScreen
 import com.impossi8le.vpnapp.feature.account.HowToEnableVpnScreen
 import com.impossi8le.vpnapp.feature.account.NoSubscriptionScreen
 import com.impossi8le.vpnapp.feature.auth.LoginScreen
@@ -67,6 +68,17 @@ fun AppRoot(
      * знает про активность и не должен.
      */
     onMinimize: () -> Unit = {},
+    /**
+     * Код подтверждения, пришедший ссылкой из Telegram.
+     *
+     * `null` в норме: вход по ссылке — ускорение, а не замена ручного ввода.
+     * Приходит снаружи, из `MainActivity`, которая ловит намерение: навигация и
+     * разбор ссылки живут в разных местах, и скрещивать их здесь значило бы
+     * тащить платформенный разбор в композицию.
+     */
+    prefilledNonce: String? = null,
+    /** Экран подтвердил приём кода из ссылки — см. `LoginWaitingScreen`. */
+    onPrefilledNonceConsumed: () -> Unit = {},
 ) {
     // Стек навигации: собственный, потому что нужен ровно один вид движения.
     //
@@ -240,6 +252,10 @@ fun AppRoot(
                 signingIn = state.signingIn,
                 errorText = state.loginError,
                 onSubmitNonce = { nonce -> onIntent(AppIntent.SubmitNonce(nonce)) },
+                // Код из ссылки уходит в то же поле и тот же путь, что и
+                // набранный руками: отдельной ветки «вход по ссылке» нет.
+                prefilledNonce = prefilledNonce,
+                onPrefilledNonceConsumed = onPrefilledNonceConsumed,
                 // Открыть именно Telegram, а не начинать вход заново: кнопка
                 // подписана «Открыть Telegram ещё раз», и пока идёт опрос,
                 // `StartLogin` молча ничего не делал.
@@ -363,6 +379,11 @@ fun AppRoot(
                 onBack = { back() },
                 onOpenPrivacy = { onIntent(AppIntent.OpenPrivacyPolicy) },
                 onOpenTerms = { onIntent(AppIntent.OpenTerms) },
+                onOpenTileHowTo = { go(AppDestination.TileHowTo) },
+            )
+
+            AppDestination.TileHowTo -> HowToAddTileScreen(
+                onBack = { back() },
             )
 
             AppDestination.Demo -> DemoScreen(

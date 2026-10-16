@@ -22,6 +22,7 @@ const val ABOUT_PRIVACY_TAG = "about_privacy"
 const val ABOUT_TERMS_TAG = "about_terms"
 const val ABOUT_UPDATE_TAG = "about_update"
 const val ABOUT_CHECK_UPDATE_TAG = "about_check_update"
+const val ABOUT_TILE_TAG = "about_tile"
 
 /**
  * О сервисе.
@@ -54,6 +55,8 @@ fun AboutScreen(
     onBack: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onOpenTerms: () -> Unit,
+    /** Открыть инструкцию «как добавить плитку». Дефолт — ничего не делать. */
+    onOpenTileHowTo: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -74,6 +77,20 @@ fun AboutScreen(
             fontSize = 14.sp,
             lineHeight = 21.sp,
         )
+
+        // Раздел про удобство, а не про защиту (§6): тут только про то, как
+        // добавить значок быстрого доступа. Честно сказано, что плитки на панели
+        // пока нет — её добавляет сам пользователь.
+        SectionLabel(text = "Быстрые настройки")
+
+        VpnCard {
+            VpnRow(
+                key = "Плитка «VPN»",
+                sub = "Подключение одним тапом из шторки. Значок нужно добавить " +
+                    "на панель самому — пока этого не сделано, плитки там нет.",
+                trailing = { LinkAction("Как добавить ›", onOpenTileHowTo, ABOUT_TILE_TAG) },
+            )
+        }
 
         SectionLabel(text = "Сборка")
 
