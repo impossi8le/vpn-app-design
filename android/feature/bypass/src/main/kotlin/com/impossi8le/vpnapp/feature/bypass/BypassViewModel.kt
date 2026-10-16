@@ -260,6 +260,17 @@ class BypassViewModel(
             is CustomTarget.Valid -> apply {
                 when (val resolved = control.resolve(listOf(parsed.target))) {
                     is BypassResolve.Resolved -> {
+                        // Сервер ответил успешно, но подсетей не вернул: цель не
+                        // развернулась (нет адреса за доменом). Раньше это
+                        // выдавалось за «Добавлено»: список уходил на сервер без
+                        // изменений, а пользователь видел подтверждение и не
+                        // видел обхода. Пустой разбор — это неудача, и здесь ей
+                        // дано то же имя, что и в «обойти все» (см.
+                        // [applyAllServices]): обе дороги пишут один список.
+                        if (resolved.routes.isEmpty()) {
+                            fail("Не удалось разобрать адрес — проверьте домен или укажите подсеть")
+                            return@apply
+                        }
                         val named = resolved.routes.map { it.copy(name = parsed.name) }
                         val merged = mergeRoutes(control.fetchRoutes().orEmpty(), named)
                         writeAndReload(merged) { "Добавлено: ${parsed.name ?: parsed.target}" }

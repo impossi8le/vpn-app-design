@@ -285,6 +285,31 @@ class BypassViewModelTest {
     }
 
     @Test
+    fun `пустой разбор адреса не выдаётся за добавление`() = runTest(scheduler) {
+        // Сервер ответил `200`, но подсетей не вернул: цель не развернулась
+        // (нет A-записи, CNAME без адреса — для СВОЕГО домена это обычное дело).
+        // Раньше это выдавалось за успех: «Добавлено: …» показывалось, а список
+        // уходил на сервер без изменений. Пользователь видел подтверждение и не
+        // видел обхода — ровно симптом «добавить обход нельзя».
+        val fake = FakeBypassControl(
+            routesResult = listOf(BypassRoute("77.88.0.0", 16)),
+            resolveResult = BypassResolve.Resolved(emptyList()),
+            writeResult = BypassWrite.Applied(1),
+        )
+        val vm = BypassViewModel(fake, supported = true)
+        vm.start()
+        vm.onCustomInputChange("нет-такого-домена.invalid")
+
+        vm.addCustom()
+
+        assertEquals(0, fake.setCount, "пустой разбор не должен ничего писать на сервер")
+        assertTrue(vm.state.value.messageError, "пустой разбор — это неудача, а не «Добавлено»")
+        assertTrue(vm.state.value.message!!.isNotBlank(), "причина обязана быть словами")
+        // Список остаётся тем, что был: ложного «добавлено» в состоянии нет.
+        assertEquals(listOf(BypassRoute("77.88.0.0", 16)), vm.state.value.routes)
+    }
+
+    @Test
     fun `негодный адрес не добавляется локально и объясняется`() = runTest(scheduler) {
         val fake = FakeBypassControl(resolveResult = BypassResolve.InvalidTarget)
         val vm = BypassViewModel(fake, supported = true)
