@@ -26,9 +26,14 @@ import com.impossi8le.vpnapp.feature.account.AccountScreenState
 import com.impossi8le.vpnapp.feature.account.DefaultAccountScreenState
 import com.impossi8le.vpnapp.feature.account.DemoConfig
 import com.impossi8le.vpnapp.feature.account.DemoScreen
+import com.impossi8le.vpnapp.feature.account.EngineLicenseNotice
 import com.impossi8le.vpnapp.feature.account.HowToAddTileScreen
 import com.impossi8le.vpnapp.feature.account.HowToEnableVpnScreen
 import com.impossi8le.vpnapp.feature.account.NoSubscriptionScreen
+import com.impossi8le.vpnapp.feature.account.ThirdPartyLicensesScreen
+import com.impossi8le.vpnapp.feature.account.engineLicenseNotice
+import com.impossi8le.vpnapp.vpnengine.EngineCopyright
+import com.impossi8le.vpnapp.vpnengine.engineCopyright
 import com.impossi8le.vpnapp.feature.auth.LoginScreen
 import com.impossi8le.vpnapp.feature.auth.LoginWaitingScreen
 import com.impossi8le.vpnapp.feature.bypass.BypassScreen
@@ -379,9 +384,28 @@ fun AppRoot(
                 onOpenPrivacy = { onIntent(AppIntent.OpenPrivacyPolicy) },
                 onOpenTerms = { onIntent(AppIntent.OpenTerms) },
                 onOpenTileHowTo = { go(AppDestination.TileHowTo) },
+                onOpenLicenses = { go(AppDestination.ThirdPartyLicenses) },
             )
 
             AppDestination.TileHowTo -> HowToAddTileScreen(
+                onBack = { back() },
+            )
+
+            AppDestination.ThirdPartyLicenses -> ThirdPartyLicensesScreen(
+                // Текст уведомления читается у ядра ОДИН раз при открытии экрана:
+                // вызов трогает нативную библиотеку, и на каждой рекомпозиции его
+                // повторять незачем. `remember` без ключей — ровно на время показа
+                // этого экрана. Тип ядра переводится в тип экрана здесь: фича не
+                // тянет `:vpnengine` в свой API, граница остаётся в точке сборки.
+                engine = remember {
+                    when (val notice = engineCopyright()) {
+                        // Текст уже проверен ядром на непустоту — берём как есть.
+                        is EngineCopyright.Text -> EngineLicenseNotice.Text(notice.text)
+
+                        is EngineCopyright.Unavailable ->
+                            engineLicenseNotice(null, notice.reason)
+                    }
+                },
                 onBack = { back() },
             )
 

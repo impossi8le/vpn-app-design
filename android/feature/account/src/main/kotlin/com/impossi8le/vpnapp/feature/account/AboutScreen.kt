@@ -23,6 +23,7 @@ const val ABOUT_TERMS_TAG = "about_terms"
 const val ABOUT_UPDATE_TAG = "about_update"
 const val ABOUT_CHECK_UPDATE_TAG = "about_check_update"
 const val ABOUT_TILE_TAG = "about_tile"
+const val ABOUT_LICENSES_TAG = "about_licenses"
 
 /**
  * О сервисе.
@@ -57,6 +58,8 @@ fun AboutScreen(
     onOpenTerms: () -> Unit,
     /** Открыть инструкцию «как добавить плитку». Дефолт — ничего не делать. */
     onOpenTileHowTo: () -> Unit = {},
+    /** Открыть список лицензий сторонних компонентов. Дефолт — ничего не делать. */
+    onOpenLicenses: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -186,6 +189,15 @@ fun AboutScreen(
                 VpnRow(
                     key = "Условия использования",
                     trailing = { LinkAction("Открыть ›", onOpenTerms, ABOUT_TERMS_TAG) },
+                )
+                // Лицензии стороннего кода — в разделе «Документы», а не отдельным
+                // разделом: это тоже правовой текст, и пользователь ищет его там же.
+                // Строка есть всегда, даже если ядро недоступно: лицензия ядра
+                // известна из наших данных, а недоступность текста видна внутри.
+                VpnRow(
+                    key = "Лицензии сторонних компонентов",
+                    sub = "Ядро OpenVPN 3 и его зависимости",
+                    trailing = { LinkAction("Открыть ›", onOpenLicenses, ABOUT_LICENSES_TAG) },
                 )
             }
         }
