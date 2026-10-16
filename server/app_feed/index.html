@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Установка приложения — Free VPN</title>
+<style>
+  :root{--void:#0b0e14;--bone:#f2f4f8;--sec:#9aa3b2;--ice:#6fb3ff;--amber:#e0a44a;--card:#141922;--edge:#232b38}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--void);color:var(--bone);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;padding:20px}
+  .wrap{max-width:560px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 6px}
+  .sub{color:var(--sec);font-size:14px;margin-bottom:20px}
+  .card{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:16px;margin-bottom:14px}
+  .btn{display:block;text-align:center;background:var(--bone);color:#0b0e14;font-weight:600;text-decoration:none;padding:15px;border-radius:12px;font-size:17px}
+  .btn:active{opacity:.85}
+  .meta{color:var(--sec);font-size:13px;margin-top:10px;text-align:center}
+  ol{padding-left:20px;margin:8px 0 0}
+  li{margin-bottom:10px}
+  .amber{color:var(--amber)}
+  details{margin-top:8px}
+  summary{cursor:pointer;color:var(--ice);font-size:14px}
+  code{background:#0b0e14;padding:2px 6px;border-radius:5px;font-size:13px;word-break:break-all}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Приложение Free VPN</h1>
+  <div class="sub">Android. Подключение в один тап, сервер и страна уже внутри.</div>
+
+  <div class="card">
+    <a class="btn" id="dl" href="https://194-87-252-181.sslip.io:4443/app/vpn-109.apk">Скачать приложение</a>
+    <div class="meta" id="meta">Версия 109</div>
+  </div>
+
+  <div class="card">
+    <b>Как установить</b>
+    <ol>
+      <li>Нажмите «Скачать приложение» выше и дождитесь загрузки файла.</li>
+      <li>Откройте скачанный файл. Android спросит разрешение на установку из этого источника — разрешите.</li>
+      <li>Если Play Защита блокирует установку: <a href="https://play.google.com/protect/home" style="color:var(--ice)"><b>откройте Play Защиту</b></a>, нажмите шестерёнку и выключите «Сканирование приложений с помощью Play Защиты».</li>
+      <li>Вернитесь к установке. <b>После установки включите этот тумблер обратно.</b></li>
+      <li>Откройте приложение, войдите тем же Telegram-аккаунтом, что и подписка, и нажмите «Подключить».</li>
+    </ol>
+    <details>
+      <summary>Не ставится совсем?</summary>
+      <p style="color:var(--sec);font-size:14px">Включите в настройках телефона «Установка из неизвестных источников» для браузера, из которого скачивали. Если и это не помогло — напишите в поддержку в боте.</p>
+    </details>
+  </div>
+
+  <div class="card">
+    <b>Обновление</b>
+    <p style="color:var(--sec);font-size:14px;margin:8px 0 0">Приложение само скажет, когда выйдет новая версия, и предложит обновиться прямо в нём — установится поверх, аккаунт и подключения сохранятся.</p>
+  </div>
+</div>
+<script>
+(function () {
+  var btn = document.getElementById('dl');
+  var meta = document.getElementById('meta');
+  if (!btn || !meta || !window.fetch) return;
+  fetch('/api/v1/app/latest?platform=android', { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || !d.version || !d.apk_url) return;
+      btn.href = d.apk_url;
+      meta.textContent = 'Версия ' + d.version;
+      fetch(d.apk_url, { headers: { Range: 'bytes=0-0' } }).then(function (h) {
+        var cr = h.headers.get('Content-Range');
+        var n = cr ? parseInt(cr.split('/')[1], 10) : 0;
+        if (n > 0) meta.textContent = 'Версия ' + d.version + ' · ' + (n / 1048576).toFixed(1).replace('.', ',') + ' МБ';
+      }).catch(function () {});
+    })
+    .catch(function () {});
+})();
+</script>
+</body>
+</html>
