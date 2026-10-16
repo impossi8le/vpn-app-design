@@ -126,6 +126,14 @@ fun ConnectionScreen(
      * как молчание — при 106 МБ это минуты на медленной сети.
      */
     updateDownload: UpdateDownloadState = UpdateDownloadState.Idle,
+    /**
+     * Почему установка не началась или сорвалась. `null` — причины нет.
+     *
+     * Показывается ЗДЕСЬ, у кнопки, а не только в «О сервисе»: нажатие
+     * «Установить» без этого выглядело как молчание — сообщение писалось, но
+     * оставалось на другом экране, куда пользователь не пойдёт.
+     */
+    updateMessage: String? = null,
     onDownloadUpdate: () -> Unit = {},
     onPauseUpdateDownload: () -> Unit = {},
     onInstallUpdate: () -> Unit = {},
@@ -232,6 +240,7 @@ fun ConnectionScreen(
                     UpdateBanner(
                         versionCode = updateVersionCode,
                         download = updateDownload,
+                        message = updateMessage,
                         onDownload = onDownloadUpdate,
                         onPause = onPauseUpdateDownload,
                         onInstall = onInstallUpdate,
@@ -514,6 +523,7 @@ const val HOME_UPDATE_DISMISS_TAG = "home_update_dismiss"
 const val HOME_UPDATE_PROGRESS_TAG = "home_update_progress"
 const val HOME_UPDATE_PAUSE_TAG = "home_update_pause"
 const val HOME_UPDATE_INSTALL_TAG = "home_update_install"
+const val HOME_UPDATE_MESSAGE_TAG = "home_update_message"
 const val CONNECTION_BYPASS_TAG = "connection_bypass"
 
 /**
@@ -571,6 +581,7 @@ private fun AlwaysOnHintCard(
 private fun UpdateBanner(
     versionCode: Int,
     download: UpdateDownloadState,
+    message: String?,
     onDownload: () -> Unit,
     onPause: () -> Unit,
     onInstall: () -> Unit,
@@ -583,6 +594,19 @@ private fun UpdateBanner(
                 color = VpnColors.Bone,
                 fontSize = 15.sp,
             )
+            // Причина отказа — сразу под заголовком, а не на другом экране:
+            // без неё нажатие «Установить» выглядело как молчание.
+            if (message != null) {
+                Text(
+                    text = message,
+                    color = VpnColors.Amber,
+                    fontSize = 13.5.sp,
+                    lineHeight = 19.sp,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .testTag(HOME_UPDATE_MESSAGE_TAG),
+                )
+            }
             when (download) {
                 // Идёт закачка. «Позже» в это время нет намеренно: рядом с
                 // «Паузой» оно читалось бы как её дубль, а отменять закачку

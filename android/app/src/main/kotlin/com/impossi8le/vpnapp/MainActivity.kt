@@ -799,9 +799,29 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
     // `Ready` размечаем по файлу на диске: WorkManager помнит завершённую работу,
     // но единственное доказательство, что APK действительно скачан, — сам файл.
     // Показать «Установить» для того, чего нет, значило бы вести в никуда.
-    val downloadState by remember(context) {
+    val rawDownloadState by remember(context) {
         UpdateDownloadScheduler.observe(context)
     }.collectAsStateWithLifecycle(initialValue = UpdateDownloadState.Idle)
+
+    // «Готово» подтверждается ФАЙЛОМ, а не памятью воркера.
+    //
+    // Воркер помнит «работа удалась», но не помнит, ЧЬЯ это была версия. Если
+    // скачали сборку 120, а на сервере уже 123, баннер показывал «Обновление
+    // скачано», а установка искала файл под 123 и не находила его — на одном
+    // экране «скачано» и «файл не найден» одновременно. Файл привязан к версии,
+    // поэтому именно он и решает: нет `update-<текущая>.apk` — нет готовности.
+    val downloadState = if (rawDownloadState is UpdateDownloadState.Ready) {
+        val version = (updateState as? UpdateUiState.Available)?.versionCode
+        if (version != null && ApkDownloader.readyFile(context.cacheDir, version) != null) {
+            UpdateDownloadState.Ready
+        } else {
+            // Скачано что-то, что уже не предложить: показываем приглашение
+            // скачать заново, а не мёртвую кнопку «Установить».
+            UpdateDownloadState.Idle
+        }
+    } else {
+        rawDownloadState
+    }
 
     // Огрызки ЧУЖИХ версий не нужны; огрызок текущей берегём — его докачает
     // следующая попытка. Раньше удалялись все, и докачка была невозможна в
@@ -1085,17 +1105,13 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
                 gitSha = BuildConfig.GIT_SHA,
             ),
             update = updateState,
-            // Файл на диске главнее памяти воркера: «готово к установке» значит,
-            // что APK лежит и его можно отдать установщику. Работа могла
-            // завершиться до перезапуска процесса, и тогда этот факт помнит
-            // только файл.
-            updateDownload = when {
-                downloadState is UpdateDownloadState.Ready -> downloadState
-                (updateState as? UpdateUiState.Available)?.versionCode
-                    ?.let { ApkDownloader.readyFile(context.cacheDir, it) } != null ->
-                    UpdateDownloadState.Ready
-                updatePausedAt != null -> UpdateDownloadState.Paused(updatePausedAt)
-                else -> downloadState
+            // `downloadState` уже сверен с файлом на диске (см. его объявление):
+            // «готово» приходит только когда `update-<текущая>.apk` лежит. Здесь
+            // остаётся лишь пауза, которую воркер помнит отдельно.
+            updateDownload = if (updatePausedAt != null) {
+                UpdateDownloadState.Paused(updatePausedAt)
+            } else {
+                downloadState
             },
             updateMessage = updateMessage,
             updateBannerDismissed = updateBannerDismissed,

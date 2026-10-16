@@ -7,6 +7,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -217,5 +218,40 @@ class ApkDownloaderTest {
 
         assertTrue(!ApkDownloader.partFile(cacheDir, 7).exists(), "огрызок переименован в готовый APK")
         assertTrue(!ApkDownloader.etagFile(cacheDir, 7).exists(), "метка осталась бы висеть навсегда")
+    }
+
+    // --- readyFile: готовность привязана к ВЕРСИИ файла ---
+
+    @Test
+    fun `файл другой версии не считается готовым`() {
+        // Живой дефект (1.0.119): скачали сборку 120, на сервере уже 123. Воркер
+        // помнил «успех» и не знал версии, поэтому баннер писал «Обновление
+        // скачано», а установка искала update-123.apk, не находила и молчала.
+        // Готовность обязана определяться файлом ТЕКУЩЕЙ версии.
+        File(cacheDir, "update-120.apk").writeBytes(ByteArray(100) { 1 })
+
+        assertNull(
+            ApkDownloader.readyFile(cacheDir, 123),
+            "файл чужой версии не должен выглядеть готовым к установке",
+        )
+    }
+
+    @Test
+    fun `файл текущей версии считается готовым`() {
+        File(cacheDir, "update-123.apk").writeBytes(ByteArray(100) { 1 })
+
+        assertNotNull(
+            ApkDownloader.readyFile(cacheDir, 123),
+            "файл своей версии — это и есть готовность",
+        )
+    }
+
+    @Test
+    fun `пустой файл не считается готовым`() {
+        // Обрезанный до нуля файл установщик отвергнет, а баннер уже сказал бы
+        // «скачано». Пустота — не готовность.
+        File(cacheDir, "update-123.apk").writeBytes(ByteArray(0))
+
+        assertNull(ApkDownloader.readyFile(cacheDir, 123))
     }
 }

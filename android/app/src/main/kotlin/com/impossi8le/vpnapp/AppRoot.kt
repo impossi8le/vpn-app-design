@@ -308,6 +308,10 @@ fun AppRoot(
                 updateVersionCode = (state.update as? UpdateUiState.Available)
                     ?.takeUnless { state.updateBannerDismissed }?.versionCode,
                 updateDownload = state.updateDownload,
+                // Причину отказа показываем ЗДЕСЬ, у кнопки, а не только в
+                // «О сервисе»: без этого нажатие «Установить» выглядело как
+                // молчание — сообщение писалось, но оставалось на другом экране.
+                updateMessage = state.updateMessage,
                 onDownloadUpdate = { onIntent(AppIntent.DownloadUpdate) },
                 onPauseUpdateDownload = { onIntent(AppIntent.PauseUpdateDownload) },
                 onInstallUpdate = { onIntent(AppIntent.InstallDownloadedUpdate) },
