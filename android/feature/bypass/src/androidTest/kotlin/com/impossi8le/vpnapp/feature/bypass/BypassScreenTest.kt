@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import com.impossi8le.vpnapp.domain.tunnel.BypassCatalog
 import com.impossi8le.vpnapp.domain.tunnel.BypassRoute
@@ -192,8 +193,10 @@ class BypassScreenTest {
             ),
             onAddCustom = { added = true },
         )
-
-        compose.onNodeWithTag(BYPASS_CUSTOM_ADD_TAG).performClick()
+        // Блок «Свой обход» — последний в списке, и без прокрутки его на экране
+        // нет: LazyColumn не составляет элементы за сгибом. Тап по невидимому
+        // узлу не доходит до обработчика.
+        compose.onNodeWithTag(BYPASS_CUSTOM_ADD_TAG).performScrollTo().performClick()
 
         assertEquals(true, added)
     }
@@ -252,9 +255,11 @@ class BypassScreenTest {
         setScreen(
             state = BypassUiState(routes = emptyList(), expandedKeys = setOf(BYPASS_CUSTOM_KEY)),
         )
-
-        compose.onNodeWithTag(BYPASS_CUSTOM_INPUT_TAG).assertIsDisplayed()
-        compose.onNodeWithTag(BYPASS_CUSTOM_ADD_TAG).assertIsDisplayed()
+        // Блок последний в списке: без прокрутки он за сгибом, и LazyColumn его
+        // не составляет вовсе — проверка видимости падала бы на размере экрана,
+        // а не на поведении.
+        compose.onNodeWithTag(BYPASS_CUSTOM_INPUT_TAG).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag(BYPASS_CUSTOM_ADD_TAG).performScrollTo().assertIsDisplayed()
     }
 
     @Test
