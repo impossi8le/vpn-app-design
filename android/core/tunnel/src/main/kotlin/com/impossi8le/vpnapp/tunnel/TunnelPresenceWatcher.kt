@@ -59,6 +59,14 @@ class TunnelPresenceWatcher(
         scope: CoroutineScope,
         current: () -> ConnectionStatus,
         onTunnelLost: (ConnectionStatus) -> Unit,
+        /**
+         * Туннель появился над трафиком.
+         *
+         * Нужен после #32: экран показывает «Подключение», пока факт не
+         * подтверждён. Без этого обратного перехода он застрял бы на нём до
+         * следующего события сервиса, которого может не быть вовсе.
+         */
+        onTunnelPresent: () -> Unit = {},
     ) {
         // Старое задание отменяем ВСЕГДА: иначе каждая смена состояния оставляла
         // бы ещё один живой цикл, и опрос множился бы.
@@ -76,15 +84,27 @@ class TunnelPresenceWatcher(
                 // больше не нужен.
                 val before = current()
                 if (!before.describesTunnelUp) return@launch
-                // Решение принимает ЧИСТАЯ функция — та же, что проверена в
-                // `TunnelPresenceMappingTest`. Здесь только факт из системы и
-                // передача вердикта наружу.
-                val after = before.reconcileWithTunnelPresence(probe.read())
-                if (after != before) {
-                    // Единственный возможный переход здесь — в Disconnected:
-                    // туннель исчез. not Failed: соединение не «не состоялось».
-                    onTunnelLost(after)
-                    return@launch
+
+                when (probe.read()) {
+                    // Туннель над трафиком есть: показ догоняет объявленное.
+                    // Нужен ПОСЛЕ #32, где показ намеренно мягче объявленного:
+                    // без этого перехода экран застрял бы на «Подключении».
+                    TunnelPresence.PRESENT -> onTunnelPresent()
+
+                    // Туннель исчез, НЕ прислав `Disconnected` — например,
+                    // интерфейс снёс кто-то извне. Единственный переход здесь —
+                    // в `Disconnected`, а не `Failed`: соединение не «не
+                    // состоялось», оно было и кончилось.
+                    TunnelPresence.ABSENT -> {
+                        val after = before.reconcileWithTunnelPresence(TunnelPresence.ABSENT)
+                        if (after != before) {
+                            onTunnelLost(after)
+                            return@launch
+                        }
+                    }
+
+                    // Спросить не удалось — не доказательство ни в одну сторону.
+                    TunnelPresence.UNKNOWN -> Unit
                 }
             }
         }

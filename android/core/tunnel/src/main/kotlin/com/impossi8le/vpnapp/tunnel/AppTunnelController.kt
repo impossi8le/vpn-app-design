@@ -73,6 +73,17 @@ class AppTunnelController(
     override val status: StateFlow<ConnectionStatus> = _status
 
     /**
+     * Что объявил сервис, без поправки на факт туннеля.
+     *
+     * Показ (`_status`) может быть мягче объявленного: сервис сказал
+     * `ESTABLISHED`, а туннеля над трафиком ещё нет — экран показывает
+     * «Подключение» (issue #32). Но сторож обязан помнить объявленное, иначе он
+     * не узнает о появлении туннеля и экран застрянет на «Подключении».
+     */
+    @Volatile
+    private var declaredState: ConnectionStatus = ConnectionStatus.Disconnected
+
+    /**
      * Сторож существования туннеля.
      *
      * Пока состояние описывает поднятый туннель, раз в [presenceInterval]
@@ -203,6 +214,7 @@ class AppTunnelController(
         // «Подключено» подтверждается фактом, а не только событием сервиса:
         // решение и причина — в `confirmedByTunnelPresence` (issue #32).
         val declared = state.toConnectionStatus()
+        declaredState = declared
         _status.value = declared.confirmedByTunnelPresence(tunnelPresence.read())
         _appliedBypass.value = appliedBypass
         // Состояние сменилось — пересобрать сторож существования туннеля. Именно
@@ -221,7 +233,14 @@ class AppTunnelController(
     private fun restartPresenceWatch() {
         presenceWatcher.restart(
             scope = watchScope,
-            current = { _status.value },
+            // Наблюдаем за ОБЪЯВЛЕННЫМ состоянием, а не за показанным.
+            //
+            // Разница принципиальна после #32: сервис объявил `ESTABLISHED`, но
+            // туннеля над трафиком ещё нет — показываем «Подключение». Если
+            // следить за показанным, сторож не запустится, и **появление**
+            // туннеля никто не заметит: экран застрянет на «Подключении» до
+            // следующего события сервиса, которого может не быть.
+            current = { declaredState },
             onTunnelLost = { lost ->
                 _status.value = lost
                 // Место, где расхождение возникало наяву. Туннель исчез, НЕ
@@ -230,6 +249,11 @@ class AppTunnelController(
                 // обязан смениться ровно здесь же — иначе плитка осталась бы
                 // «подключён», пока экран уже говорит «не подключено».
                 TunnelStateStore.publish(TunnelState.Idle)
+            },
+            // Туннель появился: показанное состояние догоняет объявленное.
+            onTunnelPresent = {
+                _status.value = declaredState.confirmedByTunnelPresence(TunnelPresence.PRESENT)
+                TunnelStateStore.publish(TunnelState.Established)
             },
         )
     }
