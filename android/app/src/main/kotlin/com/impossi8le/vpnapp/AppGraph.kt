@@ -44,7 +44,13 @@ class AppGraph(
 ) {
     private val filesDir: File = context.applicationContext.filesDir
 
-    val apiClient = ApiClient(baseUrl = API_BASE_URL)
+    // Клиент со знанием адреса нашего сервера: его имя кодирует IP, и резолв не
+    // нужен — под VPN неотвечающий DNS туннеля иначе вешает запросы к API на
+    // десятки секунд (issue #34).
+    val apiClient = ApiClient(
+        baseUrl = API_BASE_URL,
+        http = ApiClient.clientFor(API_BASE_URL),
+    )
     val authApi = AuthApi(apiClient)
     val configApi = ConfigApi(apiClient)
 

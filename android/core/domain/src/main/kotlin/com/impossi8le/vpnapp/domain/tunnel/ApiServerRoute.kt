@@ -28,6 +28,24 @@ fun apiServerRouteOf(baseUrl: String): BypassRoute? {
     return BypassRoute(network = ip, prefixLength = 32, name = API_SERVER_LABEL)
 }
 
+/**
+ * Адрес нашего API-сервера, если он закодирован в имени хоста.
+ *
+ * **Зачем отдельно от [apiServerRouteOf].** Тот же разбор нужен сетевому слою,
+ * чтобы **не спрашивать DNS** про имя, в котором адрес уже есть: под VPN
+ * DNS-сервер туннеля может не отвечать, и тогда резолв висит до таймаута
+ * (проверено на устройстве: `10.91.0.1` первым в списке, 48 секунд ожидания,
+ * запросы к API падают). Обе задачи решает один разбор — держать две копии
+ * значило бы разойтись при первой правке.
+ *
+ * `null` — адрес не закодирован (обычный домен): тогда резолв неизбежен, и
+ * трогать его нельзя.
+ */
+fun apiServerIpOf(baseUrl: String): String? {
+    val host = hostOf(baseUrl) ?: return null
+    return ipFromSslipHost(host)
+}
+
 /** Подпись записи: пользователь должен понимать, что это за строка в списке. */
 const val API_SERVER_LABEL = "Сервер приложения"
 
@@ -49,9 +67,13 @@ private fun hostOf(baseUrl: String): String? {
  * хост. Октеты вне 0…255 тоже отвергаем — иначе `BypassRoute` понёс бы мусор.
  */
 private fun ipFromSslipHost(host: String): String? {
+    // DNS регистронезависим, и имя может прийти в любом регистре. Сравнение
+    // суффикса строго по написанию пропускало бы `194-87-252-181.SSLIP.IO` —
+    // а такой хост указывает ровно на тот же адрес.
+    val lower = host.lowercase()
     val suffix = ".sslip.io"
-    if (!host.endsWith(suffix)) return null
-    val encoded = host.removeSuffix(suffix)
+    if (!lower.endsWith(suffix)) return null
+    val encoded = lower.removeSuffix(suffix)
     val octets = encoded.split('-')
     if (octets.size != 4) return null
     val numbers = octets.map { it.toIntOrNull() ?: return null }
