@@ -17,6 +17,11 @@ android {
     compileSdk = 35
     defaultConfig {
         minSdk = 26
+        // Нужен, чтобы задача `connectedAndroidTest` вообще запускалась: без
+        // раннера она молча не делает ничего. Инструментальный тест здесь —
+        // единственное место, где проверяется чтение факта туннеля у системы:
+        // `ConnectivityManager` на JVM не существует.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -36,4 +41,7 @@ dependencies {
     testImplementation(libs.turbine)
     testRuntimeOnly(libs.junit5.engine)
     testRuntimeOnly(libs.junit5.launcher)
+
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }
