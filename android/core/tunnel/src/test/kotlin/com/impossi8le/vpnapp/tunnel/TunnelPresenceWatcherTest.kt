@@ -154,4 +154,65 @@ class TunnelPresenceWatcherTest {
 
         advanceUntilIdle()
     }
+
+    @Test
+    fun `появление туннеля возвращает показ к объявленному`() = runTest {
+        // Обратный переход из #32. Показ намеренно мягче объявленного: сервис
+        // сказал ESTABLISHED, а туннеля над трафиком ещё нет — экран показывает
+        // «Подключение». Без этого перехода он застрял бы на нём до следующего
+        // события сервиса, которого может не быть вовсе.
+        val probe = FakeProbe(listOf(TunnelPresence.ABSENT, TunnelPresence.PRESENT))
+        val watcher = TunnelPresenceWatcher(probe, interval = 5.seconds)
+        var present = 0
+
+        watcher.restart(
+            this,
+            current = { ConnectionStatus.VerifyingProtection },
+            onTunnelLost = {},
+            onTunnelPresent = { present++ },
+        )
+        runCurrent()
+
+        advanceTimeBy(6.seconds)
+        runCurrent()
+        assertEquals(0, present, "туннеля ещё нет — подтверждать нечего")
+
+        advanceTimeBy(6.seconds)
+        runCurrent()
+        assertEquals(1, present, "туннель появился — показ обязан догнать объявленное")
+
+        watcher.stop()
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `появление и пропажа не путаются местами`() = runTest {
+        // PRESENT → ABSENT → PRESENT: сначала пропажа гасит, потом возврат
+        // подтверждает. Смешать переходы значило бы гасить исправный туннель.
+        val probe = FakeProbe(
+            listOf(TunnelPresence.PRESENT, TunnelPresence.ABSENT, TunnelPresence.PRESENT),
+        )
+        val watcher = TunnelPresenceWatcher(probe, interval = 5.seconds)
+        var lost: ConnectionStatus? = null
+        var present = 0
+
+        watcher.restart(
+            this,
+            current = { ConnectionStatus.VerifyingProtection },
+            onTunnelLost = { lost = it },
+            onTunnelPresent = { present++ },
+        )
+        runCurrent()
+
+        advanceTimeBy(6.seconds)
+        runCurrent()
+        assertEquals(0, present, "первый ответ PRESENT — это исходное состояние, а не появление")
+
+        advanceTimeBy(6.seconds)
+        runCurrent()
+        assertEquals(ConnectionStatus.Disconnected, lost, "пропажа гасит")
+
+        watcher.stop()
+        advanceUntilIdle()
+    }
 }
