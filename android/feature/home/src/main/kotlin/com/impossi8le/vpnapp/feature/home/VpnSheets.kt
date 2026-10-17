@@ -2,6 +2,7 @@ package com.impossi8le.vpnapp.feature.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -209,11 +210,29 @@ private fun SheetScaffold(
             .testTag(testTag),
         contentAlignment = Alignment.BottomCenter,
     ) {
-        // Затемнение. Перекрывает экран целиком, чтобы фокус остался на шите.
+        // Затемнение. Перекрывает экран целиком и ПЕРЕХВАТЫВАЕТ касания.
+        //
+        // Без `pointerInput` затемнение только рисовалось: тап проходил сквозь
+        // него на список под шитом, и подключение переключалось, хотя
+        // пользователь ещё не ответил. Выглядело как блокировка, ею не являясь.
+        //
+        // Действия у затемнения нет намеренно: здесь рвётся соединение, и
+        // закрытие шита случайным тапом по фону было бы таким же неожиданным
+        // решением за пользователя, как и молчаливое переключение. Отменить
+        // можно только явной кнопкой.
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(VpnColors.Void.copy(alpha = 0.72f)),
+                .background(VpnColors.Void.copy(alpha = 0.72f))
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            // Потребляем нажатия, чтобы они не дошли до слоя ниже.
+                            event.changes.forEach { it.consume() }
+                        }
+                    }
+                },
         )
         Column(
             modifier = Modifier
