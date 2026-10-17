@@ -82,12 +82,22 @@ class AppTunnelController(
      * короткие и завершаются сами.
      */
     private val watchScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Чтение факта «туннель над трафиком есть».
+     *
+     * Один экземпляр на двоих: сторож проверяет им пропажу туннеля, а
+     * `onServiceState` — не объявлять «подключено» раньше факта (issue #32).
+     * Два источника одного факта разошлись бы при первой же правке.
+     */
+    private val tunnelPresence: TunnelPresenceProbe = presenceProbe
+        ?: AndroidTunnelPresence(
+            context.getSystemService(android.net.ConnectivityManager::class.java)
+                ?: error("ConnectivityManager недоступен"),
+        )
+
     private val presenceWatcher = TunnelPresenceWatcher(
-        probe = presenceProbe
-            ?: AndroidTunnelPresence(
-                context.getSystemService(android.net.ConnectivityManager::class.java)
-                    ?: error("ConnectivityManager недоступен"),
-            ),
+        probe = tunnelPresence,
         interval = presenceInterval,
     )
 
@@ -190,7 +200,10 @@ class AppTunnelController(
      * в файле (см. [_appliedBypass]).
      */
     internal fun onServiceState(state: SystemState, appliedBypass: Int) {
-        _status.value = state.toConnectionStatus()
+        // «Подключено» подтверждается фактом, а не только событием сервиса:
+        // решение и причина — в `confirmedByTunnelPresence` (issue #32).
+        val declared = state.toConnectionStatus()
+        _status.value = declared.confirmedByTunnelPresence(tunnelPresence.read())
         _appliedBypass.value = appliedBypass
         // Состояние сменилось — пересобрать сторож существования туннеля. Именно
         // здесь, а не в `TunnelStatusReceiver`: сервис может прислать `ESTABLISHED`

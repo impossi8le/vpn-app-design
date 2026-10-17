@@ -88,3 +88,34 @@ val ConnectionStatus.describesTunnelUp: Boolean
     get() = this is ConnectionStatus.VerifyingProtection ||
         this is ConnectionStatus.Protected ||
         this is ConnectionStatus.ProtectionFailed
+
+/**
+ * Состояние для экрана с учётом того, идёт ли трафик через туннель ПРЯМО СЕЙЧАС.
+ *
+ * **Зачем поверх [toConnectionStatus].** Сервис присылает `ESTABLISHED` по
+ * событию ядра, а система начинает пропускать трафик через туннель позже.
+ * Проверено на устройстве: разрыв **11 секунд**, и всё это время экран говорил
+ * «Подключено», а внешний адрес оставался адресом провайдера (issue #32). Для
+ * средства обхода блокировок это утечка, о которой человек не знает.
+ *
+ * **Почему [TunnelPresence.PRESENT], а не счётчики.** Счётчики ядра говорят,
+ * что байты ходят, но не говорят, ЧЕЙ это трафик и через какой интерфейс.
+ * Признак «активная сеть устройства — VPN-сеть» отвечает ровно на нужный
+ * вопрос: трафик идёт через туннель, а не мимо него.
+ *
+ * **Неизвестность не понижает статус.** `UNKNOWN` значит «спросить не удалось»,
+ * и перевод в `Connecting` по нему рубил бы исправное соединение из-за
+ * случайного сбоя опроса — та же причина, по которой сторож не гасит туннель
+ * при `UNKNOWN`.
+ *
+ * `Connecting` в промежутке — не «отключено» и не «подключено»: интерфейс
+ * поднимается, трафик ещё не в туннеле. Экран уже умеет это показывать.
+ */
+fun ConnectionStatus.confirmedByTunnelPresence(presence: TunnelPresence): ConnectionStatus {
+    if (!describesTunnelUp) return this
+    return when (presence) {
+        TunnelPresence.PRESENT -> this
+        TunnelPresence.ABSENT -> ConnectionStatus.Connecting
+        TunnelPresence.UNKNOWN -> this
+    }
+}
