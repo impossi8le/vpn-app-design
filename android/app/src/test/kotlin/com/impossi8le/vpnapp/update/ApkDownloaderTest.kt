@@ -1,6 +1,9 @@
 package com.impossi8le.vpnapp.update
 
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -34,6 +37,56 @@ class ApkDownloaderTest {
 
     private fun downloader() = ApkDownloader(OkHttpClient(), cacheDir)
 
+    /**
+     * Тело ответа, которое пройдёт проверку целостности.
+     *
+     * Настоящий zip с `AndroidManifest.xml`, а не массив байт: после того как
+     * загрузчик начал отвергать повреждённые APK, произвольные байты для него —
+     * битый файл, и тест проверял бы не то.
+     */
+    private fun apkBytes(payload: Int = 4096): ByteArray {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            zip.putNextEntry(ZipEntry("AndroidManifest.xml"))
+            zip.write(ByteArray(payload) { (it % 251).toByte() })
+            zip.closeEntry()
+            // Вторая запись: проверка целостности читает ВСЕ записи, и так
+            // ловится порча не только в начале файла.
+            zip.putNextEntry(ZipEntry("classes.dex"))
+            zip.write(ByteArray(payload / 2) { (it % 97).toByte() })
+            zip.closeEntry()
+        }
+        return out.toByteArray()
+    }
+
+    private fun body(bytes: ByteArray): okio.Buffer = okio.Buffer().write(bytes)
+
+    /**
+     * Запись БЕЗ сжатия — как нативные библиотеки в настоящем APK.
+     *
+     * Именно их обнуляет оборванная загрузка, и именно на них видно порчу:
+     * у сжатой записи испорченные байты иногда распаковываются «успешно».
+     */
+    private fun apkWithStoredLib(libBytes: ByteArray): ByteArray {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            zip.putNextEntry(ZipEntry("AndroidManifest.xml"))
+            zip.write(ByteArray(256) { (it % 251).toByte() })
+            zip.closeEntry()
+
+            val entry = ZipEntry("lib/arm64-v8a/libovpn3.so")
+            entry.method = ZipEntry.STORED
+            entry.size = libBytes.size.toLong()
+            entry.compressedSize = libBytes.size.toLong()
+            val crc = java.util.zip.CRC32().apply { update(libBytes) }
+            entry.crc = crc.value
+            zip.putNextEntry(entry)
+            zip.write(libBytes)
+            zip.closeEntry()
+        }
+        return out.toByteArray()
+    }
+
     /** Огрызок прошлой попытки: столько-то байт и метка содержимого. */
     private fun seedPartial(version: Int, bytes: ByteArray, etag: String = "\"v1\"") {
         ApkDownloader.partFile(cacheDir, version).writeBytes(bytes)
@@ -42,21 +95,19 @@ class ApkDownloaderTest {
 
     @Test
     fun `скачанный apk лежит в кеше целиком`() = runTest {
-        val payload = ByteArray(2048) { it.toByte() }
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(okio.Buffer().write(payload)),
-        )
+        val apk = apkBytes(2048)
+        server.enqueue(MockResponse().setResponseCode(200).setBody(body(apk)))
 
         val file = downloader().download(server.url("/app.apk").toString(), 7).getOrThrow()
 
         assertTrue(file.exists(), "файл должен остаться на диске")
-        assertTrue(file.readBytes().contentEquals(payload), "содержимое должно совпасть побайтово")
+        assertTrue(file.readBytes().contentEquals(apk), "содержимое должно совпасть побайтово")
         assertTrue(file.name.endsWith(".apk"), "имя должно нести .apk: ${file.name}")
     }
 
     @Test
     fun `прогресс доходит до 100`() = runTest {
-        server.enqueue(MockResponse().setResponseCode(200).setBody("x".repeat(1024)))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(body(apkBytes())))
         val percents = mutableListOf<Int>()
 
         downloader()
@@ -97,29 +148,29 @@ class ApkDownloaderTest {
 
     @Test
     fun `докачка просит только недостающий кусок`() = runTest {
-        // Уже есть 100 байт из 300. Остаток отдаём ответом 206 — так ведёт себя
-        // CDN GitHub, проверено запросом с Range.
-        val head = ByteArray(100) { 1 }
-        val tail = ByteArray(200) { 2 }
-        seedPartial(7, head)
+        // Настоящий APK, разрезанный на две части: склейка обязана дать ровно
+        // исходный файл, иначе проверка целостности отвергнет результат.
+        val apk = apkBytes(4096)
+        val cut = apk.size / 3
+        seedPartial(7, apk.copyOfRange(0, cut))
         server.enqueue(
             MockResponse()
                 .setResponseCode(206)
-                .setHeader("Content-Range", "bytes 100-299/300")
-                .setBody(okio.Buffer().write(tail)),
+                .setHeader("Content-Range", "bytes $cut-${apk.size - 1}/${apk.size}")
+                .setBody(body(apk.copyOfRange(cut, apk.size))),
         )
 
         val file = downloader().download(server.url("/app.apk").toString(), 7).getOrThrow()
 
         val request = server.takeRequest()
         assertEquals(
-            "bytes=100-",
+            "bytes=$cut-",
             request.getHeader("Range"),
             "без Range сервер отдаст файл заново, и докачки не будет",
         )
         assertEquals("\"v1\"", request.getHeader("If-Range"), "If-Range бережёт от подмены сборки")
         assertTrue(
-            file.readBytes().contentEquals(head + tail),
+            file.readBytes().contentEquals(apk),
             "файл должен быть склейкой огрызка и докачанного куска",
         )
     }
@@ -129,20 +180,21 @@ class ApkDownloaderTest {
         // 200 на запрос с Range значит, что сервер вернул файл ЦЕЛИКОМ. Если
         // дописать его к огрызку, получится битый APK, который установщик
         // отвергнет с невнятной ошибкой.
-        val payload = ByteArray(300) { 3 }
-        seedPartial(7, ByteArray(100) { 1 })
-        server.enqueue(MockResponse().setResponseCode(200).setBody(okio.Buffer().write(payload)))
+        val apk = apkBytes(4096)
+        seedPartial(7, apk.copyOfRange(0, 100))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(body(apk)))
 
         val file = downloader().download(server.url("/app.apk").toString(), 7).getOrThrow()
 
-        assertTrue(file.readBytes().contentEquals(payload), "файл должен быть ровно тем, что отдал сервер")
+        assertTrue(file.readBytes().contentEquals(apk), "файл должен быть ровно тем, что отдал сервер")
     }
 
     @Test
     fun `неудачная попытка не стирает огрызок прошлой`() = runTest {
         // Скачали половину, сеть отвалилась. Огрызок обязан уцелеть: удалив его,
         // следующая попытка начнёт стомегабайтную закачку с нуля.
-        seedPartial(7, ByteArray(100) { 1 })
+        val apk = apkBytes(4096)
+        seedPartial(7, apk.copyOfRange(0, 100))
         server.enqueue(MockResponse().setResponseCode(500))
 
         val result = downloader().download(server.url("/app.apk").toString(), 7)
@@ -159,17 +211,22 @@ class ApkDownloaderTest {
     fun `прогресс при докачке считается от полного размера, а не от остатка`() = runTest {
         // Иначе после обрыва на 90% строка показала бы «0%» и пошла к 100 заново.
         val seen = mutableListOf<Int>()
-        seedPartial(7, ByteArray(100) { 1 })
+        val apk = apkBytes(4096)
+        val cut = apk.size / 2
+        seedPartial(7, apk.copyOfRange(0, cut))
         server.enqueue(
             MockResponse()
                 .setResponseCode(206)
-                .setHeader("Content-Range", "bytes 100-299/300")
-                .setBody(okio.Buffer().write(ByteArray(200) { 2 })),
+                .setHeader("Content-Range", "bytes $cut-${apk.size - 1}/${apk.size}")
+                .setBody(body(apk.copyOfRange(cut, apk.size))),
         )
 
         downloader().download(server.url("/app.apk").toString(), 7) { seen += it }.getOrThrow()
 
-        assertTrue(seen.first() >= 33, "первый кадр докачки должен быть около трети, а не нулём: $seen")
+        assertTrue(
+            seen.first() >= 45,
+            "первый кадр докачки должен быть около половины, а не нулём: $seen",
+        )
         assertEquals(100, seen.last())
     }
 
@@ -178,13 +235,13 @@ class ApkDownloaderTest {
         // Релизы публикуются отдельными тегами и нумерация растёт: огрызок
         // версии 7 к файлу версии 8 отношения не имеет, и склеивать их нельзя.
         seedPartial(7, ByteArray(100) { 1 })
-        val payload = ByteArray(300) { 9 }
-        server.enqueue(MockResponse().setResponseCode(200).setBody(okio.Buffer().write(payload)))
+        val apk = apkBytes(4096)
+        server.enqueue(MockResponse().setResponseCode(200).setBody(body(apk)))
 
         val file = downloader().download(server.url("/app.apk").toString(), 8).getOrThrow()
 
         assertNull(server.takeRequest().getHeader("Range"), "для новой версии докачки быть не должно")
-        assertTrue(file.readBytes().contentEquals(payload))
+        assertTrue(file.readBytes().contentEquals(apk))
     }
 
     @Test
@@ -234,12 +291,14 @@ class ApkDownloaderTest {
 
     @Test
     fun `удачный финиш убирает метку вместе с огрызком`() = runTest {
-        seedPartial(7, ByteArray(100) { 1 })
+        val apk = apkBytes(4096)
+        val cut = apk.size / 2
+        seedPartial(7, apk.copyOfRange(0, cut))
         server.enqueue(
             MockResponse()
                 .setResponseCode(206)
-                .setHeader("Content-Range", "bytes 100-299/300")
-                .setBody(okio.Buffer().write(ByteArray(200) { 2 })),
+                .setHeader("Content-Range", "bytes $cut-${apk.size - 1}/${apk.size}")
+                .setBody(body(apk.copyOfRange(cut, apk.size))),
         )
 
         downloader().download(server.url("/app.apk").toString(), 7).getOrThrow()
@@ -255,8 +314,7 @@ class ApkDownloaderTest {
         // Живой дефект (1.0.119): скачали сборку 120, на сервере уже 123. Воркер
         // помнил «успех» и не знал версии, поэтому баннер писал «Обновление
         // скачано», а установка искала update-123.apk, не находила и молчала.
-        // Готовность обязана определяться файлом ТЕКУЩЕЙ версии.
-        File(cacheDir, "update-120.apk").writeBytes(ByteArray(100) { 1 })
+        File(cacheDir, "update-120.apk").writeBytes(apkBytes())
 
         assertNull(
             ApkDownloader.readyFile(cacheDir, 123),
@@ -266,7 +324,7 @@ class ApkDownloaderTest {
 
     @Test
     fun `файл текущей версии считается готовым`() {
-        File(cacheDir, "update-123.apk").writeBytes(ByteArray(100) { 1 })
+        File(cacheDir, "update-123.apk").writeBytes(apkBytes())
 
         assertNotNull(
             ApkDownloader.readyFile(cacheDir, 123),
@@ -281,5 +339,86 @@ class ApkDownloaderTest {
         File(cacheDir, "update-123.apk").writeBytes(ByteArray(0))
 
         assertNull(ApkDownloader.readyFile(cacheDir, 123))
+    }
+
+    // --- Проверка целостности скачанного APK (issue #29) ---
+
+    @Test
+    fun `целый apk не даёт ошибки целостности`() {
+        val apk = File(cacheDir, "good.apk").apply { writeBytes(apkBytes()) }
+
+        assertNull(ApkDownloader.apkIntegrityError(apk), "годный файл не должен считаться битым")
+    }
+
+    @Test
+    fun `обнулённый кусок внутри apk распознаётся как порча`() {
+        // Живой дефект: Chrome сообщил «скачан 1 файл», размер совпал с серверным,
+        // но 189 718 байт внутри libovpn3.so пришли нулями. Установщик ответил
+        // «Приложение не установлено», а клиент считал файл готовым — он сверял
+        // только размер.
+        val lib = ByteArray(16384) { (it % 251).toByte() }
+        val bytes = apkWithStoredLib(lib)
+        // Портим середину несжатой записи — ровно то, что делает оборванная
+        // загрузка с нативной библиотекой.
+        val start = bytes.size * 2 / 3
+        for (i in start..(start + 2048)) bytes[i] = 0
+        val apk = File(cacheDir, "corrupt.apk").apply { writeBytes(bytes) }
+
+        assertNotNull(
+            ApkDownloader.apkIntegrityError(apk),
+            "файл того же размера, но с обнулённым куском — это порча, а не готовый APK",
+        )
+    }
+
+    @Test
+    fun `обрезанный apk распознаётся как порча`() {
+        val apk = File(cacheDir, "truncated.apk")
+        val bytes = apkBytes(8192)
+        apk.writeBytes(bytes.copyOfRange(0, bytes.size / 2))
+
+        assertNotNull(
+            ApkDownloader.apkIntegrityError(apk),
+            "обрезанный архив не должен считаться годным",
+        )
+    }
+
+    @Test
+    fun `пустой файл не считается годным apk`() {
+        val apk = File(cacheDir, "empty.apk").apply { writeBytes(ByteArray(0)) }
+
+        assertNotNull(ApkDownloader.apkIntegrityError(apk))
+    }
+
+    @Test
+    fun `zip без манифеста не считается apk`() {
+        // Установщик такой файл отвергнет: в APK обязан быть AndroidManifest.xml.
+        val notApk = File(cacheDir, "not-apk.apk")
+        ZipOutputStream(notApk.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("readme.txt"))
+            zip.write("привет".toByteArray())
+            zip.closeEntry()
+        }
+
+        assertNotNull(ApkDownloader.apkIntegrityError(notApk), "архив без манифеста — не APK")
+    }
+
+    @Test
+    fun `битый файл не объявляется готовым при скачивании`() = runTest {
+        // Сквозная проверка: сервер отдаёт повреждённый APK (размер честный, но
+        // внутри дыра). Загрузчик обязан вернуть неудачу, а не файл — иначе
+        // установщик скажет «Приложение не установлено» без объяснения.
+        val lib = ByteArray(16384) { (it % 251).toByte() }
+        val bytes = apkWithStoredLib(lib)
+        val start = bytes.size * 2 / 3
+        for (i in start..(start + 2048)) bytes[i] = 0
+        server.enqueue(MockResponse().setResponseCode(200).setBody(body(bytes)))
+
+        val result = downloader().download(server.url("/app.apk").toString(), 7)
+
+        assertTrue(result.isFailure, "повреждённый APK не должен считаться скачанным")
+        assertTrue(
+            cacheDir.listFiles().orEmpty().none { it.name == "update-7.apk" },
+            "битый файл не должен остаться под видом готового",
+        )
     }
 }

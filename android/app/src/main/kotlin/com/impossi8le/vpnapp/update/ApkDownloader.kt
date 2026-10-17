@@ -124,6 +124,16 @@ class ApkDownloader(
                     )
                 }
 
+                // Размера МАЛО. Оборванная загрузка может дать файл нужной
+                // длины с дырой внутри (проверено на устройстве: 189 718 байт
+                // `libovpn3.so` пришли нулями, установщик ответил «Приложение не
+                // установлено»). Битый файл объявляем неудачей и удаляем: он не
+                // должен выглядеть готовым ни на экране, ни в установщике.
+                apkIntegrityError(part)?.let { reason ->
+                    part.delete()
+                    return@withContext Result.failure(IOException(reason))
+                }
+
                 if (target.exists()) target.delete()
                 if (!part.renameTo(target)) {
                     return@withContext Result.failure(IOException("не удалось сохранить файл"))
@@ -187,6 +197,73 @@ class ApkDownloader(
          * скачан. Проверка файла не даёт показать «Установить» для того, чего
          * на диске нет.
          */
+        /**
+         * Почему скачанный файл не годится как APK; `null` — годится.
+         *
+         * **Почему одной сверки размера мало.** Живой случай: Chrome сообщил
+         * «скачан 1 файл», размер совпал с серверным побайтово, а внутри
+         * `libovpn3.so` 189 718 байт пришли нулями — установщик ответил
+         * «Приложение не установлено», и причина была невидима. Оборванная
+         * загрузка может сохранить файл нужного размера, но с дырой внутри,
+         * поэтому проверять надо ЧИТАЕМОСТЬ архива и наличие манифеста, а не
+         * длину.
+         *
+         * Чистая функция без Android: вызывающий решает, что делать с причиной.
+         * Проверка подписи здесь намеренно не делается — она требует
+         * `PackageManager`, а её исход всё равно один: файл негоден.
+         */
+        fun apkIntegrityError(file: File): String? {
+            if (!file.exists()) return "файл отсутствует"
+            if (file.length() == 0L) return "файл пуст"
+
+            return try {
+                java.util.zip.ZipFile(file).use { zip ->
+                    val manifest = zip.getEntry("AndroidManifest.xml")
+                        ?: return "в архиве нет манифеста — это не APK"
+                    // Читаем запись целиком: именно на этом шаге ловится
+                    // обнулённый или недописанный кусок внутри файла — размер
+                    // при этом может совпадать с ожидаемым.
+                    zip.getInputStream(manifest).use { input ->
+                        val probe = ByteArray(64)
+                        if (input.read(probe) <= 0) return "манифест пуст"
+                    }
+
+                    // **CRC считаем сами.** Полагаться на то, что библиотека
+                    // заметит порчу, нельзя: на сжатых записях испорченные байты
+                    // могут распаковаться «успешно», и тогда проверка молчит. А в
+                    // APK нативные библиотеки лежат БЕЗ сжатия — именно их и
+                    // обнуляет оборванная загрузка (проверено на устройстве).
+                    val entries = zip.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        if (entry.isDirectory) continue
+
+                        val crc = java.util.zip.CRC32()
+                        var total = 0L
+                        zip.getInputStream(entry).use { input ->
+                            val buffer = ByteArray(8192)
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read <= 0) break
+                                crc.update(buffer, 0, read)
+                                total += read
+                            }
+                        }
+
+                        if (total != entry.size) {
+                            return "запись «${entry.name}» короче объявленного размера"
+                        }
+                        if (crc.value != entry.crc) {
+                            return "запись «${entry.name}» повреждена (не сходится контрольная сумма)"
+                        }
+                    }
+                    null
+                }
+            } catch (e: Exception) {
+                "файл повреждён: ${e.message ?: "ошибка чтения архива"}"
+            }
+        }
+
         fun readyFile(cacheDir: File, versionCode: Int): File? =
             File(cacheDir, "update-$versionCode.apk").takeIf { it.exists() && it.length() > 0 }
 
