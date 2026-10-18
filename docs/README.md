@@ -61,6 +61,7 @@
 | [2026-10-06-signing-and-release.md](architecture/2026-10-06-signing-and-release.md) | **Где ключ подписи, секреты, публикация релиза.** Ключ вне git — потеря необратима | **работает** |
 | [2026-10-06-distribution-channels.md](architecture/2026-10-06-distribution-channels.md) | **Каналы раздачи APK**: основной — наш сервер, Play Protect, магазины | решение принято |
 | [2026-10-06-distribution-owner-actions.md](architecture/2026-10-06-distribution-owner-actions.md) | Что нужно сделать владельцу по раздаче (аккаунты, домен) | список действий |
+| [2026-10-16-mobile-testing-methods.md](architecture/2026-10-16-mobile-testing-methods.md) | **Каталог методов тестирования мобильного приложения** (стандартных и нестандартных) + срез: что есть в проекте, чего нет, что внедрять первым | на ревью |
 | [2026-10-02-review-record.md](architecture/2026-10-02-review-record.md) | Запись адверсариального ревью iOS-плана. История, не руководство | историческое |
 
 ### `api/` — что нужно от бэкенда
@@ -143,6 +144,7 @@
 | Как работает обход РФ-сервисов | `superpowers/specs/2026-10-06-bypass-routes-design.md` + `api/README.md` |
 | Как устроены логи, отчёты об ошибках и разбор через LLM | `superpowers/specs/2026-10-13-error-reporting-design.md` |
 | Почему выбран OpenVPN 3, а не ics-openvpn | `architecture/2026-10-03-android-architecture.md` §4.7 |
+| Какие методы тестирования бывают и что из них есть у нас | `architecture/2026-10-16-mobile-testing-methods.md` |
 
 ---
 

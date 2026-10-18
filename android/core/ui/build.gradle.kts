@@ -11,6 +11,7 @@ android {
     compileSdk = 35
     defaultConfig {
         minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }
     compileOptions {
@@ -33,4 +34,13 @@ dependencies {
     testImplementation(libs.junit5.params)
     testRuntimeOnly(libs.junit5.engine)
     testRuntimeOnly(libs.junit5.launcher)
+
+    // Тесты рендеринга примитивов. Токены проверяются на JVM как данные, но
+    // отрисовка — нет: здесь важно, что индикатор статуса не показывает
+    // защищённость, которой нет. Ошибка тут врёт на всех экранах сразу.
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }

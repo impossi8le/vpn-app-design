@@ -14,6 +14,9 @@ dependencies {
     implementation(libs.serialization.json)
 
     testImplementation(libs.junit5.api)
+    // Нужен для @ParameterizedTest / @MethodSource — фаззинг парсера профиля
+    // гоняет один и тот же набор искажений через несколько разборщиков.
+    testImplementation(libs.junit5.params)
     testImplementation(libs.coroutines.test)
     testRuntimeOnly(libs.junit5.engine)
     testRuntimeOnly(libs.junit5.launcher)
