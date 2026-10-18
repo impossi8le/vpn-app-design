@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -64,7 +65,10 @@ class LoginScreenTest {
         var terms = 0
         setScreen(onPrivacyPolicy = { privacy++ }, onTerms = { terms++ })
 
-        compose.onNodeWithTag(LOGIN_PRIVACY_TAG).performClick()
+        // Прокрутка обязательна: на низком разрешении (эмулятор API 30) строка
+        // ссылок уходит за границу экрана, и клик без неё не доходит — тест
+        // падал именно так, поймав реальный дефект (экран не прокручивался).
+        compose.onNodeWithTag(LOGIN_PRIVACY_TAG).performScrollTo().performClick()
 
         // Вторая ссылка не сработала: обе ссылки в одной строке, и копипаст
         // одного `clickable` на обе отправлял бы пользователя не туда.
@@ -78,7 +82,7 @@ class LoginScreenTest {
         var terms = 0
         setScreen(onPrivacyPolicy = { privacy++ }, onTerms = { terms++ })
 
-        compose.onNodeWithTag(LOGIN_TERMS_TAG).performClick()
+        compose.onNodeWithTag(LOGIN_TERMS_TAG).performScrollTo().performClick()
 
         assertEquals(1, terms)
         assertEquals(0, privacy)

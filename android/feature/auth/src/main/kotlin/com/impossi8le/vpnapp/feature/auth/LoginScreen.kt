@@ -4,8 +4,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -62,111 +66,127 @@ fun LoginScreen(
     onTerms: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    // Прокрутка нужна ради малых экранов: без неё на низком разрешении
+    // (эмулятор API 30 — 320x640) нижние строки уезжают за границу и до ссылок
+    // «Политика конфиденциальности» и «Условия» дотянуться нельзя. Нашлось
+    // инструментальным тестом на эмуляторе CI: на телефоне 1080x2400 всё
+    // помещалось, поэтому дефект там не был виден.
+    //
+    // `heightIn(min = maxHeight)` сохраняет прежний вид: когда содержимое
+    // помещается, колонка занимает весь экран и центрирование работает как
+    // раньше; когда не помещается — включается прокрутка.
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(VpnColors.Void)
-            .padding(horizontal = 24.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.Center,
+            .background(VpnColors.Void),
     ) {
-        AuthMark(tint = VpnColors.Bone)
-
-        Text(
-            text = "VPN для ваших\nприложений",
-            color = VpnColors.Bone,
-            fontSize = 26.sp,
-            fontWeight = FontWeight.SemiBold,
-            lineHeight = 31.sp,
-            modifier = Modifier
-                .padding(top = 24.dp)
-                .testTag(LOGIN_TITLE_TAG),
-        )
-
-        Text(
-            text = "Сайты и приложения, которые перестали открываться, снова заработают.",
-            color = VpnColors.TextSecondary,
-            fontSize = 14.sp,
-            lineHeight = 22.sp,
-            modifier = Modifier.padding(top = 11.dp),
-        )
-
         Column(
-            modifier = Modifier.padding(top = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = maxHeight)
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.Center,
         ) {
-            Step(1, "Подписка в боте")
-            Step(2, "Вход тем же Telegram — ", muted = "если уже оплатили, начните отсюда")
-            Step(3, "Подключение в один тап")
-        }
+            AuthMark(tint = VpnColors.Bone)
 
-        // Раскрытие того, что видит оператор: не спрятано в политику, а стоит на
-        // пути входа. Это осознанное решение макета, а не дисклеймер «для галочки».
-        LeftAccentBlock(
-            accent = VpnColors.Edge,
-            modifier = Modifier.padding(top = 18.dp),
-        ) {
+            Text(
+                text = "VPN для ваших\nприложений",
+                color = VpnColors.Bone,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 31.sp,
+                modifier = Modifier
+                    .padding(top = 24.dp)
+                    .testTag(LOGIN_TITLE_TAG),
+            )
+
+            Text(
+                text = "Сайты и приложения, которые перестали открываться, снова заработают.",
+                color = VpnColors.TextSecondary,
+                fontSize = 14.sp,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(top = 11.dp),
+            )
+
+            Column(
+                modifier = Modifier.padding(top = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Step(1, "Подписка в боте")
+                Step(2, "Вход тем же Telegram — ", muted = "если уже оплатили, начните отсюда")
+                Step(3, "Подключение в один тап")
+            }
+
+            // Раскрытие того, что видит оператор: не спрятано в политику, а стоит на
+            // пути входа. Это осознанное решение макета, а не дисклеймер «для галочки».
+            LeftAccentBlock(
+                accent = VpnColors.Edge,
+                modifier = Modifier.padding(top = 18.dp),
+            ) {
+                Text(
+                    text = buildAnnotatedString {
+                        append("Трафик шифруется и идёт через ваш сервер. Нам видны ")
+                        withStyle(SpanStyle(color = VpnColors.Mist, fontWeight = FontWeight.Medium)) {
+                            append("Telegram ID")
+                        }
+                        append(" и список ваших подключений.")
+                    },
+                    color = VpnColors.TextSecondary,
+                    fontSize = 12.5.sp,
+                    lineHeight = 20.sp,
+                )
+            }
+
+            VpnPrimaryButton(
+                text = "Войти тем же Telegram",
+                onClick = onLogin,
+                modifier = Modifier.padding(top = 18.dp),
+                testTag = LOGIN_BUTTON_TAG,
+            )
+
             Text(
                 text = buildAnnotatedString {
-                    append("Трафик шифруется и идёт через ваш сервер. Нам видны ")
-                    withStyle(SpanStyle(color = VpnColors.Mist, fontWeight = FontWeight.Medium)) {
-                        append("Telegram ID")
+                    append("Откроется Telegram — бот пришлёт кнопку ")
+                    withStyle(SpanStyle(color = VpnColors.Bone, fontWeight = FontWeight.Medium)) {
+                        append("«Подтвердить вход»")
                     }
-                    append(" и список ваших подключений.")
+                    append(".")
                 },
-                color = VpnColors.TextSecondary,
-                fontSize = 12.5.sp,
-                lineHeight = 20.sp,
-            )
-        }
-
-        VpnPrimaryButton(
-            text = "Войти тем же Telegram",
-            onClick = onLogin,
-            modifier = Modifier.padding(top = 18.dp),
-            testTag = LOGIN_BUTTON_TAG,
-        )
-
-        Text(
-            text = buildAnnotatedString {
-                append("Откроется Telegram — бот пришлёт кнопку ")
-                withStyle(SpanStyle(color = VpnColors.Bone, fontWeight = FontWeight.Medium)) {
-                    append("«Подтвердить вход»")
-                }
-                append(".")
-            },
-            color = VpnColors.Ash,
-            fontSize = 11.5.sp,
-            lineHeight = 17.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 14.dp),
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = "Политика конфиденциальности",
-                color = VpnColors.Ice,
+                color = VpnColors.Ash,
                 fontSize = 11.5.sp,
-                fontFamily = MonoFont,
+                lineHeight = 17.sp,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .clickable(onClick = onPrivacyPolicy)
-                    .testTag(LOGIN_PRIVACY_TAG),
+                    .fillMaxWidth()
+                    .padding(top = 14.dp),
             )
-            Text(" · ", color = VpnColors.Ash, fontSize = 11.5.sp)
-            Text(
-                text = "Условия",
-                color = VpnColors.Ice,
-                fontSize = 11.5.sp,
+
+            Row(
                 modifier = Modifier
-                    .clickable(onClick = onTerms)
-                    .testTag(LOGIN_TERMS_TAG),
-            )
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = "Политика конфиденциальности",
+                    color = VpnColors.Ice,
+                    fontSize = 11.5.sp,
+                    fontFamily = MonoFont,
+                    modifier = Modifier
+                        .clickable(onClick = onPrivacyPolicy)
+                        .testTag(LOGIN_PRIVACY_TAG),
+                )
+                Text(" · ", color = VpnColors.Ash, fontSize = 11.5.sp)
+                Text(
+                    text = "Условия",
+                    color = VpnColors.Ice,
+                    fontSize = 11.5.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onTerms)
+                        .testTag(LOGIN_TERMS_TAG),
+                )
+            }
         }
     }
 }
