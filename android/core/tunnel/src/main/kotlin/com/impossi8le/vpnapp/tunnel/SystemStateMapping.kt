@@ -2,6 +2,7 @@ package com.impossi8le.vpnapp.tunnel
 
 import com.impossi8le.vpnapp.domain.model.ConnectionStatus
 import com.impossi8le.vpnapp.domain.protection.ProtectionEvidence
+import com.impossi8le.vpnapp.domain.tunnel.TunnelState
 
 /**
  * Системное состояние VpnService, как его отдаёт платформа.
@@ -30,6 +31,32 @@ fun SystemState.toConnectionStatus(): ConnectionStatus = when (this) {
     SystemState.ESTABLISHED -> ConnectionStatus.VerifyingProtection
     SystemState.LOST -> ConnectionStatus.Disconnected
     SystemState.FAILED -> ConnectionStatus.Failed("туннель не поднялся")
+}
+
+/**
+ * Уже опубликованное состояние туннеля → состояние экрана при холодном старте.
+ *
+ * **Зачем.** Широковещание состояния разовое. Если экран пересоздан, пока сервис
+ * жив, нового события не будет: контроллер начинал с `Disconnected` и показывал
+ * «не подключено» при работающем туннеле. Пользователь видел расхождение с
+ * фактом и жал «Подключить» повторно.
+ *
+ * **Почему `null`, а не `Disconnected` для [TunnelState.Unknown].** «Сервис ещё
+ * ничего не сообщал в этом процессе» и «туннеля нет» — разные факты. Первый
+ * ничего не говорит о туннеле, и превращать его в «отключено» значило бы
+ * выдумать сведение, которого нет; вызывающий в этом случае оставляет прежнее
+ * поведение.
+ *
+ * **Границы §6.** `Established` даёт `VerifyingProtection`, а не `Protected`:
+ * восстановленное состояние описывает интерфейс, а не замер, и зелёным по типу
+ * быть не может.
+ */
+fun TunnelState.toConnectionStatus(): ConnectionStatus? = when (this) {
+    TunnelState.Unknown -> null
+    TunnelState.Idle -> ConnectionStatus.Disconnected
+    TunnelState.Connecting -> ConnectionStatus.Connecting
+    TunnelState.Recovering -> ConnectionStatus.Recovering
+    TunnelState.Established -> ConnectionStatus.VerifyingProtection
 }
 
 /**

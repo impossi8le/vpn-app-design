@@ -272,6 +272,29 @@ class AppTunnelController(
         watchScope.cancel()
     }
 
+    /**
+     * Восстановить уже объявленное состояние при пересоздании экрана.
+     *
+     * Сервис переживает активность и публикует состояние в [TunnelStateStore], а
+     * широковещание разовое: новый контроллер нового события не получит. Без
+     * этого чтения экран начинал с «не подключено» при работающем туннеле
+     * (issue #57).
+     *
+     * `Unknown` не восстанавливаем: в этом процессе сервис ещё ничего не
+     * сообщал, и это не сведения о туннеле — гадать вместо факта нельзя.
+     */
+    init {
+        TunnelStateStore.state.value.toConnectionStatus()?.let { restored ->
+            declaredState = restored
+            // Тот же порог, что и у события сервиса: «поднятый интерфейс» само
+            // по себе не значит, что трафик идёт через туннель (issue #32).
+            _status.value = restored.confirmedByTunnelPresence(tunnelPresence.read())
+            // Восстановленное «туннель поднят» обязано попасть под сторож:
+            // иначе смерть туннеля при открытом экране останется незамеченной.
+            restartPresenceWatch()
+        }
+    }
+
     private fun connectIntent(): Intent =
         Intent(context, serviceClass).apply {
             action = actionConnect

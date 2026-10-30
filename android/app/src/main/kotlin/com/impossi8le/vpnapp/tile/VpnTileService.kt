@@ -13,6 +13,10 @@ import com.impossi8le.vpnapp.domain.tunnel.TunnelState
 import com.impossi8le.vpnapp.domain.tunnel.TunnelStateStore
 import com.impossi8le.vpnapp.vpnservice.VpnTunnelService
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 /**
  * Плитка «Быстрых настроек»: подключение одним тапом.
@@ -46,9 +50,34 @@ import java.io.File
  */
 class VpnTileService : TileService() {
 
+    /**
+     * Скоуп подписки на состояние.
+     *
+     * Свой, а не чужой: пережить `onStartListening` он не должен, но обязан
+     * дожить до `onStopListening`, а между ними у сервиса плитки нет другого
+     * владельца жизненного цикла.
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    private val refresher = TileStateRefresher()
+
     override fun onStartListening() {
         super.onStartListening()
-        updateTile()
+        // Шторка открыта: рисуем текущее состояние и дальше — каждое изменение.
+        // Без подписки подпись замирала бы на прочитанном здесь (issue #53).
+        refresher.start(scope, TunnelStateStore.state, ::render)
+    }
+
+    override fun onStopListening() {
+        // Шторка закрыта: рисовать некому, подписка только дёргала бы систему.
+        refresher.stop()
+        super.onStopListening()
+    }
+
+    override fun onDestroy() {
+        refresher.stop()
+        scope.cancel()
+        super.onDestroy()
     }
 
     override fun onClick() {
@@ -66,9 +95,12 @@ class VpnTileService : TileService() {
             TunnelState.Idle, TunnelState.Unknown -> startTunnel()
         }
 
-        // Пересчёт сразу: ждать следующего onStartListening значит показать
-        // пользователю устаревшее состояние после его же тапа.
-        updateTile()
+        // Дорисовываем сразу: сама по себе это не новое состояние (сервис ещё
+        // ничего не опубликовал), но если подписка по какой-то причине не
+        // установлена, плитка хотя бы сойдётся с хранилищем на момент тапа, а не
+        // останется с рисунком, прочитанным при открытии шторки. Основную работу
+        // делает подписка из `onStartListening`.
+        render(currentState())
     }
 
     /**
@@ -173,9 +205,16 @@ class VpnTileService : TileService() {
         }
     }
 
-    private fun updateTile() {
+    /**
+     * Нарисовать плитку по состоянию.
+     *
+     * Зовётся подпиской на каждое изменение, а не только после тапа: пока шторка
+     * открыта, «отключён» → «подключение…» → «туннель поднят» должно быть видно
+     * прямо во время нажатия (issue #53).
+     */
+    private fun render(state: TunnelState) {
         val tile: Tile = qsTile ?: return
-        val presentation = tilePresentation(currentState())
+        val presentation = tilePresentation(state)
         tile.state = presentation.state
         tile.label = presentation.label
         tile.icon = Icon.createWithResource(this, R.mipmap.ic_launcher)
