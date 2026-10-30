@@ -103,6 +103,14 @@ class AppGraph(
     val reportApi = com.impossi8le.vpnapp.network.ReportApi(apiClient)
 
     /**
+     * Отправка пожеланий и предложений.
+     *
+     * Тот же [apiClient] (адрес и токен сессии), но свой путь: пожелание не
+     * диагностика и не должно попадать в отчёты об ошибках.
+     */
+    val feedbackApi = com.impossi8le.vpnapp.network.FeedbackApi(apiClient)
+
+    /**
      * Очередь авто-метрик — тот же файл, что читает [TelemetryWorker].
      *
      * Путь берём из [com.impossi8le.vpnapp.telemetry.TelemetryGraph], а не заводим

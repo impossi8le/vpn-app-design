@@ -26,6 +26,8 @@ import com.impossi8le.vpnapp.feature.account.AccountScreenState
 import com.impossi8le.vpnapp.feature.account.DefaultAccountScreenState
 import com.impossi8le.vpnapp.feature.account.DemoConfig
 import com.impossi8le.vpnapp.feature.account.DemoScreen
+import com.impossi8le.vpnapp.feature.account.FeedbackScreen
+import com.impossi8le.vpnapp.feature.account.FeedbackScreenState
 import com.impossi8le.vpnapp.feature.account.EngineLicenseNotice
 import com.impossi8le.vpnapp.feature.account.HowToAddTileScreen
 import com.impossi8le.vpnapp.feature.account.HowToEnableVpnScreen
@@ -341,11 +343,19 @@ fun AppRoot(
                 onConfirmCountrySwitchChange = { onIntent(AppIntent.SetConfirmCountrySwitch(it)) },
                 onSupportChat = { onIntent(AppIntent.OpenSupportChat) },
                 onSendDiagnostics = { onIntent(AppIntent.SendDiagnostics) },
+                onOpenFeedback = { go(AppDestination.Feedback) },
                 onOpenAbout = {
                     go(AppDestination.About)
                 },
                 onDeleteAccount = { onIntent(AppIntent.DeleteAccount) },
                 onSignOut = { onIntent(AppIntent.SignOut) },
+            )
+
+            AppDestination.Feedback -> FeedbackScreen(
+                state = state.feedback,
+                onTextChange = { onIntent(AppIntent.FeedbackTextChanged(it)) },
+                onSend = { onIntent(AppIntent.SubmitFeedback) },
+                onBack = { back() },
             )
 
             AppDestination.NoSubscription -> NoSubscriptionScreen(
@@ -505,6 +515,13 @@ data class AppRootState(
      */
     val account: AccountScreenState = DefaultAccountScreenState,
     /**
+     * Состояние экрана «Пожелания»: текст, отправка, итог.
+     *
+     * Живёт здесь, а не в композиции экрана: отправляет [MainActivity], у неё
+     * сетевой клиент, и туда же возвращается исход.
+     */
+    val feedback: FeedbackScreenState = FeedbackScreenState(),
+    /**
      * Данные сборки: версия, номер и SHA. Заполняет [MainActivity] из
      * `BuildConfig` — то есть из того, чем сборку собрал CI.
      */
@@ -655,6 +672,17 @@ sealed interface AppIntent {
     data object SwitchTelegram : AppIntent
     data object ToggleTelegramId : AppIntent
     data object OpenSupportChat : AppIntent
+
+    /** Ввод пожелания: текст меняется на экране «Пожелания». */
+    data class FeedbackTextChanged(val text: String) : AppIntent
+
+    /**
+     * Отправить пожелание с текущим текстом.
+     *
+     * Без аргумента: текст уже в состоянии, и второй источник означал бы, что
+     * экран и обработчик держат разные копии одного и того же.
+     */
+    data object SubmitFeedback : AppIntent
 
     /** Открыть страницу загрузки: там версия, APK и как пройти Play Protect. */
     data object OpenDownloadPage : AppIntent

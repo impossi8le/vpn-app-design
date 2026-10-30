@@ -37,6 +37,7 @@ const val ACCOUNT_REVEAL_ID_TAG = "account_reveal_id"
 const val ACCOUNT_CONFIRM_SWITCH_TAG = "account_confirm_switch"
 const val ACCOUNT_SUPPORT_CHAT_TAG = "account_support_chat"
 const val ACCOUNT_SEND_DIAGNOSTICS_TAG = "account_send_diagnostics"
+const val ACCOUNT_FEEDBACK_TAG = "account_feedback"
 const val ACCOUNT_ABOUT_TAG = "account_about"
 const val ACCOUNT_DELETE_TAG = "account_delete"
 const val ACCOUNT_LOGOUT_TAG = "account_logout"
@@ -104,6 +105,7 @@ fun AccountScreen(
     onConfirmCountrySwitchChange: (Boolean) -> Unit,
     onSupportChat: () -> Unit,
     onSendDiagnostics: () -> Unit,
+    onOpenFeedback: () -> Unit,
     onOpenAbout: () -> Unit,
     onDeleteAccount: () -> Unit,
     onSignOut: () -> Unit,
@@ -214,6 +216,16 @@ fun AccountScreen(
             fontSize = 11.5.sp,
             lineHeight = 17.sp,
             modifier = Modifier.padding(top = 7.dp, start = 2.dp),
+        )
+
+        // Пожелания — не обращение в поддержку: там ждут сломанное, здесь —
+        // «чего не хватает». Поэтому это отдельный путь, а не ещё одна строка
+        // рядом с «Техподдержка».
+        VpnGhostButton(
+            text = "Пожелания и предложения",
+            onClick = onOpenFeedback,
+            testTag = ACCOUNT_FEEDBACK_TAG,
+            modifier = Modifier.padding(top = 12.dp),
         )
 
         VpnGhostButton(

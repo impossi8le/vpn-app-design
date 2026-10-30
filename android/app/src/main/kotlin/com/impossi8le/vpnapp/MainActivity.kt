@@ -51,6 +51,7 @@ import com.impossi8le.vpnapp.domain.tunnel.apiServerRouteOf
 import com.impossi8le.vpnapp.domain.tunnel.sameSubnet
 import com.impossi8le.vpnapp.feature.account.DefaultAccountScreenState
 import com.impossi8le.vpnapp.feature.account.DiagnosticsInput
+import com.impossi8le.vpnapp.feature.account.FeedbackScreenState
 import com.impossi8le.vpnapp.feature.account.buildDiagnostics
 import com.impossi8le.vpnapp.feature.account.toAccountScreenState
 import java.time.Instant
@@ -70,6 +71,7 @@ import com.impossi8le.vpnapp.feature.home.HomeViewModel
 import com.impossi8le.vpnapp.feature.home.stalenessNote
 import com.impossi8le.vpnapp.feature.home.toRowStates
 import com.impossi8le.vpnapp.network.ApiClient
+import com.impossi8le.vpnapp.network.FeedbackResult
 import com.impossi8le.vpnapp.network.ReportApi
 import com.impossi8le.vpnapp.network.ReportResult
 import com.impossi8le.vpnapp.feature.account.ReportCollector
@@ -666,6 +668,15 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
     }
 
     /**
+     * Экран «Пожелания»: текст, отправка, итог.
+     *
+     * Живёт в состоянии приложения, а не в композиции экрана, потому что
+     * отправляет [AppGraph.feedbackApi], а он есть только здесь. Уход с экрана
+     * текст не теряет — вернувшись, человек продолжит с того же места.
+     */
+    var feedback by remember { mutableStateOf(FeedbackScreenState()) }
+
+    /**
      * Тумблер «Подтверждать смену страны».
      *
      * Источник — несекретное хранилище настроек, а не сервер и не состояние
@@ -1091,6 +1102,7 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
             // Данные экрана «Аккаунт»: заполняются из `/me` в loadConfigs. Здесь —
             // то, что успело прийти (или умолчание, если ответа ещё нет).
             account = account,
+            feedback = feedback,
             refreshingConfigs = refreshingConfigs,
             // Пометка «данные из кэша». `null`, когда список свежий (или когда
             // показывать нечего) — тогда экран молчит и §6 не нарушен.
@@ -1436,6 +1448,41 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
                 // стоять — тогда `startActivity` бросит ActivityNotFoundException,
                 // и приложение НЕ должно упасть из-за отсутствия мессенджера.
                 AppIntent.OpenSupportChat -> openSupportBot(context)
+
+                // Пожелание: текст меняется на экране, отправка идёт сетью.
+                // Исход возвращаем в состояние — экран обязан сказать «спасибо»
+                // или «не ушло», иначе нажатие выглядит как молчание.
+                is AppIntent.FeedbackTextChanged ->
+                    feedback = feedback.copy(text = intent.text, message = null)
+
+                AppIntent.SubmitFeedback -> {
+                    if (feedback.text.isNotBlank() && !feedback.sending) {
+                        val text = feedback.text
+                        feedback = feedback.copy(sending = true, message = null)
+                        scope.launch {
+                            feedback = when (
+                                val result =
+                                    graph.feedbackApi.send(text, BuildConfig.VERSION_CODE)
+                            ) {
+                                FeedbackResult.Sent -> feedback.copy(
+                                    sending = false,
+                                    sent = true,
+                                    message = "Спасибо! Пожелание отправлено.",
+                                )
+
+                                FeedbackResult.NotAuthorized -> feedback.copy(
+                                    sending = false,
+                                    message = "Сессия истекла — войдите заново. Текст сохранён.",
+                                )
+
+                                is FeedbackResult.Retry -> feedback.copy(
+                                    sending = false,
+                                    message = "Не отправлено. Проверьте связь и повторите.",
+                                )
+                            }
+                        }
+                    }
+                }
 
                 AppIntent.OpenDownloadPage -> openDownloadPage(context)
 
