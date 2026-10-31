@@ -297,6 +297,7 @@ fun AppRoot(
                 switchingWarning = state.switchingInProgress,
                 startProgressText = state.startProgressText,
                 notice = state.prepareError,
+                preparing = state.preparing,
                 onAction = { action -> onIntent(AppIntent.ConnectionAction(action)) },
                 onOpenAccount = {
                     go(AppDestination.Account)
@@ -613,6 +614,14 @@ data class AppRootState(
      * страны, здесь же туннель просто не подняли.
      */
     val prepareError: String? = null,
+    /**
+     * Идёт подготовка профиля перед подключением.
+     *
+     * Не `prepareError`: подготовка — нормальный шаг, а не отказ, и красить её
+     * как ошибку нельзя. Нужна экрану, чтобы кнопка сказала «готовим…» вместо
+     * молчания на время сетевого запроса.
+     */
+    val preparing: Boolean = false,
     val demoConfigs: List<DemoConfig> = emptyList(),
     val demoSelectedCode: String? = null,
 )

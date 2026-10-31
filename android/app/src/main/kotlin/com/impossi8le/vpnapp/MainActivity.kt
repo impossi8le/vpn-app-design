@@ -677,6 +677,14 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
     var feedback by remember { mutableStateOf(FeedbackScreenState()) }
 
     /**
+     * Идёт подготовка профиля перед подключением.
+     *
+     * Отдельный флаг, а не `prepareMessage`: подготовка — не ошибка, и показывать
+     * её красной плашкой значило бы пугать пользователя нормальным процессом.
+     */
+    var preparing by remember { mutableStateOf(false) }
+
+    /**
      * Тумблер «Подтверждать смену страны».
      *
      * Источник — несекретное хранилище настроек, а не сервер и не состояние
@@ -1103,6 +1111,7 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
             // то, что успело прийти (или умолчание, если ответа ещё нет).
             account = account,
             feedback = feedback,
+            preparing = preparing,
             refreshingConfigs = refreshingConfigs,
             // Пометка «данные из кэша». `null`, когда список свежий (или когда
             // показывать нечего) — тогда экран молчит и §6 не нарушен.
@@ -1263,6 +1272,10 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
                         StatusAction.Connect -> {
                             // Прошлая причина не должна пережить новую попытку.
                             prepareMessage = null
+                            // Пока готовится профиль (до пяти секунд), на экране
+                            // обязан быть виден признак работы: иначе нажатие
+                            // выглядит как «ничего не произошло».
+                            preparing = true
                             // Разрешение на уведомления спрашиваем ЗДЕСЬ, перед
                             // первым подключением: на Android 13+ без него
                             // система молча прячет и постоянную карточку
@@ -1274,7 +1287,12 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
                             // без id клиент готовил конфиг из кэша/первый из списка,
                             // и выбор страны на экране ни на что не влиял — человек
                             // жал «Подключить» и уезжал не туда, куда выбрал.
-                            when (val prepared = graph.preparer.ensureProfile(selectedConfigId)) {
+                            val prepared = try {
+                                graph.preparer.ensureProfile(selectedConfigId)
+                            } finally {
+                                preparing = false
+                            }
+                            when (prepared) {
                                 PrepareResult.Ready -> {
                                     // Обходы тянем ПЕРЕД connect: файл должен
                                     // быть на диске к моменту, когда сервис

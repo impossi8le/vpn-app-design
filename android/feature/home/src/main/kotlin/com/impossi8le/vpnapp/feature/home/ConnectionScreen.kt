@@ -117,6 +117,13 @@ fun ConnectionScreen(
      */
     notice: String? = null,
     /**
+     * Идёт подготовка профиля: до пяти секунд между нажатием и стартом туннеля.
+     *
+     * Нужен, чтобы кнопка в эти секунды говорила «готовим…», а не выглядела
+     * нажатой в пустоту. Это не ошибка и не «подключение» — отдельное состояние.
+     */
+    preparing: Boolean = false,
+    /**
      * Номер доступной версии или `null`. Баннер обновления — приглашение, а не
      * предупреждение: он не про защиту и не должен пугать. Поэтому нейтральный
      * тон, а не жёлтый/красный (ср. [switchingWarning] и [notice]).
@@ -428,7 +435,8 @@ fun ConnectionScreen(
                 StatusAction.RefreshAccess,
                 StatusAction.OpenSettings,
                 -> VpnPrimaryButton(
-                    text = presentation.actionLabel,
+                    text = if (preparing) "Готовим подключение…" else presentation.actionLabel,
+                    enabled = !preparing,
                     onClick = {
                         onAction(presentation.action)
                         // Нажатие при прокрученном списке не должно теряться:
