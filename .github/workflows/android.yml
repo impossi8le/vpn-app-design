@@ -36,7 +36,11 @@ jobs:
   # на эмуляторе. Раздельные артефакты пришлось бы склеивать вручную.
   engine:
     name: Build engine (arm64 + x86_64)
-    runs-on: ubuntu-latest
+    # Образ прибит, а не `ubuntu-latest`: 31.10.2026 `latest` переехал на Ubuntu 26
+    # со swig 4.4.0, и генерация JNI-биндинга OpenVPN 3 падает
+    # (`ovpncliJAVA.stamp Error 1`). Проверенная связка — 24.04 со swig 4.2.
+    # Обновлять осознанно, прогнав сборку движка.
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -190,7 +194,7 @@ jobs:
 
   test:
     name: Build + unit tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: engine
     defaults:
       run:
@@ -334,7 +338,7 @@ jobs:
   # тогда падение эмулятора выглядит как падение юнит-тестов.
   instrumented:
     name: Instrumented (emulator)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [engine, test]
     defaults:
       run:
@@ -416,7 +420,7 @@ jobs:
 
   release:
     name: Signed release APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: test
     # ВАЖНО: `secrets` НЕДОСТУПЕН в job-level `if` — GitHub отвергает такой
     # workflow целиком (прогон создаётся, но с нулём джобов). Поэтому проверка
