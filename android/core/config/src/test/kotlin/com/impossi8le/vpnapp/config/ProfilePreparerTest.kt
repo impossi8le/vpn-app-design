@@ -9,6 +9,7 @@ import com.impossi8le.vpnapp.domain.config.ProfileMeta
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -91,6 +92,22 @@ class ProfilePreparerTest {
 
         assertEquals(PrepareResult.Ready, result, "офлайн обязан подключаться с тем, что есть")
         assertEquals(before, String(store.load()!!.raw), "профиль не тронут")
+    }
+
+    @Test
+    fun `сервер говорит, что конфига нет — сохранённый профиль не поднимаем молча`() = runTest {
+        // Именно этот случай держал людей на снятых адресах: сервер отвечал
+        // «конфиг не найден», клиент молча брал файл с диска и уходил в
+        // бесконечный `Server poll timeout`.
+        val service = ScriptedConfigService(
+            fetchResult = Result.failure(ConfigFetchException(ConfigFetchError.NotFound)),
+        )
+        val store = storeWithProfile()
+        val meta = FakeProfileMetaStore(ProfileMeta("GEclient94", "v1", 1_000_000L))
+
+        val result = preparer(service, store, meta).ensureProfile()
+
+        assertTrue(result is PrepareResult.Failed, "мёртвый конфиг нельзя выдавать за рабочий")
     }
 
     @Test

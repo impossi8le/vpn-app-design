@@ -1270,7 +1270,11 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
                             // туннель поднят. Отказ подключение не блокирует —
                             // уведомление это удобство, а не защита.
                             ensureNotificationPermission()
-                            when (val prepared = graph.preparer.ensureProfile()) {
+                            // Выбранное подключение, а не «первое активное»:
+                            // без id клиент готовил конфиг из кэша/первый из списка,
+                            // и выбор страны на экране ни на что не влиял — человек
+                            // жал «Подключить» и уезжал не туда, куда выбрал.
+                            when (val prepared = graph.preparer.ensureProfile(selectedConfigId)) {
                                 PrepareResult.Ready -> {
                                     // Обходы тянем ПЕРЕД connect: файл должен
                                     // быть на диске к моменту, когда сервис
