@@ -1,6 +1,9 @@
 package com.impossi8le.vpnapp.config
 
+import com.impossi8le.vpnapp.domain.config.ConfigFetchError
+import com.impossi8le.vpnapp.domain.config.ConfigFetchException
 import com.impossi8le.vpnapp.domain.config.ConfigList
+import com.impossi8le.vpnapp.domain.config.ConfigService
 import com.impossi8le.vpnapp.domain.config.FetchedConfig
 import com.impossi8le.vpnapp.domain.config.ProfileMeta
 import kotlinx.coroutines.test.runTest
@@ -42,7 +45,10 @@ class ProfilePreparerTest {
     }
 
     @Test
-    fun `годный профиль — запрос не делается`() = runTest {
+    fun `годный профиль — пробуем обновить, но список подключений не запрашиваем`() = runTest {
+        // Попытка обновления теперь есть всегда: профиль мог устареть, а адреса
+        // узлов меняются на стороне платформы. /me при этом не нужен — активный
+        // конфиг известен из метаданных.
         val service = ScriptedConfigService(
             listResult = Result.success(ConfigList(0L, listOf(activeConfig()))),
         )
@@ -52,8 +58,78 @@ class ProfilePreparerTest {
         val result = preparer(service, store, meta).ensureProfile()
 
         assertEquals(PrepareResult.Ready, result)
-        assertEquals(0, service.fetchCount) // профиль не скачивался
-        assertEquals(0, service.listCount)  // и список подключений не запрашивался
+        assertEquals(1, service.fetchCount) // попытка освежить профиль
+        assertEquals(0, service.listCount)  // список подключений не запрашивался
+    }
+
+    @Test
+    fun `сервер отдал новую версию — подключаемся уже с неё`() = runTest {
+        val fresh = "client\nremote new-host 1194\n".toByteArray()
+        val service = ScriptedConfigService(
+            fetchResult = Result.success(FetchedConfig(fresh, "v2", sha256(fresh))),
+        )
+        val store = storeWithProfile()
+        val meta = FakeProfileMetaStore(ProfileMeta("GEclient94", "v1", 1_000_000L))
+
+        val result = preparer(service, store, meta).ensureProfile()
+
+        assertEquals(PrepareResult.Ready, result)
+        assertEquals(String(fresh), String(store.load()!!.raw), "на диске обязан быть свежий профиль")
+        assertEquals("v2", meta.load()!!.version)
+    }
+
+    @Test
+    fun `сети нет — поднимаем сохранённый профиль, а не отказываем`() = runTest {
+        val service = ScriptedConfigService(
+            fetchResult = Result.failure(ConfigFetchException(ConfigFetchError.NetworkUnavailable)),
+        )
+        val store = storeWithProfile()
+        val before = String(store.load()!!.raw)
+        val meta = FakeProfileMetaStore(ProfileMeta("GEclient94", "v1", 1_000_000L))
+
+        val result = preparer(service, store, meta).ensureProfile()
+
+        assertEquals(PrepareResult.Ready, result, "офлайн обязан подключаться с тем, что есть")
+        assertEquals(before, String(store.load()!!.raw), "профиль не тронут")
+    }
+
+    @Test
+    fun `сервер сказал «подписка истекла» — профиль удаляется`() = runTest {
+        val service = ScriptedConfigService(
+            fetchResult = Result.failure(ConfigFetchException(ConfigFetchError.SubscriptionExpired)),
+        )
+        val store = storeWithProfile()
+        val meta = FakeProfileMetaStore(ProfileMeta("GEclient94", "v1", 1_000_000L))
+
+        val result = preparer(service, store, meta).ensureProfile()
+
+        assertEquals(PrepareResult.SubscriptionExpired, result)
+        assertNull(store.load())
+        assertNull(meta.load())
+    }
+
+    @Test
+    fun `обновление не успело за отведённое время — не ждём дольше и подключаемся`() = runTest {
+        val slow = object : ConfigService {
+            override suspend fun listConfigs() = Result.success(ConfigList(0L, emptyList()))
+            override suspend fun fetchConfig(configId: String): Result<FetchedConfig> {
+                kotlinx.coroutines.delay(60_000)
+                error("не должны сюда дойти")
+            }
+        }
+        val store = storeWithProfile()
+        val meta = FakeProfileMetaStore(ProfileMeta("GEclient94", "v1", 1_000_000L))
+        val preparer = ProfilePreparer(
+            service = slow,
+            manager = ConfigManager(slow, store, meta),
+            store = store,
+            metaStore = meta,
+            now = { now },
+        )
+
+        val result = preparer.ensureProfile()
+
+        assertEquals(PrepareResult.Ready, result, "зависший запрос не должен блокировать подключение")
     }
 
     @Test
@@ -173,9 +249,10 @@ class ProfilePreparerTest {
     }
 
     @Test
-    fun `просят уже установленный конфиг — сети нет`() = runTest {
+    fun `просят уже установленный конфиг — список не запрашиваем, офлайн всё равно Ready`() = runTest {
         // Оффлайн-гарантия сохраняется и для явного id: тот же конфиг на диске и
-        // годен — GET /me и /config не делаются вовсе.
+        // годен — GET /me не делается. Попытка обновления есть, но её провал не
+        // мешает подключиться.
         val service = ScriptedConfigService()
         val store = storeWithProfile()
         val meta = FakeProfileMetaStore(ProfileMeta("A", "v1", 1_000_000L))
@@ -183,8 +260,8 @@ class ProfilePreparerTest {
         val result = preparer(service, store, meta).ensureProfile("A")
 
         assertEquals(PrepareResult.Ready, result)
-        assertEquals(0, service.fetchCount)
-        assertEquals(0, service.listCount)
+        assertEquals(1, service.fetchCount, "попытка обновления")
+        assertEquals(0, service.listCount, "список подключений не нужен")
     }
 
     @Test

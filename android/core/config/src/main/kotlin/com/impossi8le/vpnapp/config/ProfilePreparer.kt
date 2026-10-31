@@ -3,11 +3,13 @@ package com.impossi8le.vpnapp.config
 import com.impossi8le.vpnapp.domain.config.ConfigFetchError
 import com.impossi8le.vpnapp.domain.config.ConfigService
 import com.impossi8le.vpnapp.domain.config.ConfigSummary
+import com.impossi8le.vpnapp.domain.config.ProfileMeta
 import com.impossi8le.vpnapp.domain.config.ProfileMetaStore
 import com.impossi8le.vpnapp.domain.config.ProfileStore
 import com.impossi8le.vpnapp.domain.config.ProfileUse
 import com.impossi8le.vpnapp.domain.config.SubscriptionStatus
 import com.impossi8le.vpnapp.domain.config.decideProfileUse
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Итог подготовки профиля перед подключением. */
 sealed interface PrepareResult {
@@ -28,11 +30,20 @@ sealed interface PrepareResult {
 }
 
 /**
- * Готовит профиль к подключению, по возможности НЕ обращаясь к серверу.
+ * Готовит профиль к подключению.
  *
- * Сначала смотрит на локальные метаданные: если профиль уже лежит и не истёк,
- * `GET /config/{id}` не делается вовсе. Сеть нужна, только когда профиля нет,
- * запрошен другой конфиг или срок вышел.
+ * **Профиль на диске перепроверяется на сервере, но офлайн-сценарий не ломается.**
+ * Раньше валидный профиль отдавался без единого запроса. Это экономило сеть, но
+ * держало пользователя на устаревшем профиле навсегда: адреса `remote` меняются,
+ * когда платформа переставляет узлы, а клиент об этом не узнавал. На практике
+ * люди неделями подключались к снятым адресам и видели `Server poll timeout` по
+ * кругу, пока сервер уже отдавал свежий профиль.
+ *
+ * Теперь перед подключением делается одна ограниченная по времени попытка
+ * обновления ([refreshTimeoutMillis]). Если она не удалась — нет сети, сервер
+ * молчит, версия прежняя — поднимаем туннель из сохранённого профиля. Именно
+ * поэтому проверка не может быть обязательной: офлайн-пользователь с годным
+ * профилем обязан подключиться (§6.2, §6.4 шаг 1).
  *
  * `now` внедряется параметром ради детерминированного теста — та же причина,
  * что у `toRowState` в presentation.
@@ -42,6 +53,13 @@ class ProfilePreparer(
     private val manager: ConfigManager,
     private val store: ProfileStore,
     private val metaStore: ProfileMetaStore,
+    /**
+     * Сколько ждать обновления профиля перед подключением.
+     *
+     * Потолок, а не срок: ответ приходит обычно быстрее, а провал этого окна —
+     * не отказ, а повод идти с тем, что лежит на диске.
+     */
+    private val refreshTimeoutMillis: Long = DEFAULT_REFRESH_TIMEOUT_MILLIS,
     private val now: () -> Long = { System.currentTimeMillis() / 1000 },
 ) {
 
@@ -57,9 +75,9 @@ class ProfilePreparer(
         val hasProfile = store.load() != null
         val meta = metaStore.load()
 
-        // Быстрый путь без сети: профиль уже на диске, он ОТ ЗАПРОШЕННОГО конфига
-        // и срок не вышел. Список подключений не запрашиваем — иначе оффлайн-
-        // пользователь с валидным профилем не поднял бы туннель (§6.2, §6.4 шаг 1).
+        // Профиль уже на диске, он ОТ ЗАПРОШЕННОГО конфига и срок не вышел.
+        // Список подключений (/me) не запрашиваем: он нужен только чтобы понять,
+        // какой конфиг активен, а это уже известно из метаданных.
         //
         // Гард `configId == null || meta.configId == configId` обязателен: без него
         // валидный кэш ЧУЖОГО конфига (на диске A, просят B) вернул бы Ready и
@@ -72,7 +90,11 @@ class ProfilePreparer(
                 return PrepareResult.SubscriptionExpired
             }
             if (configId == null || meta.configId == configId) {
-                return PrepareResult.Ready
+                // Не `Ready` напрямую: профиль мог устареть — адреса узлов
+                // меняются на стороне платформы, и без этой попытки клиент
+                // поднимал бы туннель к снятым адресам, пока сервер уже отдаёт
+                // свежий. Провал попытки не отказ: идём с тем, что на диске.
+                return refreshBeforeConnect(meta)
             }
         }
 
@@ -115,6 +137,47 @@ class ProfilePreparer(
     }
 
     /**
+     * Освежить профиль на диске, не отказывая в подключении из-за сети.
+     *
+     * **Почему исход «не успели» равен [PrepareResult.Ready].** Окно обновления —
+     * потолок ожидания, а не условие подключения. Офлайн-пользователь с годным
+     * профилем обязан поднять туннель (§6.2, §6.4 шаг 1); ждать 30-секундный
+     * таймаут чтения ради проверки версии значило бы сломать именно этот сценарий.
+     *
+     * **Почему отказ обновления НЕ отказ подключения.** Свежая версия — благо, но
+     * её отсутствие не делает сохранённый профиль недействительным. Исключения —
+     * только явные приговоры сервера: подписка истекла и доступ отозван.
+     */
+    private suspend fun refreshBeforeConnect(meta: ProfileMeta): PrepareResult {
+        val refreshed = withTimeoutOrNull(refreshTimeoutMillis) {
+            manager.apply(meta.configId, meta.version, meta.endDateEpochSeconds)
+        } ?: return PrepareResult.Ready
+
+        return when (refreshed) {
+            is ApplyResult.Applied, is ApplyResult.AlreadyCurrent -> PrepareResult.Ready
+
+            // Мусор с сервера или расхождение хеша: прежний профиль на месте и
+            // рабочий (apply откатывает), поднимать его честнее, чем не поднимать
+            // ничего.
+            ApplyResult.Rejected, ApplyResult.HashMismatch -> PrepareResult.Ready
+
+            is ApplyResult.FetchFailed -> when (refreshed.error) {
+                ConfigFetchError.SubscriptionExpired -> {
+                    store.clear()
+                    metaStore.clear()
+                    PrepareResult.SubscriptionExpired
+                }
+
+                ConfigFetchError.ConfigRevoked -> PrepareResult.Revoked
+
+                // Сеть, сессия, лимит запросов, пропавший конфиг — всё это не
+                // приговор сохранённому профилю.
+                else -> PrepareResult.Ready
+            }
+        }
+    }
+
+    /**
      * Какое подключение готовить.
      *
      * Конкретный [configId] берём из списка `/me` по id — так у нас есть и срок
@@ -133,5 +196,15 @@ class ProfilePreparer(
         } else {
             active.firstOrNull { it.id == configId }
         }
+    }
+
+    companion object {
+        /**
+         * Потолок ожидания обновления перед подключением.
+         *
+         * Пять секунд — компромисс: обычный ответ укладывается заметно быстрее,
+         * а зависший запрос не должен превращать нажатие «Подключить» в молчание.
+         */
+        const val DEFAULT_REFRESH_TIMEOUT_MILLIS = 5_000L
     }
 }
