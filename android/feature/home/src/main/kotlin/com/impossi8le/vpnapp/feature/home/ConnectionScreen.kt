@@ -14,7 +14,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -188,6 +192,21 @@ fun ConnectionScreen(
         bypassConfigured = bypassConfigured,
     )
 
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    /**
+     * Возврат к статусу, когда начинается подключение.
+     *
+     * Статус — первый элемент прокручиваемого списка. Если человек выбрал страну
+     * ниже по списку и нажал «Подключить», экран оставался на том же месте: ни
+     * «Подключение…», ни прогресса он не видел и решал, что нажатие не сработало.
+     * Подтягиваем список к статусу, как только появился текст прогресса.
+     */
+    LaunchedEffect(startProgressText) {
+        if (startProgressText != null) listState.animateScrollToItem(0)
+    }
+
     Column(modifier = modifier.fillMaxSize().background(VpnColors.Void)) {
         // Шапка: заголовок и вход в аккаунт. Кнопка «назад» тут не нужна —
         // это корневой экран, и возврат с него закрывает приложение.
@@ -200,6 +219,7 @@ fun ConnectionScreen(
         }
 
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
@@ -409,7 +429,14 @@ fun ConnectionScreen(
                 StatusAction.OpenSettings,
                 -> VpnPrimaryButton(
                     text = presentation.actionLabel,
-                    onClick = { onAction(presentation.action) },
+                    onClick = {
+                        onAction(presentation.action)
+                        // Нажатие при прокрученном списке не должно теряться:
+                        // сразу показываем ту часть экрана, где идёт работа.
+                        if (presentation.action == StatusAction.Connect) {
+                            scope.launch { listState.animateScrollToItem(0) }
+                        }
+                    },
                     testTag = CONNECTION_ACTION_TAG,
                 )
 
