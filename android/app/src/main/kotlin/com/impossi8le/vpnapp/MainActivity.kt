@@ -106,6 +106,14 @@ import kotlinx.coroutines.withContext
 private const val REFRESH_RETRY_DELAY_MS = 15_000L
 
 /**
+ * Как часто перепроверять обновление, пока экран открыт.
+ *
+ * Пятнадцать минут — компромисс: человек, оставивший приложение открытым, узнаёт
+ * о новой сборке без перезапуска, а запросов к серверу немного.
+ */
+private const val UPDATE_CHECK_INTERVAL_MILLIS = 15 * 60 * 1000L
+
+/**
  * Бот поддержки. Единственный канал: почту продукт не заводит, а Telegram —
  * тот же мессенджер, где выдаётся подписка, поэтому у пользователя он уже есть.
  *
@@ -410,6 +418,13 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
     val bypassState by bypassViewModel.state.collectAsState()
 
     val status by viewModel.status.collectAsState()
+
+    // Что видит человек — в тот же лог, что уезжает в отчёте. Ядро пишет свои
+    // события, но по ним не видно, что в этот момент показывал экран: именно этот
+    // разрыв и приходилось восстанавливать догадками.
+    LaunchedEffect(status) {
+        graph.logBuffer.add("UI: статус — ${status.label()}")
+    }
     val scope = rememberCoroutineScope()
 
     // Открываем Telegram, когда пришла ссылка. Показывать экран ожидания без
@@ -863,15 +878,20 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
     val updateProgress = (downloadState as? UpdateDownloadState.Downloading)?.percent
     val updatePausedAt = (downloadState as? UpdateDownloadState.Paused)?.percent
 
-    // Проверка при запуске. Один раз, не в цикле: анонимный лимит запросов
-    // GitHub невелик, а баннер подождёт.
+    // Проверка обновлений: сразу при запуске и дальше периодически, пока экран
+    // жив. Раньше проверка была ровно одна — при холодном старте, и человек,
+    // вернувшийся в приложение из фона, новых версий не видел: приходилось
+    // выгружать приложение целиком.
     LaunchedEffect(Unit) {
-        updateState = updateChecker.check()
-        // Вердикт запоминается, чтобы блокировка не ждала сеть при следующем
-        // запуске. Состояние Failed не пишем: оно про сеть, а не про версии.
-        val available = updateState as? UpdateUiState.Available
-        if (available != null) {
-            verdictStore.write(latest = available.versionCode, minSupported = graph.updateApi.minSupported())
+        while (true) {
+            updateState = updateChecker.check()
+            // Вердикт запоминается, чтобы блокировка не ждала сеть при следующем
+            // запуске. Состояние Failed не пишем: оно про сеть, а не про версии.
+            val available = updateState as? UpdateUiState.Available
+            if (available != null) {
+                verdictStore.write(latest = available.versionCode, minSupported = graph.updateApi.minSupported())
+            }
+            kotlinx.coroutines.delay(UPDATE_CHECK_INTERVAL_MILLIS)
         }
     }
 
@@ -1175,6 +1195,16 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
         // сворачивать нечего, и `null`-безопасный вызов просто ничего не сделает.
         onMinimize = { (context as? android.app.Activity)?.moveTaskToBack(true) },
         onIntent = { intent ->
+            // Действие пользователя — в общий лог, который уезжает в отчёте.
+            // Без этой строки в отчёте видно, что делало ядро, но не видно, что
+            // нажимал человек: разбор упирался в догадки о порядке действий.
+            //
+            // Пишем только имя намерения и параметр действия: введённые руками
+            // тексты и содержимое профиля в лог не попадают.
+            graph.logBuffer.add(
+                "UI: " + intent::class.simpleName +
+                    ((intent as? AppIntent.ConnectionAction)?.let { "(${it.action})" } ?: ""),
+            )
             when (intent) {
                 AppIntent.CheckForUpdate -> scope.launch {
                     updateState = UpdateUiState.Checking
