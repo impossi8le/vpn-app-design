@@ -21,6 +21,11 @@ fun describeEngineFailure(line: String): String? = when {
     line.contains("KEEPALIVE_TIMEOUT", ignoreCase = true) ->
         "Сервер не отвечает"
 
+    // Именно эта строка — самый частый отказ на живых устройствах: сервер не
+    // ответил ни на один пакет, и ядро перебирает адреса по кругу.
+    line.contains("Server poll timeout", ignoreCase = true) ->
+        "Сервер не отвечает"
+
     line.contains("AUTH_FAILED", ignoreCase = true) ->
         "Сервер отклонил доступ — проверьте подписку"
 
