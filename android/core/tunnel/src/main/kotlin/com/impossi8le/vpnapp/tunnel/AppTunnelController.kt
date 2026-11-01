@@ -285,13 +285,26 @@ class AppTunnelController(
      */
     init {
         TunnelStateStore.state.value.toConnectionStatus()?.let { restored ->
-            declaredState = restored
-            // Тот же порог, что и у события сервиса: «поднятый интерфейс» само
-            // по себе не значит, что трафик идёт через туннель (issue #32).
-            _status.value = restored.confirmedByTunnelPresence(tunnelPresence.read())
-            // Восстановленное «туннель поднят» обязано попасть под сторож:
-            // иначе смерть туннеля при открытом экране останется незамеченной.
-            restartPresenceWatch()
+            val presence = tunnelPresence.read()
+
+            // «Поднят» в хранилище при ОТСУТСТВИИ туннеля — это не «ещё не
+            // появился», а устаревший снимок: сервис мог умереть, не сообщив об
+            // этом, а хранилище живёт в том же процессе и помнит последнее.
+            // На холодном старте «подключение» здесь означало бы вечное
+            // «Подключение» вместо правды.
+            //
+            // Отличие от события сервиса принципиально: там `ESTABLISHED` уже
+            // объявлен, и туннель вот-вот появится (issue #32), — здесь же
+            // никакого объявления не было вовсе.
+            val staleWhileDown = restored.describesTunnelUp &&
+                presence == TunnelPresence.ABSENT
+
+            declaredState = if (staleWhileDown) ConnectionStatus.Disconnected else restored
+            _status.value = restored.restoredFromStore(presence)
+
+            // Сторож нужен, только если туннель действительно считается поднятым:
+            // иначе он опрашивал бы систему без предмета.
+            if (_status.value.describesTunnelUp) restartPresenceWatch()
         }
     }
 

@@ -138,6 +138,15 @@ val ConnectionStatus.describesTunnelUp: Boolean
  * `Connecting` в промежутке — не «отключено» и не «подключено»: интерфейс
  * поднимается, трафик ещё не в туннеле. Экран уже умеет это показывать.
  */
+fun ConnectionStatus.restoredFromStore(presence: TunnelPresence): ConnectionStatus {
+    // «Поднят» в хранилище при отсутствии туннеля — устаревший снимок умершего
+    // сервиса, а не «вот-вот появится». На холодном старте это «отключено».
+    if (describesTunnelUp && presence == TunnelPresence.ABSENT) {
+        return ConnectionStatus.Disconnected
+    }
+    return confirmedByTunnelPresence(presence)
+}
+
 fun ConnectionStatus.confirmedByTunnelPresence(presence: TunnelPresence): ConnectionStatus {
     if (!describesTunnelUp) return this
     return when (presence) {

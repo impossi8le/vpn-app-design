@@ -66,4 +66,41 @@ class TunnelStateRestoreTest {
             "после перезапуска экрана порог §6 обязан действовать так же, как у события сервиса",
         )
     }
+
+    @Test
+    fun `устаревший «поднят» при отсутствии туннеля на холодном старте — «отключено»`() {
+        // Сервис умер, не сообщив об этом; в хранилище остался «поднят».
+        // Показывать «подключение» здесь значит держать экран в вечном ожидании.
+        assertEquals(
+            ConnectionStatus.Disconnected,
+            ConnectionStatus.VerifyingProtection.restoredFromStore(TunnelPresence.ABSENT),
+            "нет туннеля в системе — нет и подключения, снимок устарел",
+        )
+    }
+
+    @Test
+    fun `поднятый туннель на месте — восстановленный статус остаётся`() {
+        assertEquals(
+            ConnectionStatus.VerifyingProtection,
+            ConnectionStatus.VerifyingProtection.restoredFromStore(TunnelPresence.PRESENT),
+        )
+    }
+
+    @Test
+    fun `незнание при восстановлении не гасит статус`() {
+        assertEquals(
+            ConnectionStatus.VerifyingProtection,
+            ConnectionStatus.VerifyingProtection.restoredFromStore(TunnelPresence.UNKNOWN),
+            "сбой опроса — не доказательство отсутствия туннеля",
+        )
+    }
+
+    @Test
+    fun `подъём не превращается в «отключено» из-за отсутствия туннеля`() {
+        assertEquals(
+            ConnectionStatus.Connecting,
+            ConnectionStatus.Connecting.restoredFromStore(TunnelPresence.ABSENT),
+            "интерфейса ещё нет по определению — это нормальный ход подключения",
+        )
+    }
 }
