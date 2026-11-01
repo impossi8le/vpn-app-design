@@ -134,10 +134,21 @@ class AppTunnelController(
      * недействителен, и зелёное обязано исчезнуть.
      */
     private val _networkChanges = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+
+    /**
+     * Почему последняя попытка кончилась ничем.
+     *
+     * Отдельный поток, а не поле статуса: причина — не состояние туннеля, а
+     * пояснение к «отключено». Экран показывает её только там, где туннеля нет.
+     */
+    private val _failureReason = MutableStateFlow<String?>(null)
+    val failureReason: StateFlow<String?> = _failureReason.asStateFlow()
     override val networkChanges: Flow<Unit> = _networkChanges.asSharedFlow()
 
     override suspend fun connect() {
         _status.value = ConnectionStatus.Connecting
+        // Прошлая причина не должна пережить новую попытку.
+        _failureReason.value = null
 
         // СОГЛАСИЕ НА VPN ЗАПРАШИВАЕТСЯ ЗДЕСЬ, и это не формальность.
         //
@@ -210,11 +221,23 @@ class AppTunnelController(
      * вместе с состоянием: экран обязан показать применённое, а не число строк
      * в файле (см. [_appliedBypass]).
      */
-    internal fun onServiceState(state: SystemState, appliedBypass: Int) {
+    internal fun onServiceState(
+        state: SystemState,
+        appliedBypass: Int,
+        failureReason: String? = null,
+    ) {
         // «Подключено» подтверждается фактом, а не только событием сервиса:
         // решение и причина — в `confirmedByTunnelPresence` (issue #32).
         val declared = state.toConnectionStatus()
         declaredState = declared
+        // Причина относится только к «туннеля нет»: при поднятом подключении
+        // она была бы шумом и пережила бы успешную попытку.
+        _failureReason.value =
+            if (declared is ConnectionStatus.Disconnected || declared is ConnectionStatus.Failed) {
+                failureReason
+            } else {
+                null
+            }
         _status.value = declared.confirmedByTunnelPresence(tunnelPresence.read())
         _appliedBypass.value = appliedBypass
         // Состояние сменилось — пересобрать сторож существования туннеля. Именно

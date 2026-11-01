@@ -419,6 +419,9 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
 
     val status by viewModel.status.collectAsState()
 
+    // Почему последняя попытка кончилась ничем — от сервиса к экрану.
+    val failureReason by tunnel.failureReason.collectAsState()
+
     // Что видит человек — в тот же лог, что уезжает в отчёте. Ядро пишет свои
     // события, но по ним не видно, что в этот момент показывал экран: именно этот
     // разрыв и приходилось восстанавливать догадками.
@@ -1106,6 +1109,7 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
         onPrefilledNonceConsumed = authViewModel::consumePrefilledNonce,
         state = AppRootState(
             status = status,
+            failureReason = failureReason,
             configs = displayConfigs,
             // Имя работающего подключения: см. LaunchedEffect выше. Нужно экрану
             // подключения, чтобы подзаголовком показать «какой конфиг работает»

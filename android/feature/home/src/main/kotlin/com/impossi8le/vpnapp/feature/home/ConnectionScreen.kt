@@ -117,6 +117,13 @@ fun ConnectionScreen(
      */
     notice: String? = null,
     /**
+     * Почему последняя попытка не удалась. Заменяет подсказку под статусом.
+     *
+     * Иначе после нажатия «Подключить» экран возвращался к «Выберите подключение
+     * и нажмите «Подключить»» — как будто ничего и не происходило (issue #64).
+     */
+    failureReason: String? = null,
+    /**
      * Идёт подготовка профиля: до пяти секунд между нажатием и стартом туннеля.
      *
      * Нужен, чтобы кнопка в эти секунды говорила «готовим…», а не выглядела
@@ -308,7 +315,7 @@ fun ConnectionScreen(
                         StatusHeadline(
                             title = presentation.title,
                             detail = presentation.detail,
-                            hint = presentation.hint,
+                            hint = failureReason ?: presentation.hint,
                             hintTestTag = CONNECTION_HINT_TAG,
                             accent = presentation.accent,
                             titleTestTag = CONNECTION_TITLE_TAG,

@@ -287,6 +287,7 @@ fun AppRoot(
 
             AppDestination.Connection -> ConnectionScreen(
                 status = state.status,
+                failureReason = state.failureReason,
                 configs = state.configs,
                 runningConfigName = state.runningConfigName,
                 bypassCount = state.bypassCount,
@@ -455,6 +456,13 @@ data class BuildInfo(
 
 data class AppRootState(
     val status: ConnectionStatus = ConnectionStatus.Disconnected,
+    /**
+     * Почему последняя попытка не удалась — словами от ядра.
+     *
+     * `null` — причины нет. Показывается только при «нет подключения»: при
+     * поднятом туннеле это был бы шум.
+     */
+    val failureReason: String? = null,
     val configs: List<ConfigRowState> = emptyList(),
     /**
      * Имя работающего подключения, если известно. Показывается на экране

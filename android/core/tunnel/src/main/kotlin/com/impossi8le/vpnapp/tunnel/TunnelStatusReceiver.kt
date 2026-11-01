@@ -31,7 +31,10 @@ class TunnelStatusReceiver(
                 // «обходов применено ноль» — честнее, чем показать число,
                 // которого никто не подтверждал.
                 val appliedBypass = intent.getIntExtra(EXTRA_BYPASS_APPLIED, 0)
-                controller.onServiceState(state, appliedBypass)
+                // Причина сбоя приходит тем же сообщением: без неё экран после
+                // неудачи молчит, и нажатие выглядит как «ничего не произошло».
+                val reason = intent.getStringExtra(EXTRA_REASON)
+                controller.onServiceState(state, appliedBypass, reason)
             }
 
             ACTION_NETWORK_CHANGED -> controller.onNetworkChanged()
@@ -51,5 +54,8 @@ class TunnelStatusReceiver(
          * продублированы на обеих сторонах (см. комментарий в сервисе).
          */
         const val EXTRA_BYPASS_APPLIED = "bypass_applied"
+
+        /** Причина последнего сбоя; строка совпадает с `VpnTunnelService.EXTRA_REASON`. */
+        const val EXTRA_REASON = "reason"
     }
 }

@@ -121,6 +121,15 @@ class VpnTunnelService : VpnService() {
     private var appliedBypassCount = 0
 
     /**
+     * Причина последнего сбоя, словами для экрана.
+     *
+     * Пишется из колбэка ядра (JNI-поток), читается при отправке состояния —
+     * `@Volatile` достаточно: значение целиком заменяется, а не меняется по частям.
+     */
+    @Volatile
+    private var lastFailureReason: String? = null
+
+    /**
      * Буфер логов ядра — тот же экземпляр, что держит граф приложения.
      *
      * Через extras его не передать: `LogBuffer` не `Parcelable`, а сериализовать
@@ -204,6 +213,9 @@ class VpnTunnelService : VpnService() {
         if (session != null || connectJob?.isActive == true) return
 
         stopped = false
+        // Новая попытка начинается с чистого листа: прошлая причина не должна
+        // висеть над свежим подключением.
+        lastFailureReason = null
 
         // Запоминаем для перезапуска при залипании: поднимать соединение с
         // другими настройками, чем были, нельзя.
@@ -273,6 +285,11 @@ class VpnTunnelService : VpnService() {
             // LogScrubber на входе буфера.
             newSession.onLog = { line ->
                 logBuffer.add(line)
+                // Причина сбоя — для экрана, а не только для отчёта. Ядро уже
+                // знает, что случилось; раньше это знание оставалось в логе, и
+                // человек видел «Не подключено» без объяснения (issue #64).
+                com.impossi8le.vpnapp.domain.diagnostics.describeEngineFailure(line)
+                    ?.let { lastFailureReason = it }
                 if (BuildConfig.DEBUG) android.util.Log.d(TAG, line)
             }
 
@@ -493,7 +510,10 @@ class VpnTunnelService : VpnService() {
                 // Число РЕАЛЬНО применённых обходов едет вместе с состоянием:
                 // экран показывает его вместо количества строк в файле, чтобы не
                 // заявить об обходе, которого на устройстве нет (§6).
-                .putExtra(EXTRA_BYPASS_APPLIED, appliedBypassCount),
+                .putExtra(EXTRA_BYPASS_APPLIED, appliedBypassCount)
+                // Причина последнего сбоя: экран покажет её, только когда
+                // туннеля нет. Для «подключено» она не нужна и не читается.
+                .putExtra(EXTRA_REASON, lastFailureReason),
         )
         if (!stopped) updateNotification(state)
     }
@@ -615,6 +635,14 @@ class VpnTunnelService : VpnService() {
          * живёт в `core:tunnel`, а этот модуль от него не зависит.
          */
         const val EXTRA_BYPASS_APPLIED = "bypass_applied"
+
+        /**
+         * Причина последнего сбоя в широковещании состояния.
+         *
+         * Строка обязана совпадать с `TunnelStatusReceiver.EXTRA_REASON`: модули
+         * не зависят друг от друга, и контракт держится на этих двух строках.
+         */
+        const val EXTRA_REASON = "reason"
 
         private const val SESSION_NAME = "VPN"
         private const val TAG = "VpnTunnel"
