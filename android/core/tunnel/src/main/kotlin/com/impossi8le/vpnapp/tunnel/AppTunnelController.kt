@@ -232,12 +232,16 @@ class AppTunnelController(
         declaredState = declared
         // Причина относится только к «туннеля нет»: при поднятом подключении
         // она была бы шумом и пережила бы успешную попытку.
-        _failureReason.value =
-            if (declared is ConnectionStatus.Disconnected || declared is ConnectionStatus.Failed) {
-                failureReason
-            } else {
-                null
-            }
+        _failureReason.value = when {
+            // Новая причина пришла — запоминаем.
+            failureReason != null -> failureReason
+            // Туннель поднят — объяснять нечего.
+            declared.describesTunnelUp -> null
+            // Иначе держим прежнюю: при автоперезапуске сервис начинает с чистого
+            // листа, и без этого причина исчезала бы ровно в тот момент, когда
+            // человеку её и нужно увидеть.
+            else -> _failureReason.value
+        }
         _status.value = declared.confirmedByTunnelPresence(tunnelPresence.read())
         _appliedBypass.value = appliedBypass
         // Состояние сменилось — пересобрать сторож существования туннеля. Именно
