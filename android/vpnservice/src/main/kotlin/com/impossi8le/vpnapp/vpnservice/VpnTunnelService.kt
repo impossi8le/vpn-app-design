@@ -129,6 +129,10 @@ class VpnTunnelService : VpnService() {
     @Volatile
     private var lastFailureReason: String? = null
 
+    /** Последнее опубликованное состояние — чтобы досылать к нему причину. */
+    @Volatile
+    private var lastState: SystemState = SystemState.IDLE
+
     /**
      * Буфер логов ядра — тот же экземпляр, что держит граф приложения.
      *
@@ -288,8 +292,15 @@ class VpnTunnelService : VpnService() {
                 // Причина сбоя — для экрана, а не только для отчёта. Ядро уже
                 // знает, что случилось; раньше это знание оставалось в логе, и
                 // человек видел «Не подключено» без объяснения (issue #64).
-                com.impossi8le.vpnapp.domain.diagnostics.describeEngineFailure(line)
-                    ?.let { lastFailureReason = it }
+                com.impossi8le.vpnapp.domain.diagnostics.describeEngineFailure(line)?.let { reason ->
+                    if (reason != lastFailureReason) {
+                        lastFailureReason = reason
+                        // Ядро часто сообщает причину ПОСЛЕ события обрыва, когда
+                        // состояние уже отправлено. Без повторной публикации
+                        // экран причину не увидит вовсе.
+                        if (lastState != SystemState.ESTABLISHED) notifyState(lastState)
+                    }
+                }
                 if (BuildConfig.DEBUG) android.util.Log.d(TAG, line)
             }
 
@@ -496,6 +507,9 @@ class VpnTunnelService : VpnService() {
         )
 
     private fun notifyState(state: SystemState) {
+        // Запоминаем, что объявлено: причина сбоя приходит из лога отдельно и
+        // должна досылаться именно с тем состоянием, которое сейчас на экране.
+        lastState = state
         // Общий источник правды: его читает и экран (через широковещание ниже),
         // и плитка «Быстрых настроек» (напрямую — она не может спросить состояние
         // у сервиса, а шторку открывают в произвольный момент, когда вещание уже
