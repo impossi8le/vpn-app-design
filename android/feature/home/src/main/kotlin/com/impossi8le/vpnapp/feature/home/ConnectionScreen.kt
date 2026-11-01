@@ -314,8 +314,11 @@ fun ConnectionScreen(
                     Box(modifier = Modifier.padding(top = 13.dp)) {
                         StatusHeadline(
                             title = presentation.title,
-                            detail = presentation.detail,
-                            hint = failureReason ?: presentation.hint,
+                            // Причина отказа заменяет подпись под заголовком: именно её видит
+                            // человек, а «выберите подключение» после нажатия
+                            // звучит так, будто нажатия не было (issue #64).
+                            detail = failureReason ?: presentation.detail,
+                            hint = presentation.hint,
                             hintTestTag = CONNECTION_HINT_TAG,
                             accent = presentation.accent,
                             titleTestTag = CONNECTION_TITLE_TAG,
