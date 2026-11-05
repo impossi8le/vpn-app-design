@@ -134,6 +134,15 @@ class VpnTunnelService : VpnService() {
     private var lastState: SystemState = SystemState.IDLE
 
     /**
+     * Схлопывание повторов журнала ядра.
+     *
+     * Один экземпляр на сервис, а не на сессию: после перезапуска поток строк
+     * продолжается, и новый объект начал бы счётчик заново — в отчёте оказалось
+     * бы два «повторено N раз» вместо одного.
+     */
+    private val repeatCollapser = com.impossi8le.vpnapp.domain.diagnostics.LogRepeatCollapser()
+
+    /**
      * Буфер логов ядра — тот же экземпляр, что держит граф приложения.
      *
      * Через extras его не передать: `LogBuffer` не `Parcelable`, а сериализовать
@@ -175,9 +184,25 @@ class VpnTunnelService : VpnService() {
      * система держит ссылку на сервис после его смерти, и это утечка.
      */
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onLost(network: Network) = notifyNetworkChanged()
+        override fun onLost(network: Network) = onNetworkLost()
 
         override fun onAvailable(network: Network) = notifyNetworkChanged()
+    }
+
+    /**
+     * Сеть пропала: сокет туннеля больше некуда писать.
+     *
+     * Раньше здесь только сообщалось наружу, а соединение продолжало писать в
+     * мёртвый сокет — сотни строк `Network is unreachable` и «подключено» на
+     * экране при неработающем туннеле (issue #66). Перезапуск делает тот же
+     * путь, что и сторож залипания: он уже умеет поднимать сессию заново и
+     * сообщать `Recovering`.
+     */
+    private fun onNetworkLost() {
+        notifyNetworkChanged()
+        // Без активной сессии перезапускать нечего — это обычное «выключено».
+        if (session == null || stopped) return
+        restartTunnel()
     }
 
     override fun onCreate() {
@@ -288,7 +313,10 @@ class VpnTunnelService : VpnService() {
             // понижен до 1, а PEM печатаются начиная с 3, и вторая линия —
             // LogScrubber на входе буфера.
             newSession.onLog = { line ->
-                logBuffer.add(line)
+                // Повторы схлопываем ПЕРЕД записью: при потере сети ядро сыплет
+                // одной строкой сотни раз, и она вытесняет из буфера рукопожатие,
+                // смену узлов и причину обрыва (issue #66).
+                repeatCollapser.accept(line)?.let(logBuffer::add)
                 // Причина сбоя — для экрана, а не только для отчёта. Ядро уже
                 // знает, что случилось; раньше это знание оставалось в логе, и
                 // человек видел «Не подключено» без объяснения (issue #64).
