@@ -71,6 +71,8 @@ import com.impossi8le.vpnapp.feature.home.HomeViewModel
 import com.impossi8le.vpnapp.feature.home.stalenessNote
 import com.impossi8le.vpnapp.feature.home.toRowStates
 import com.impossi8le.vpnapp.network.ApiClient
+import com.impossi8le.vpnapp.network.ApiError
+import com.impossi8le.vpnapp.network.ApiException
 import com.impossi8le.vpnapp.network.FeedbackResult
 import com.impossi8le.vpnapp.network.ReportApi
 import com.impossi8le.vpnapp.network.ReportResult
@@ -491,6 +493,14 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
     // один раз: AppRoot, вернув на вход, отвечает `SignOutHandled`, и флаг
     // снимается — иначе повторный выход не сработал бы.
     var signedOut by remember { mutableStateOf(false) }
+
+    /**
+     * Недействительная сессия уже обработана — второй раз не обрабатываем.
+     *
+     * Без этого флага каждый повторный запрос списка запускал бы `signOut()` и
+     * заново сбрасывал состояние входа.
+     */
+    var sessionExpiredHandled by remember { mutableStateOf(false) }
 
     // Восстановление сохранённой сессии при запуске: `restoreSession()` вернёт
     // `true` и кладёт валидный токен в ApiClient; мы отражаем его в состоянии,
@@ -915,7 +925,26 @@ private fun VpnApp(loginDeepLinkUri: String?, onLoginDeepLinkConsumed: () -> Uni
     suspend fun loadConfigs() {
         val token = sessionToken ?: return
         graph.apiClient.sessionToken = token
-        val list = graph.configApi.listConfigs().getOrNull()
+        val result = graph.configApi.listConfigs()
+
+        // Сервер не принял токен: сессия на устройстве недействительна.
+        //
+        // Просто повторять запрос нельзя — приложение как раз и зацикливалось:
+        // десятки `GET /me` подряд по одному в секунду, все 401, и ни одного
+        // перехода на вход. Со стороны это «приложение зависло, список не
+        // обновляется». Сбрасываем сессию ОДИН раз и честно уводим на вход.
+        val unauthorized =
+            (result.exceptionOrNull() as? ApiException)?.error is ApiError.Unauthorized
+        if (unauthorized) {
+            if (!sessionExpiredHandled) {
+                sessionExpiredHandled = true
+                graph.signOut()
+                signedOut = true
+            }
+            return
+        }
+
+        val list = result.getOrNull()
         // Кэш обновляется тем же правилом, что и экран: успех — новый список,
         // неудача — прежний остаётся целым (`cacheAfterRefresh`). Неудачное
         // обновление НЕ должно стирать сохранённое, иначе одна сетевая ошибка
