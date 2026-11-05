@@ -40,6 +40,14 @@ class EngineFailureReasonTest {
     }
 
     @Test
+    fun `отказ согласования соединения распознан по строке из отчёта 05_11`() {
+        assertEquals(
+            "Сервер не смог согласовать соединение — попробуйте другой конфиг",
+            describeEngineFailure("Session invalidated: KEV_NEGOTIATE_ERROR"),
+        )
+    }
+
+    @Test
     fun `сбой рукопожатия отделён от таймаута`() {
         assertEquals(
             "Не удалось установить защищённое соединение",

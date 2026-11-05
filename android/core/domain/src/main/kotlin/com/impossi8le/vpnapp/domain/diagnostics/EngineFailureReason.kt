@@ -29,6 +29,12 @@ fun describeEngineFailure(line: String): String? = when {
     line.contains("AUTH_FAILED", ignoreCase = true) ->
         "Сервер отклонил доступ — проверьте подписку"
 
+    // Согласование параметров data-channel не удалось. Встречено на живом
+    // устройстве вместе с потерей сети, поэтому и формулировка про соединение,
+    // а не про сервер.
+    line.contains("KEV_NEGOTIATE_ERROR", ignoreCase = true) ->
+        "Сервер не смог согласовать соединение — попробуйте другой конфиг"
+
     line.contains("TLS handshake failed", ignoreCase = true) ||
         line.contains("TLS Error", ignoreCase = true) ||
         line.contains("tls-error", ignoreCase = true) ->
