@@ -134,8 +134,25 @@ class VpnServiceTunBuilder(
      * это надо вернуть ядру честно: притворяться, что защита стоит, опаснее
      * отказа, потому что трафик пойдёт наружу молча.
      */
-    override fun protectSocket(socket: Int): Boolean =
-        runCatching { service.protect(socket) }.getOrDefault(false)
+    override fun protectSocket(socket: Int): Boolean {
+        // Отказ защиты — не рядовая мелочь: без неё сокет ядра уходит мимо
+        // туннеля и соединение не поднимается вовсе (`socket_protect error`).
+        // Причину раньше глотали, поэтому разбор упирался в догадки.
+        return try {
+            val ok = service.protect(socket)
+            if (!ok) {
+                VpnTunnelService.sharedLogBuffer.add(
+                    "PROTECT: fd=$socket вернул false (защитить не удалось)",
+                )
+            }
+            ok
+        } catch (e: Throwable) {
+            VpnTunnelService.sharedLogBuffer.add(
+                "PROTECT: fd=$socket исключение ${e::class.simpleName}: ${e.message}",
+            )
+            false
+        }
+    }
 
     /**
      * Дескриптор надо закрывать: иначе после отключения остаётся висящий fd,
