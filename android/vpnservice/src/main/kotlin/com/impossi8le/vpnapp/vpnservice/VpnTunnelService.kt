@@ -6,6 +6,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import com.impossi8le.vpnapp.vpnengine.EngineCounters
 import com.impossi8le.vpnapp.vpnengine.EngineState
 import com.impossi8le.vpnapp.vpnengine.OpenVpn3Session
@@ -106,7 +107,38 @@ class VpnTunnelService : VpnService() {
     @Volatile
     private var connectCancelled = false
 
+    /**
+     * Идёт установление туннеля.
+     *
+     * Отдельный флаг, а не `connectJob?.isActive`: корутина `start()` блокируется
+     * на ВСЁ время жизни соединения, поэтому её `isActive` значит «туннель ещё не
+     * кончился», а не «идёт подъём». С прежней проверкой перезапуск по смене сети
+     * не срабатывал никогда, и после Wi-Fi → мобильная связь туннель висел на
+     * сокете мёртвой сети.
+     */
+    @Volatile
+    private var establishing = false
+
+    /** Когда объявлено `ESTABLISHED`: нужен грейс для сетевых событий. */
+    @Volatile
+    private var establishedAtMillis = 0L
+
+    /** Когда мы последний раз перезапускались из-за смены сети. */
+    @Volatile
+    private var lastNetworkRestartAt = 0L
+
+    /**
+     * Счётчик попыток сторожа залипания, переживающий перезапуски.
+     *
+     * Живёт в сервисе, потому что цикл сторожа пересоздаётся на каждый
+     * `Connected`. Локальный счётчик обнулялся бы при каждом reconnect, и предел
+     * [StallRecoveryPolicy.MAX_ATTEMPTS] не наступал бы никогда — на практике это
+     * давало перезапуски каждые две минуты часами вместо честного отказа.
+     */
+    private var stallRecovery = StallRecoveryState.Initial
+
     /** Туннель остановлен: поздние события ядра не должны оживлять уведомление. */
+    @Volatile
     private var stopped = false
 
     /**
@@ -184,37 +216,44 @@ class VpnTunnelService : VpnService() {
      * система держит ссылку на сервис после его смерти, и это утечка.
      */
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onLost(network: Network) = onNetworkLost()
+        override fun onLost(network: Network) = onNetworkChanged()
 
-        override fun onAvailable(network: Network) = notifyNetworkChanged()
+        override fun onAvailable(network: Network) = onNetworkChanged()
     }
 
     /**
-     * Сеть пропала: сокет туннеля больше некуда писать.
+     * Сеть поменялась: прежний сокет туннеля больше некуда писать.
      *
-     * Раньше здесь только сообщалось наружу, а соединение продолжало писать в
-     * мёртвый сокет — сотни строк `Network is unreachable` и «подключено» на
-     * экране при неработающем туннеле (issue #66). Перезапуск делает тот же
-     * путь, что и сторож залипания: он уже умеет поднимать сессию заново и
-     * сообщать `Recovering`.
+     * Слушаем ОБА события — `onLost` старой сети и `onAvailable` новой. Ждать
+     * только `onLost` нельзя: при переключении Wi-Fi → мобильная связь ядро
+     * успевает заметить обрыв первым, его состояние становится `LOST`, и прежняя
+     * проверка «только из ESTABLISHED» пропускала переезд вовсе. Туннель
+     * оставался на сокете мёртвой сети, и экран застывал до сторожа залипания —
+     * те самые минуты, за которые человек решает, что приложение зависло.
+     *
+     * **Почему не любая смена сети.** Первая версия перезапускала на любой
+     * потере — и сломала подключение: система снимает прежнюю сеть в момент,
+     * когда наш же туннель становится сетью по умолчанию, то есть прямо во время
+     * подъёма. Цикл «перезапуск → снятие сети → перезапуск» не давал подняться
+     * (v155: 38 отказов за день против 7-8 успешных на v153). Поэтому:
+     *  - пока идёт подъём ([establishing]) — не трогаем, смену обработает ядро;
+     *  - сразу после `ESTABLISHED` ([establishedAtMillis]) — грейс: прежнюю сеть
+     *    система снимает именно из-за нашего туннеля;
+     *  - не чаще [NETWORK_RESTART_MIN_INTERVAL] — иначе пара `onLost` +
+     *    `onAvailable` дала бы два перезапуска на один переезд.
      */
-    private fun onNetworkLost() {
+    private fun onNetworkChanged() {
         notifyNetworkChanged()
 
-        // Перезапускаем ТОЛЬКО работающий туннель.
-        //
-        // Первая версия этой правки перезапускала при любой потере сети — и
-        // сломала подключение: система снимает прежнюю сеть в момент, когда наш
-        // же туннель становится сетью по умолчанию, то есть прямо во время
-        // подъёма. Получался цикл «перезапуск → снятие сети → перезапуск», и
-        // подняться было невозможно (на v155 — 38 отказов за день у одного
-        // пользователя против 7-8 успешных на v153).
-        //
-        // Поэтому: только если туннель уже был поднят и подъём не идёт прямо
-        // сейчас. Во время подключения смену сети обработает сам движок — у него
-        // есть свои повторы адресов.
-        if (lastState != SystemState.ESTABLISHED) return
-        if (session == null || stopped || connectJob?.isActive == true) return
+        if (stopped || session == null || establishing) return
+        // `RECOVERING` — наш собственный перезапуск: второй раз не начинаем.
+        if (lastState != SystemState.ESTABLISHED && lastState != SystemState.LOST) return
+
+        val now = SystemClock.elapsedRealtime()
+        if (now - establishedAtMillis < NETWORK_SETTLE_MILLIS) return
+        if (now - lastNetworkRestartAt < NETWORK_RESTART_MIN_INTERVAL) return
+
+        lastNetworkRestartAt = now
         restartTunnel()
     }
 
@@ -247,7 +286,18 @@ class VpnTunnelService : VpnService() {
         return START_NOT_STICKY
     }
 
-    private fun startTunnel(profilePath: String, bypassFilePath: String?) {
+    private fun startTunnel(
+        profilePath: String,
+        bypassFilePath: String?,
+        /**
+         * Подъём после нашего же перезапуска (залипание, смена сети).
+         *
+         * Счётчик попыток сторожа при этом не сбрасывается: иначе предел
+         * [StallRecoveryPolicy.MAX_ATTEMPTS] не наступал бы никогда — каждый
+         * reconnect начинал бы с нуля и перезапуски шли бы бесконечно.
+         */
+        restart: Boolean = false,
+    ) {
         // Идемпотентно: повторный CONNECT не должен поднимать второй туннель.
         // Проверяем и сессию, и незавершённое подключение: во время чтения файла
         // сессия ещё null, и без второй проверки второй CONNECT стартовал бы
@@ -255,6 +305,12 @@ class VpnTunnelService : VpnService() {
         if (session != null || connectJob?.isActive == true) return
 
         stopped = false
+        // Подъём идёт: смена сети в эти секунды — часть установления туннеля,
+        // а не повод перезапускать (см. `onNetworkChanged`).
+        establishing = true
+        // Свежее пользовательское подключение начинает счёт попыток заново;
+        // наш собственный перезапуск — продолжает прежний (см. `restart`).
+        if (!restart) stallRecovery = StallRecoveryState.Initial
         // Новая попытка начинается с чистого листа: прошлая причина не должна
         // висеть над свежим подключением.
         lastFailureReason = null
@@ -289,6 +345,7 @@ class VpnTunnelService : VpnService() {
             // туннель поднимается.
             val profileText = runCatching { File(profilePath).readText() }.getOrNull()
             if (profileText.isNullOrBlank()) {
+                establishing = false
                 notifyState(SystemState.FAILED)
                 // Обнуляем ручку подключения, чтобы последовавший onDestroy не
                 // перекрыл FAILED'ом-наоборот: stopTunnel иначе счёл бы работу
@@ -347,9 +404,19 @@ class VpnTunnelService : VpnService() {
 
             // Перепроверяем отмену ПЕРЕД подъёмом: отмена могла прийти между
             // чтением и этой строкой, где нет точек приостановки.
-            if (connectCancelled) return@launch
+            if (connectCancelled) {
+                establishing = false
+                return@launch
+            }
             session = newSession
-            newSession.start(profileText)
+            // Флаг снимаем по исходу от ядра ИЛИ по возврату вызова: `start()`
+            // блокирующий и возвращается только вместе с концом соединения,
+            // поэтому «вернулось» уже не значит «ещё поднимаемся».
+            try {
+                newSession.start(profileText)
+            } finally {
+                establishing = false
+            }
         }
     }
 
@@ -367,6 +434,7 @@ class VpnTunnelService : VpnService() {
         // синхронно вернуть Disconnected, и без этого флага в шторке осталась бы
         // карточка уже остановленного туннеля.
         stopped = true
+        establishing = false
         // Обходов после остановки нет: счётчик обязан обнулиться вместе со
         // всем остальным, иначе экран при следующем подключении подхватил бы
         // число от прошлого туннеля и заявил об обходе, которого нет.
@@ -421,9 +489,17 @@ class VpnTunnelService : VpnService() {
      * прежний замер больше не описывает действительность.
      */
     private fun onEngineState(source: OpenVpn3Session, state: EngineState) {
+        // После остановки события ядра — эхо, а не новость. `connect()` к тому же
+        // возвращается ошибкой уже ПОСЛЕ отключения; без этого экран после
+        // «Отключить» перекрашивался в «не удалось подключиться», и кнопка
+        // выглядела неработающей.
+        if (stopped) return
+        // Любой исход, кроме `Connecting`, заканчивает подъём.
+        if (state != EngineState.Connecting) establishing = false
         when (state) {
             EngineState.Connecting -> notifyState(SystemState.CONNECTING)
             EngineState.Connected -> {
+                establishedAtMillis = SystemClock.elapsedRealtime()
                 notifyState(SystemState.ESTABLISHED)
                 // Наблюдение стартует только на установленном соединении: до
                 // него счётчиков ещё нет, а после него залипание как раз и
@@ -458,7 +534,9 @@ class VpnTunnelService : VpnService() {
     private fun startStallWatcher() {
         stallWatcher?.cancel()
         stallWatcher = scope.launch {
-            var recovery = StallRecoveryState.Initial
+            // Счётчик живёт в сервисе: цикл пересоздаётся на каждый `Connected`,
+            // и локальная копия обнулялась бы ровно там, где пора сдаваться.
+            var recovery = stallRecovery
             // Снимок вместе с моментом съёмки: время нужно самому детектору, а
             // `EngineCounters` его не несёт — это счётчики ядра, а не наш замер.
             var previous: Pair<EngineCounters, Long>? = null
@@ -489,6 +567,8 @@ class VpnTunnelService : VpnService() {
                 )
                 val outcome = StallRecoveryPolicy.decide(health, recovery, now)
                 recovery = outcome.state
+                // Переживает пересоздание цикла на следующем `Connected`.
+                stallRecovery = recovery
 
                 when (outcome.decision) {
                     StallRecovery.Restart -> {
@@ -534,7 +614,7 @@ class VpnTunnelService : VpnService() {
             // говорит и о перебое, и о том, что работа идёт.
             notifyState(SystemState.RECOVERING)
             delay(RESTART_PAUSE_MILLIS)
-            startTunnel(profile, lastBypassPath)
+            startTunnel(profile, lastBypassPath, restart = true)
         }
     }
 
@@ -712,5 +792,11 @@ class VpnTunnelService : VpnService() {
          * получит «адрес занят» и перезапуск превратится в отказ.
          */
         private const val RESTART_PAUSE_MILLIS = 1_000L
+
+        /** Грейс после ESTABLISHED: прежнюю сеть система снимает из-за нашего туннеля. */
+        private const val NETWORK_SETTLE_MILLIS = 10_000L
+
+        /** Не перезапускаться по сети чаще: пара onLost+onAvailable — один переезд. */
+        private const val NETWORK_RESTART_MIN_INTERVAL = 15_000L
     }
 }

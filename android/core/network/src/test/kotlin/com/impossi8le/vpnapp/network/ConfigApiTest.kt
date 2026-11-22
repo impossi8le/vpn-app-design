@@ -195,6 +195,38 @@ class ConfigApiTest {
     }
 
     @Test
+    fun `503 с кодом config_retired — сбой сервера, а не отозванный доступ`() = runTest {
+        // Сервер отдаёт временную недоступность генератора как 503 с телом
+        // `config_retired`. По коду это приговор, и экран писал «Доступ к
+        // подключению отозван» при живом профиле. 5xx — не приговор никогда.
+        server.enqueue(
+            MockResponse().setResponseCode(503).setBody(
+                """{"error":{"code":"config_retired","message":"не удалось получить свежий профиль","retryable":true}}""",
+            ),
+        )
+        val error = (api.fetchConfig("x").exceptionOrNull() as ConfigFetchException).error
+        assertTrue(
+            error is ConfigFetchError.Unexpected,
+            "5xx обязан остаться сбоем, а не отказом в доступе, было $error",
+        )
+        assertEquals(503, (error as ConfigFetchError.Unexpected).statusCode)
+    }
+
+    @Test
+    fun `410 config_retired по-прежнему означает отозванный доступ`() = runTest {
+        // Настоящее снятие профиля платформой приходит как 410: его не смягчаем.
+        server.enqueue(
+            MockResponse().setResponseCode(410).setBody(
+                """{"error":{"code":"config_retired","message":"профиль снят"}}""",
+            ),
+        )
+        assertEquals(
+            ConfigFetchError.ConfigRevoked,
+            (api.fetchConfig("x").exceptionOrNull() as ConfigFetchException).error,
+        )
+    }
+
+    @Test
     fun `401 на любом запросе даёт Unauthorized`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(401).setBody("""{"error":{"code":"unauthorized","message":"нет сессии"}}"""),

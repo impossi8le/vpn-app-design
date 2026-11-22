@@ -21,6 +21,15 @@ object ErrorMapping {
         fromCode(parseCode(body), statusCode, body)
 
     fun fromCode(code: String?, statusCode: Int, body: String = ""): ApiError = when {
+        // 5xx — сбой сервера или его апстрима, а НЕ решение о доступе.
+        //
+        // Проверка стоит ДО разбора `code`, потому что сервер отдаёт временную
+        // недоступность генератора как 503 с кодом `config_retired`. По коду это
+        // читалось как приговор, и экран писал «Доступ к подключению отозван»
+        // при живом профиле сроком до 2027 года (фото и серверный лог совпали:
+        // control-api был недоступен). Приговор по 5xx не выносим никогда:
+        // отозванность — это 403/410 с явным кодом, и только она.
+        statusCode in 500..599 -> ApiError.Unexpected(statusCode, body)
         code == "nonce_mismatch" -> ApiError.NonceMismatch
         code == "invalid_secret" -> ApiError.InvalidSecret
         code == "unauthorized" || statusCode == 401 -> ApiError.Unauthorized
