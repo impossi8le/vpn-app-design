@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test
  * запрос уходил внутрь туннеля и там пропадал.
  *
  * Разбор имени, а не хардкод адреса: `sslip.io` кодирует IP в самом имени
- * (`194-87-252-181` → `194.87.252.181`), поэтому при переезде сервера обновится
+ * (`193-233-245-95` → `193.233.245.95`), поэтому при переезде сервера обновится
  * только `API_BASE_URL`, а исключение поедет за ним само. Хардкод пришлось бы
  * помнить и править в двух местах.
  */
@@ -22,32 +22,32 @@ class ApiServerRouteTest {
 
     @Test
     fun `sslip-имя даёт адрес хоста и префикс 32`() {
-        val route = apiServerRouteOf("https://194-87-252-181.sslip.io:4443/api/v1")
+        val route = apiServerRouteOf("https://193-233-245-95.sslip.io/api/v1")
 
-        assertEquals("194.87.252.181", route?.network)
+        assertEquals("193.233.245.95", route?.network)
         // /32 — ровно один адрес: исключаем только сам API, не задевая соседей.
         assertEquals(32, route?.prefixLength, "шире /32 увело бы мимо туннеля чужие адреса")
     }
 
     @Test
     fun `имя записи объясняет пользователю, что это за строка`() {
-        val route = apiServerRouteOf("https://194-87-252-181.sslip.io:4443/api/v1")
+        val route = apiServerRouteOf("https://193-233-245-95.sslip.io/api/v1")
 
         assertEquals("Сервер приложения", route?.name)
     }
 
     @Test
     fun `без порта и пути тоже разбирается`() {
-        val route = apiServerRouteOf("https://194-87-252-181.sslip.io")
+        val route = apiServerRouteOf("https://193-233-245-95.sslip.io")
 
-        assertEquals("194.87.252.181", route?.network)
+        assertEquals("193.233.245.95", route?.network)
     }
 
     @Test
     fun `http тоже годится`() {
-        val route = apiServerRouteOf("http://194-87-252-181.sslip.io:8080/api")
+        val route = apiServerRouteOf("http://193-233-245-95.sslip.io:8080/api")
 
-        assertEquals("194.87.252.181", route?.network)
+        assertEquals("193.233.245.95", route?.network)
     }
 
     @Test
@@ -65,9 +65,9 @@ class ApiServerRouteTest {
 
     @Test
     fun `частично-sslip имя с лишними частями не принимается`() {
-        // `a.194-87-252-181.sslip.io` кодирует НЕ тот IP, что в первых октетах;
+        // `a.193-233-245-95.sslip.io` кодирует НЕ тот IP, что в первых октетах;
         // принять его значило бы исключить чужой адрес.
-        assertNull(apiServerRouteOf("https://a.194-87-252-181.sslip.io/api"))
+        assertNull(apiServerRouteOf("https://a.193-233-245-95.sslip.io/api"))
     }
 
     @Test

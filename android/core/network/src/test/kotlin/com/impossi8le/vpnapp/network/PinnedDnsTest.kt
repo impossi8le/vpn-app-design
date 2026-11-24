@@ -27,23 +27,23 @@ class PinnedDnsTest {
 
     @Test
     fun `имя нашего сервера резолвится без запроса к DNS`() {
-        val dns = PinnedDns("https://194-87-252-181.sslip.io:4443/api/v1", forbidden)
+        val dns = PinnedDns("https://193-233-245-95.sslip.io/api/v1", forbidden)
 
-        val addresses = dns.lookup("194-87-252-181.sslip.io")
+        val addresses = dns.lookup("193-233-245-95.sslip.io")
 
         assertEquals(1, addresses.size)
-        assertEquals("194.87.252.181", addresses.first().hostAddress)
+        assertEquals("193.233.245.95", addresses.first().hostAddress)
     }
 
     @Test
     fun `регистр имени не мешает подмене`() {
         // DNS регистронезависим: имя в baseUrl и в запросе может отличаться
         // регистром, и подмена обязана сработать всё равно.
-        val dns = PinnedDns("https://194-87-252-181.SSLIP.IO:4443/api/v1", forbidden)
+        val dns = PinnedDns("https://193-233-245-95.SSLIP.IO/api/v1", forbidden)
 
         assertEquals(
-            "194.87.252.181",
-            dns.lookup("194-87-252-181.sslip.io").first().hostAddress,
+            "193.233.245.95",
+            dns.lookup("193-233-245-95.sslip.io").first().hostAddress,
         )
     }
 
@@ -58,7 +58,7 @@ class PinnedDnsTest {
                 return listOf(InetAddress.getByName("127.0.0.1"))
             }
         }
-        val dns = PinnedDns("https://194-87-252-181.sslip.io:4443/api/v1", delegate)
+        val dns = PinnedDns("https://193-233-245-95.sslip.io/api/v1", delegate)
 
         val result = dns.lookup("example.com")
 
@@ -79,17 +79,17 @@ class PinnedDnsTest {
     @Test
     fun `порт и путь в базовом адресе не мешают разбору`() {
         val cases = listOf(
-            "https://194-87-252-181.sslip.io:4443/api/v1",
-            "https://194-87-252-181.sslip.io/api/v1",
-            "http://194-87-252-181.sslip.io:8080",
-            "https://194-87-252-181.sslip.io",
+            "https://193-233-245-95.sslip.io/api/v1",
+            "https://193-233-245-95.sslip.io/api/v1",
+            "http://193-233-245-95.sslip.io:8080",
+            "https://193-233-245-95.sslip.io",
         )
 
         cases.forEach { url ->
             val dns = PinnedDns(url, forbidden)
             assertEquals(
-                "194.87.252.181",
-                dns.lookup("194-87-252-181.sslip.io").first().hostAddress,
+                "193.233.245.95",
+                dns.lookup("193-233-245-95.sslip.io").first().hostAddress,
                 "не разобрался адрес: $url",
             )
         }
@@ -98,7 +98,7 @@ class PinnedDnsTest {
     @Test
     fun `адрес берётся из имени, а не угадывается`() {
         // Другой закодированный адрес должен дать именно себя.
-        val dns = PinnedDns("https://10-20-30-40.sslip.io:4443/api/v1", forbidden)
+        val dns = PinnedDns("https://10-20-30-40.sslip.io/api/v1", forbidden)
 
         assertEquals("10.20.30.40", dns.lookup("10-20-30-40.sslip.io").first().hostAddress)
     }

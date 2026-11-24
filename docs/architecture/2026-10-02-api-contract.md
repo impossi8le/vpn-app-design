@@ -13,7 +13,7 @@
 |---|---|
 | Транспорт | HTTPS, TLS 1.2+ |
 | Формат | JSON, UTF-8 (кроме `/report` — multipart, и `min-supported` — text/plain) |
-| Base URL | `https://194-87-252-181.sslip.io:4443/api/v1` (домена нет, см. backend-response §0) |
+| Base URL | `https://193-233-245-95.sslip.io/api/v1` (домена нет, см. backend-response §0; переезд на mos6 — 2026-11-23) |
 | Аутентификация | `Authorization: Bearer <session_token>`, кроме `/auth/*`, `/app/*` и ленты сборок |
 | Идемпотентность | `POST /auth/poll` безопасен для повтора; `POST /telemetry/events` дедуп по `event_id`; `POST /report` — по `report_id`, если клиент его присылает; остальные `GET` |
 | Логирование | Сервер **не** логирует приватные ключи, токены, полный `.ovpn` |
